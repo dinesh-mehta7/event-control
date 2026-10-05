@@ -3,6 +3,7 @@ import { Bell, CalendarClock, ClipboardList } from 'lucide-react';
 import { useRequests } from '../modules/requests';
 import { useMeetings } from '../context/MeetingsContext';
 import type { NotificationRow } from '../context/MeetingsContext';
+import { IssueReportsButton } from './IssueReportsButton';
 
 // The two header buttons every screen gets (they live inside ProfileMenu, which every module already shows):
 //   Meetings button  -> opens the meetings panel from any department
@@ -60,6 +61,7 @@ const Bell_: React.FC = () => {
     markRead(n.id);
     setOpen(false);
     if (n.link === 'meetings') openPanel();
+    else if (n.link === 'issues') window.dispatchEvent(new Event('open-issue-reports'));
     else if (n.link) location.hash = '#/' + n.link;
   };
 
@@ -106,6 +108,7 @@ export const HeaderTools: React.FC = () => (
   <div className="flex items-center gap-0.5 mr-1">
     <RequestsButton />
     <MeetingsButton />
+    <IssueReportsButton />
     <Bell_ />
   </div>
 );

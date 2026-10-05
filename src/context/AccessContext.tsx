@@ -13,6 +13,7 @@ export interface Member {
   id: string; name: string; email: string; role: string; level: string; subDepartment: SubDepartmentId | null;
   isActive: boolean; approved: boolean; requestedSub: SubDepartmentId | null; requestedAt: string | null; createdAt: string;
 }
+export interface SewadarAccountLink { id: string; name: string; memberType: string; teamName: string; profileId: string | null }
 
 const mapMember = (p: any): Member => ({
   id: p.id, name: p.name || p.email, email: p.email, role: p.role, level: p.level || 'other',
@@ -22,13 +23,15 @@ const mapMember = (p: any): Member => ({
 
 const dbMessage = (e: any): string => {
   const m: string = e?.message || 'Something went wrong.';
-  if (/could not find the function|schema cache|does not exist/i.test(m)) return 'Run supabase/migration_v15_access_meetings.sql in the Supabase SQL Editor first.';
+  if (/could not find the function|schema cache|does not exist/i.test(m)) return 'Run supabase/migration_v31_meeting_audience_groups.sql in the Supabase SQL Editor first.';
   return m;
 };
 
 interface Ctx {
   members: Member[]; requests: Member[]; codes: Partial<Record<SubDepartmentId, string>>; isOwner: boolean; loading: boolean;
+  sewadarMembers: SewadarAccountLink[];
   review: (userId: string, approve: boolean, level?: GrantLevel, sub?: SubDepartmentId | null) => Promise<string | null>;
+  linkSewadar: (userId: string, memberId: string | null) => Promise<string | null>;
   regenerate: (sub: SubDepartmentId) => Promise<string | null>;
   requestAccess: (code: string) => Promise<string | null>;
   refresh: () => Promise<void>;
@@ -44,6 +47,7 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const seesPeople = level === 'owner' || level === 'dept_head';
   const seesCodes = seesPeople || level === 'sub_dept_head';
   const [members, setMembers] = useState<Member[]>([]);
+  const [sewadarMembers, setSewadarMembers] = useState<SewadarAccountLink[]>([]);
   const [codes, setCodes] = useState<Partial<Record<SubDepartmentId, string>>>({});
   const [loading, setLoading] = useState(false);
 
@@ -53,6 +57,8 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (seesPeople) {
       const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: true });
       if (!error && data) setMembers(data.map(mapMember));
+      const roster = await supabase.from('accommodation_members').select('id,name,member_type,team_name,profile_id').eq('organization_id', u.organizationId).order('name');
+      if (!roster.error && roster.data) setSewadarMembers(roster.data.map((r: any) => ({ id: r.id, name: r.name, memberType: r.member_type || 'salary_based', teamName: r.team_name || '', profileId: r.profile_id || null })));
     }
     if (seesCodes) {
       const { data, error } = await supabase.from('department_codes').select('sub_department, code');
@@ -78,6 +84,13 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return null;
   }, [refresh]);
 
+  const linkSewadar = useCallback(async (userId: string, memberId: string | null) => {
+    const { error } = await supabase.rpc('link_profile_to_sewadar', { p_profile: userId, p_member_id: memberId || '' });
+    if (error) return dbMessage(error);
+    await refresh();
+    return null;
+  }, [refresh]);
+
   const regenerate = useCallback(async (sub: SubDepartmentId) => {
     const { error } = await supabase.rpc('regenerate_department_code', { p_sub: sub });
     if (error) return dbMessage(error);
@@ -93,8 +106,8 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Waiting for a decision: not approved yet, or approved but asked for a department. Declined sign-ups are inactive and drop out.
   const requests = useMemo(() => members.filter(m => m.isActive && (!m.approved || m.requestedSub)), [members]);
 
-  const value = useMemo<Ctx>(() => ({ members, requests, codes, isOwner, loading, review, regenerate, requestAccess, refresh }),
-    [members, requests, codes, isOwner, loading, review, regenerate, requestAccess, refresh]);
+  const value = useMemo<Ctx>(() => ({ members, requests, codes, isOwner, loading, sewadarMembers, review, linkSewadar, regenerate, requestAccess, refresh }),
+    [members, requests, codes, isOwner, loading, sewadarMembers, review, linkSewadar, regenerate, requestAccess, refresh]);
   return <C.Provider value={value}>{children}</C.Provider>;
 };
 

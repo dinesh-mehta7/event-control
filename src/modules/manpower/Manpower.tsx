@@ -134,8 +134,8 @@ export const ManpowerApp: React.FC = () => {
   const ids = Array.from(sel);
 
   const exportCSV = () => {
-    const head = ['Name', 'Member type', 'Serial no.', 'Batch no.', 'Relation', 'Relation name', 'Mobile', 'Village / city', 'Branch', 'Occupation', 'Department', 'Remarks', 'Sewa joining date', 'Employee code', 'Employee ID', 'Address', 'Address 2', 'Expected arrival', 'Team', 'Team lead', 'Device', 'Device ID', 'Calls', 'Last call outcome', 'Last call at', 'Arrival', 'Arrived at', 'Badge'];
-    const body = rows.map(s => [s.name, s.memberType, s.serialNo, s.batchNo, s.relation, s.relationName, s.phone, s.villageCity, s.branch, s.occupation, DEPT_LABEL[s.department] || s.department, s.remarks, s.joiningDate, s.employeeCode, s.employeeId, s.address, s.address2, s.expectedArrival, s.teamName, s.teamLead, DEVICE_LABEL[s.deviceType], s.deviceRef, s.callCount,
+    const head = ['Name', 'Member type', 'Serial no.', 'Batch no.', 'Relation', 'Relation name', 'Mobile', 'Village / city', 'Branch', 'Occupation', 'Department', 'Remarks', 'Sewa joining date', 'Employee code', 'Employee ID', 'Address', 'Address 2', 'Expected arrival', 'Team', 'Shift', 'Team lead', 'Device', 'Device ID', 'Calls', 'Last call outcome', 'Last call at', 'Arrival', 'Arrived at', 'Badge'];
+    const body = rows.map(s => [s.name, s.memberType, s.serialNo, s.batchNo, s.relation, s.relationName, s.phone, s.villageCity, s.branch, s.occupation, DEPT_LABEL[s.department] || s.department, s.remarks, s.joiningDate, s.employeeCode, s.employeeId, s.address, s.address2, s.expectedArrival, s.teamName, s.shift, s.teamLead, DEVICE_LABEL[s.deviceType], s.deviceRef, s.callCount,
       s.lastCallOutcome ? OUTCOME_LABEL[s.lastCallOutcome] : '', s.lastCallAt || '', s.arrival, s.arrivedAt || '', s.badgeIssued ? 'Issued' : 'Pending']);
     const csv = [head, ...body].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
@@ -262,17 +262,17 @@ export const ManpowerApp: React.FC = () => {
           <thead className="sticky top-0 z-10 bg-raised text-left text-[10px] font-semibold uppercase tracking-wide text-mute shadow-sm">
             <tr>
               {canManage && <th className="border-b border-r border-line px-2 py-2"><span className="sr-only">Select</span></th>}
-              {['B. No. / Batch','Name','Type','Mobile','Branch','Address','Department','Team','Expected arrival','Arrival / arrived at','Badge','Calls','Actions'].map(label => <th key={label} className="whitespace-nowrap border-b border-r border-line px-2 py-2">{label}</th>)}
+              {['B. No. / Batch','Name','Type','Mobile','Branch','Address','Department','Team','Shift','Expected arrival','Arrival / arrived at','Badge','Calls','Actions'].map(label => <th key={label} className="whitespace-nowrap border-b border-r border-line px-2 py-2">{label}</th>)}
             </tr>
           </thead>
           <tbody className="divide-y divide-line/70">
           {view.map(s => {
             const arrivalLabel = s.arrival === 'arrived' ? `Arrived${clock(s.arrivedAt) ? ` · ${clock(s.arrivedAt)}` : ''}` : s.arrival === 'not_coming' ? 'Not coming' : 'Expected';
             const address = [s.address, s.address2].filter(Boolean).join(', ');
-            const cells = [s.batchNo,s.name,s.memberType === 'salary_based' ? 'Salary based' : s.memberType,s.phone,s.branch,address,DEPT_LABEL[s.department] || s.department,s.teamName,s.expectedArrival,arrivalLabel,s.badgeIssued ? 'Issued' : 'Pending',`${s.callCount} call${s.callCount === 1 ? '' : 's'}`];
+            const cells = [s.batchNo,s.name,s.memberType === 'salary_based' ? 'Salary based' : s.memberType,s.phone,s.branch,address,DEPT_LABEL[s.department] || s.department,s.teamName,s.shift ? s.shift[0].toUpperCase() + s.shift.slice(1) : '',s.expectedArrival,arrivalLabel,s.badgeIssued ? 'Issued' : 'Pending',`${s.callCount} call${s.callCount === 1 ? '' : 's'}`];
             return <tr key={s.id} className={cx('hover:bg-raised/50', sel.has(s.id) && 'bg-blue-500/5')}>
               {canManage && <td className="border-r border-line px-2 py-1.5"><input type="checkbox" aria-label={`Select ${s.name}`} checked={sel.has(s.id)} onChange={() => toggle(s.id)} className="rounded" /></td>}
-              {cells.map((value, i) => <td key={i} title={value || ''} className={cx('max-w-[200px] truncate whitespace-nowrap border-r border-line/70 px-2 py-1.5', i === 1 ? 'font-semibold text-ink' : 'text-ink-soft', i === 9 && s.arrival === 'arrived' && 'text-emerald-300', i === 9 && s.arrival === 'not_coming' && 'text-rose-300', i === 10 && (s.badgeIssued ? 'text-emerald-300' : 'text-amber-300'))}>{i === 3 && s.phone ? <a href={`tel:${s.phone}`} className="hover:text-blue-300">{value}</a> : value || '—'}</td>)}
+              {cells.map((value, i) => <td key={i} title={value || ''} className={cx('max-w-[200px] truncate whitespace-nowrap border-r border-line/70 px-2 py-1.5', i === 1 ? 'font-semibold text-ink' : 'text-ink-soft', i === 10 && s.arrival === 'arrived' && 'text-emerald-300', i === 10 && s.arrival === 'not_coming' && 'text-rose-300', i === 11 && (s.badgeIssued ? 'text-emerald-300' : 'text-amber-300'))}>{i === 8 && canManage ? <select aria-label={`Shift for ${s.name}`} value={s.shift} onChange={e => void m.update(s.id, { ...sewadarInput(s), shift: e.target.value as SewadarInput['shift'] })} className="rounded border border-line bg-field px-1.5 py-1 text-[10px] text-ink"><option value="">—</option><option value="night">Night</option><option value="morning">Morning</option></select> : i === 3 && s.phone ? <a href={`tel:${s.phone}`} className="hover:text-blue-300">{value}</a> : value || '—'}</td>)}
               <td className="sticky right-0 border-b border-line bg-surface px-2 py-1"><div className="flex items-center gap-1"><button className="rounded px-2 py-1 text-[10px] font-medium text-blue-300 hover:bg-blue-500/10" onClick={() => setCalling(s)}>Call</button>{canManage && <button className="rounded px-2 py-1 text-[10px] font-medium text-ink-soft hover:bg-raised" onClick={() => setEditing(s)}>Edit</button>}</div></td>
             </tr>;
           })}
@@ -310,7 +310,15 @@ export const ManpowerApp: React.FC = () => {
 const emptySewadar = (): SewadarInput => ({
   name: '', memberType: 'salary_based', serialNo: '', batchNo: '', phone: '', department: '', relation: '', relationName: '',
   villageCity: '', branch: '', occupation: '', remarks: '', joiningDate: '', employeeCode: '', employeeId: '', address: '', address2: '',
-  expectedArrival: '', teamName: '', teamLead: '', deviceType: 'none', deviceRef: '',
+  expectedArrival: '', teamName: '', teamLead: '', shift: '', deviceType: 'none', deviceRef: '',
+});
+
+const sewadarInput = (s: Sewadar): SewadarInput => ({
+  name: s.name, memberType: s.memberType, serialNo: s.serialNo, batchNo: s.batchNo, phone: s.phone, department: s.department,
+  relation: s.relation, relationName: s.relationName, villageCity: s.villageCity, branch: s.branch, occupation: s.occupation,
+  remarks: s.remarks, joiningDate: s.joiningDate, employeeCode: s.employeeCode, employeeId: s.employeeId, address: s.address,
+  address2: s.address2, expectedArrival: s.expectedArrival, teamName: s.teamName, teamLead: s.teamLead, shift: s.shift,
+  deviceType: s.deviceType, deviceRef: s.deviceRef,
 });
 
 const SewadarForm: React.FC<{
@@ -329,7 +337,7 @@ const SewadarForm: React.FC<{
     department: initial.department, relation: initial.relation, relationName: initial.relationName, villageCity: initial.villageCity,
     branch: initial.branch, occupation: initial.occupation, remarks: initial.remarks, joiningDate: initial.joiningDate,
     employeeCode: initial.employeeCode, employeeId: initial.employeeId, address: initial.address, address2: initial.address2,
-    expectedArrival: initial.expectedArrival, teamName: initial.teamName, teamLead: initial.teamLead,
+    expectedArrival: initial.expectedArrival, teamName: initial.teamName, teamLead: initial.teamLead, shift: initial.shift,
     deviceType: initial.deviceType, deviceRef: initial.deviceRef,
   }) : emptySewadar());
   const [busy, setBusy] = useState(false);
@@ -367,6 +375,7 @@ const SewadarForm: React.FC<{
           {field('joiningDate', 'Sewa joining / promised date', 'date')}{field('expectedArrival', 'Expected arrival', 'date')}
           <label className="text-xs text-mute">Team<input list="sewadar-member-teams" value={f.teamName} onChange={e => { const value = e.target.value; const existing = teams.find(team => team.name.toLocaleLowerCase() === value.trim().toLocaleLowerCase()); setF(p => ({ ...p, teamName: value, teamLead: existing?.lead || p.teamLead })); }} placeholder="Select an existing team or type a new name" className={cx(inputCls(D), 'mt-1')} /><datalist id="sewadar-member-teams">{teams.map(team => <option key={team.name} value={team.name}>{team.members.length} members · {team.lead || 'lead not set'}</option>)}</datalist></label>
           {field('teamLead', 'Team lead')}
+          <label className="text-xs text-mute">Shift<select value={f.shift} onChange={e => set('shift', e.target.value as SewadarInput['shift'])} className={cx(inputCls(D), 'mt-1')}><option value="">Not set</option><option value="night">Night</option><option value="morning">Morning</option></select></label>
           <label className="text-xs text-mute">Issued device<select value={f.deviceType} onChange={e => set('deviceType', e.target.value as DeviceType)} className={cx(inputCls(D), 'mt-1')}>{DEVICES.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}</select></label>
           {field('deviceRef', 'Device ID / serial')}
         </div></section>
@@ -485,7 +494,7 @@ const headerAliases: Record<string, string[]> = {
   villageCity: ['village city', 'village', 'city'], branch: ['branch'], occupation: ['occupation'], remarks: ['remarks', 'remark'],
   employeeCode: ['emp code', 'employee code', 'employee number'], employeeId: ['employee id', 'emp id', 'employee identifier'],
   address: ['address', 'address 1'], address2: ['address 2', 'address line 2'], expectedArrival: ['expected arrival', 'arrival date'],
-  teamName: ['team', 'team name'], teamLead: ['team lead', 'team leader'], deviceType: ['device', 'device type'], deviceRef: ['device id', 'device serial', 'device reference'],
+  teamName: ['team', 'team name'], teamLead: ['team lead', 'team leader'], shift: ['shift'], deviceType: ['device', 'device type'], deviceRef: ['device id', 'device serial', 'device reference'],
 };
 const memberKind = (value: string, fallback: SewadarMemberType): SewadarMemberType => {
   const kind = value.toLowerCase();
@@ -530,9 +539,12 @@ const parseSewadarImport = (text: string, defaultType: SewadarMemberType): Sewad
     const expectedArrival = importDate(cell(values, 'expectedArrival', 4));
     const deviceCandidate = cell(values, 'deviceType', 19).toLowerCase();
     const deviceType = DEVICES.find(device => device.key === deviceCandidate || device.label.toLowerCase() === deviceCandidate)?.key || 'none';
+    const shiftValue = cell(values, 'shift', -1).toLowerCase();
+    const shift: SewadarInput['shift'] = shiftValue === 'night' ? 'night' : shiftValue === 'morning' ? 'morning' : '';
     return {
       ...emptySewadar(), name: cell(values, 'name', 0), phone: cell(values, 'phone', 1), department: department?.[0] || '', memberType: type,
       joiningDate, expectedArrival, batchNo: cell(values, 'batchNo', 5), teamName: cell(values, 'teamName', 6), teamLead: cell(values, 'teamLead', 7),
+      shift,
       villageCity: cell(values, 'villageCity', 8), branch: cell(values, 'branch', 9), occupation: cell(values, 'occupation', 10), remarks: cell(values, 'remarks', 11),
       serialNo: cell(values, 'serialNo', 12), relation: cell(values, 'relation', 13), relationName: cell(values, 'relationName', 14),
       employeeCode: cell(values, 'employeeCode', 15), employeeId: cell(values, 'employeeId', 16), address: cell(values, 'address', 17), address2: cell(values, 'address2', 18),

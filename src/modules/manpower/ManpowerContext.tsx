@@ -11,7 +11,7 @@ const mapSewadar = (r: any): Sewadar => ({
   relation: r.relation || '', relationName: r.relation_name || '', villageCity: r.village_city || '', branch: r.branch || '',
   occupation: r.occupation || '', remarks: r.remarks || '', joiningDate: r.joining_date || '', employeeCode: r.employee_code || '',
   employeeId: r.employee_id || '', address: r.address || '', address2: r.address2 || '', expectedArrival: r.expected_arrival || '',
-  teamName: r.team_name || '', teamLead: r.team_lead || '',
+  teamName: r.team_name || '', teamLead: r.team_lead || '', shift: r.shift || '',
   deviceType: r.device_type || 'none', deviceRef: r.device_ref || '',
   arrival: r.arrival_status || r.arrival || 'pending', arrivedAt: r.arrived_at || null,
   badgeIssued: !!r.badge_issued, badgeAt: r.badge_at || null,
@@ -33,7 +33,7 @@ const friendlyError = (error: any): string => {
   return msg;
 };
 
-export interface SewadarInput extends Pick<Sewadar, 'name' | 'memberType' | 'serialNo' | 'batchNo' | 'phone' | 'department' | 'relation' | 'relationName' | 'villageCity' | 'branch' | 'occupation' | 'remarks' | 'joiningDate' | 'employeeCode' | 'employeeId' | 'address' | 'address2' | 'expectedArrival' | 'teamName' | 'teamLead' | 'deviceType' | 'deviceRef'> {}
+export interface SewadarInput extends Pick<Sewadar, 'name' | 'memberType' | 'serialNo' | 'batchNo' | 'phone' | 'department' | 'relation' | 'relationName' | 'villageCity' | 'branch' | 'occupation' | 'remarks' | 'joiningDate' | 'employeeCode' | 'employeeId' | 'address' | 'address2' | 'expectedArrival' | 'teamName' | 'teamLead' | 'shift' | 'deviceType' | 'deviceRef'> {}
 export interface Stats { total: number; toCall: number; awaiting: number; arrived: number; notComing: number; badgePending: number; badgeIssued: number; withDevice: number }
 
 interface Ctx {
@@ -104,7 +104,7 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     relation_name: i.relationName.trim(), village_city: i.villageCity.trim(), branch: i.branch.trim(), occupation: i.occupation.trim(),
     remarks: i.remarks.trim(), joining_date: i.joiningDate || null, employee_code: i.employeeCode.trim(), employee_id: i.employeeId.trim(),
     address: i.address.trim(), address2: i.address2.trim(), expected_arrival: i.expectedArrival || null,
-    team_name: i.teamName.trim(), team_lead: i.teamLead.trim(),
+    team_name: i.teamName.trim(), team_lead: i.teamLead.trim(), shift: i.shift || '',
     device_type: i.deviceType, device_ref: i.deviceType === 'none' ? '' : i.deviceRef.trim(),
   });
 

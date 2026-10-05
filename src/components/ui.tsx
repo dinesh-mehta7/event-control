@@ -12,8 +12,8 @@ export const PageIntro: React.FC<{ children?: React.ReactNode; action?: React.Re
 
 export interface TabDef { id: string; label: string; count?: number; alert?: boolean }
 
-export const Tabs: React.FC<{ tabs: TabDef[]; value: string; onChange: (id: string) => void; label?: string }> = ({ tabs, value, onChange, label = 'Sections' }) => (
-  <div role="tablist" aria-label={label} className="flex items-center gap-1 border-b border-line overflow-x-auto">
+export const Tabs: React.FC<{ tabs: TabDef[]; value: string; onChange: (id: string) => void; label?: string; bordered?: boolean }> = ({ tabs, value, onChange, label = 'Sections', bordered = true }) => (
+  <div role="tablist" aria-label={label} className={`flex items-center gap-1 overflow-x-auto ${bordered ? 'border-b border-line' : ''}`}>
     {tabs.map(t => {
       const on = t.id === value;
       return (

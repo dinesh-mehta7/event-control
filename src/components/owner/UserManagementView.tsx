@@ -12,12 +12,19 @@ const LEVEL_LABEL: Record<string, string> = { owner: 'Organization Head', dept_h
 const LEVEL_TONE: Record<string, string> = { owner: 'bg-amber-500/15 text-amber-300', dept_head: 'bg-blue-500/15 text-blue-300', sub_dept_head: 'bg-blue-500/15 text-blue-300', staff: 'bg-raised text-ink-soft', other: 'bg-raised text-mute' };
 
 const MemberRow: React.FC<{ m: Member; canEdit: boolean }> = ({ m, canEdit }) => {
-  const { review } = useAccess();
+  const { review, linkSewadar, sewadarMembers } = useAccess();
   const [edit, setEdit] = useState(false);
   const [level, setLevel] = useState<GrantLevel>((['staff', 'sub_dept_head', 'dept_head'].includes(m.level) ? m.level : 'staff') as GrantLevel);
   const [sub, setSub] = useState<SubDepartmentId | ''>((m.subDepartment as SubDepartmentId) || '');
+  const [sewadarId, setSewadarId] = useState(() => sewadarMembers.find(s => s.profileId === m.id)?.id || '');
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
-  const save = async () => { setBusy(true); setErr(''); const e = await review(m.id, true, level, level === 'dept_head' ? null : (sub || null)); setBusy(false); if (e) setErr(e); else setEdit(false); };
+  const save = async () => {
+    setBusy(true); setErr('');
+    const e = await review(m.id, true, level, level === 'dept_head' ? null : (sub || null));
+    if (!e && sub === 'sewadars') { const le = await linkSewadar(m.id, sewadarId || null); if (le) { setBusy(false); setErr(le); return; } }
+    else if (!e && sewadarMembers.some(s => s.profileId === m.id)) { const le = await linkSewadar(m.id, null); if (le) { setBusy(false); setErr(le); return; } }
+    setBusy(false); if (e) setErr(e); else setEdit(false);
+  };
   return (
     <tr className="hover:bg-raised/50 align-top">
       <td className="px-4 py-2.5"><div className="text-sm font-medium text-ink">{m.name}</div><div className="text-xs text-mute">{m.email}</div></td>
@@ -32,6 +39,7 @@ const MemberRow: React.FC<{ m: Member; canEdit: boolean }> = ({ m, canEdit }) =>
               <option value="staff">Staff</option><option value="sub_dept_head">Sub-department head</option><option value="dept_head">IT department head</option></select>
             {level !== 'dept_head' && <select className={inputCls + ' !w-36'} aria-label="Department" value={sub} onChange={e => setSub(e.target.value as SubDepartmentId)}>
               <option value="">Department…</option>{(Object.keys(DEPTS) as SubDepartmentId[]).map(k => <option key={k} value={k}>{DEPTS[k]}</option>)}</select>}
+            {sub === 'sewadars' && <select className={inputCls + ' !w-48'} aria-label="Link Sewadar roster member" value={sewadarId} onChange={e => setSewadarId(e.target.value)}><option value="">No Sewadar link</option>{sewadarMembers.filter(s => !s.profileId || s.profileId === m.id).map(s => <option key={s.id} value={s.id}>{s.name}{s.teamName ? ` · ${s.teamName}` : ''}</option>)}</select>}
             <button className={btnGhost} onClick={() => setEdit(false)}>Cancel</button>
             <button className={btnPrimary} disabled={busy} onClick={save}>Save</button>
             {err && <div role="alert" className="w-full text-xs text-red-300 text-right">{err}</div>}
@@ -103,4 +111,3 @@ export const UserManagementView: React.FC<{ initialTab?: string }> = ({ initialT
     </div>
   );
 };
-

@@ -25,6 +25,7 @@ export interface Sewadar {
   expectedArrival: string;
   teamName: string;
   teamLead: string;
+  shift: 'night' | 'morning' | '';
   deviceType: DeviceType;
   deviceRef: string;
   arrival: Arrival;

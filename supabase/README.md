@@ -223,3 +223,12 @@ Run after migrations v16–v19. Requests move through the branch head when one i
 
 ## migration_v29_meeting_minutes.sql
 Run after migration_v15. Adds a minutes field to each meeting and a secured save function. The organizer, IT owner, or organization owner can save or edit the meeting minutes.
+
+## migration_v30_member_shift.sql
+Adds the Night/Morning shift field to the shared Accommodation and Sewadars member roster. Run it in the Supabase SQL Editor before using the new field.
+
+## migration_v31_meeting_audience_groups.sql
+Adds targeted audiences for meetings and emergency calls: IT staff, Regular and Annual Sewadars, all Sewadars, or every existing Sewadar team. It also lets the organization owner link a portal account to a Sewadar roster member so each selected member receives portal notifications. Run after v15, v24, v26, v29, and v30.
+
+## migration_v32_member_issue_reports.sql
+Adds a portal form for material problems and site/event complaints, private member report history, team issue inbox access, and status notifications. Run after migration_v15_access_meetings.sql.

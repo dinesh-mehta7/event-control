@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Menu, LayoutDashboard, CalendarClock, Users, BarChart3, Video, Wifi, Radio, Monitor, Boxes, ShoppingCart, BedDouble, HeartHandshake, LifeBuoy, ClipboardList, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Menu, LayoutDashboard, CalendarClock, Users, BarChart3, Video, Wifi, Radio, Monitor, Boxes, ShoppingCart, BedDouble, HeartHandshake, LifeBuoy, ClipboardList, PanelLeftClose, PanelLeftOpen, ChevronDown } from 'lucide-react';
 import { AppProvider, useApp } from './context/AppContext';
 import type { UserProfile } from './types';
 import { DEPTS } from './pages/orgData';
@@ -90,6 +90,7 @@ const Shell: React.FC<{ out: () => void }> = ({ out }) => {
   const route = useRoute();
   const [open, setOpen] = useState(false); // mobile drawer
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('crm_sidebar_collapsed') === '1'; } catch { return false; } });
+  const [operationsOpen, setOperationsOpen] = useState(false);
   const toggleCollapsed = () => setCollapsed(v => { const next = !v; try { localStorage.setItem('crm_sidebar_collapsed', next ? '1' : '0'); } catch { /* storage can be disabled */ } return next; });
 
   const own = Object.keys(APP_VIEWS).filter(k => canAccessApp(k as any));
@@ -103,6 +104,7 @@ const Shell: React.FC<{ out: () => void }> = ({ out }) => {
   // Keep the owner's operational areas in one predictable workspace navigation.
   // Department heads see the areas assigned to them plus the shared coordination tools.
   const operationalKeys = (Object.keys(APP_VIEWS) as string[]).filter(k => apps.includes(k));
+  useEffect(() => { setOperationsOpen(operationalKeys.includes(key)); }, [key]);
   const showWorkspaceNav = u.role === 'owner' || u.role === 'dept_head';
   const view = key === 'support' ? <OtherDept /> : key === 'accommodation' ? <Accommodation /> : key === 'inventory' ? <InventoryApp /> : key === 'walkie' ? <Walkie embedded /> : has(APP_VIEWS, key) ? React.createElement(APP_VIEWS[key][0]) : ORG_PAGES[key].render(tab);
   const title = key === 'support' ? 'IT Support' : has(APP_VIEWS, key) ? DEPTS[key as keyof typeof DEPTS] : ORG_PAGES[key].label;
@@ -119,7 +121,7 @@ const Shell: React.FC<{ out: () => void }> = ({ out }) => {
   return (
     <div className="flex h-screen bg-canvas text-ink">
       {hasNav && open && <div className="md:hidden fixed inset-0 z-30 bg-black/50" onClick={() => setOpen(false)} />}
-      {hasNav && <aside className={`print:hidden ${open ? 'flex' : 'hidden'} md:flex fixed md:static inset-y-0 left-0 z-40 ${collapsed ? 'md:w-20' : 'md:w-60'} w-60 shrink-0 min-h-0 flex-col border border-line bg-surface p-2 shadow-sm md:my-3 md:ml-3 md:mr-0 md:h-[calc(100vh-1.5rem)] md:rounded-xl transition-[width] duration-200`}>
+      {hasNav && <aside className={`print:hidden ${open ? 'flex' : 'hidden'} md:flex fixed md:static inset-y-0 left-0 z-40 ${collapsed ? 'md:w-20' : operationsOpen ? 'md:w-72' : 'md:w-60'} w-60 shrink-0 min-h-0 flex-col border border-line bg-surface p-2 shadow-sm md:my-3 md:ml-3 md:mr-0 md:h-[calc(100vh-1.5rem)] md:rounded-xl transition-[width] duration-200`}>
         <div className={`flex items-center ${collapsed ? 'md:justify-between md:gap-1' : 'gap-2.5'} gap-2.5 min-w-0 px-1 pb-3 border-b border-line`}>
             <a href="#/" title="Owner Dashboard" aria-label="Owner Dashboard"
               className="grid place-items-center w-9 h-9 rounded-md bg-blue-600 text-white text-xs font-bold shrink-0">
@@ -134,8 +136,13 @@ const Shell: React.FC<{ out: () => void }> = ({ out }) => {
           {showWorkspaceNav && <>
             {u.role === 'owner' && <><Label t="Workspace" /><Item id="" label="Command overview" Icon={LayoutDashboard} /></>}
             {u.role === 'dept_head' && <><Label t="Workspace" /><Item id="overview" label="Department overview" Icon={LayoutDashboard} /></>}
-            <Label t="IT operations" />
-            {operationalKeys.map(k => <Item key={k} id={k} label={DEPTS[k as keyof typeof DEPTS]} Icon={APP_VIEWS[k][1]} badge={k === 'purchase' ? proc.total : 0} />)}
+            <Label t="Operations Management" />
+            <div onMouseLeave={() => { if (!operationalKeys.includes(key)) setOperationsOpen(false); }}>
+              <button type="button" onMouseEnter={() => setOperationsOpen(true)} onFocus={() => setOperationsOpen(true)} aria-expanded={operationsOpen} className={`flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-semibold transition-colors ${operationalKeys.includes(key) ? 'bg-blue-600/10 text-blue-300' : 'text-mute hover:bg-raised hover:text-ink'}`}>
+                <Monitor size={17} className="shrink-0" /><span className={`flex-1 truncate ${collapsed ? 'md:hidden' : ''}`}>Operations</span><ChevronDown size={15} className={`shrink-0 transition-transform ${operationsOpen ? 'rotate-180' : ''} ${collapsed ? 'md:hidden' : ''}`} />
+              </button>
+              {operationsOpen && operationalKeys.map(k => <div key={k} className="md:ml-3 md:border-l md:border-line md:pl-2"><Item id={k} label={DEPTS[k as keyof typeof DEPTS]} Icon={APP_VIEWS[k][1]} badge={k === 'purchase' ? proc.total : 0} /></div>)}
+            </div>
           </>}
           {orgKeys.some(k => ['requests','meetings','users','reports'].includes(k)) && <><Label t="Coordination" />{orgKeys.filter(k => ['requests','meetings'].includes(k)).map(k => <Item key={k} id={k} label={ORG_PAGES[k].label} Icon={ORG_PAGES[k].icon} badge={k === 'requests' ? actionCount : 0} />)}</>}
           {orgKeys.some(k => ['users','reports'].includes(k)) && <><Label t="Administration" />{orgKeys.filter(k => ['users','reports'].includes(k)).map(k => <Item key={k} id={k} label={ORG_PAGES[k].label} Icon={ORG_PAGES[k].icon} />)}</>}
