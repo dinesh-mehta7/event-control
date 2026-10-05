@@ -1,0 +1,132 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base reset & global tokens ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-feature-settings: 'cv11', 'ss01', 'tnum' 0;
+  letter-spacing: -0.006em;
+  background: rgb(var(--c-canvas));
+  color: rgb(var(--c-ink));
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbars ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--c-line-strong));
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--c-mute)); }
+
+/* Keep the long application navigation independently scrollable and easy to grab. */
+.sidebar-scroll {
+  min-height: 0;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--c-line-strong)) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar { width: 8px; }
+.sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgb(var(--c-line-strong));
+  border: 2px solid transparent;
+  border-radius: 99px;
+  background-clip: padding-box;
+}
+
+/* The legacy Walkie pages share the CRM shell when embedded. Normalize their
+   old slate palettes to the same semantic surfaces so every tab feels like
+   one module in both light and dark mode. */
+.walkie-embedded [class*="bg-slate-50"], .walkie-embedded [class*="bg-slate-100"] { background-color: rgb(var(--c-canvas)) !important; }
+.walkie-embedded [class*="bg-slate-200"], .walkie-embedded [class*="bg-slate-700"], .walkie-embedded [class*="bg-slate-800"] { background-color: rgb(var(--c-raised)) !important; }
+.walkie-embedded [class*="bg-slate-900"], .walkie-embedded [class*="bg-slate-950"], .walkie-embedded [class*="bg-white"] { background-color: rgb(var(--c-surface)) !important; }
+.walkie-embedded [class*="border-slate-"] { border-color: rgb(var(--c-line)) !important; }
+.walkie-embedded [class*="text-slate-100"], .walkie-embedded [class*="text-slate-200"], .walkie-embedded [class*="text-slate-300"], .walkie-embedded [class*="text-slate-700"], .walkie-embedded [class*="text-slate-800"] { color: rgb(var(--c-ink-soft)) !important; }
+.walkie-embedded [class*="text-slate-400"], .walkie-embedded [class*="text-slate-500"], .walkie-embedded [class*="text-slate-600"] { color: rgb(var(--c-mute)) !important; }
+
+/* ── Keyframes ───────────────────────────────────────────────────────────── */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); }
+  50%       { box-shadow: 0 0 16px 4px rgba(37,99,235,0.35); }
+}
+
+.animate-slide-up  { animation: slideUp 0.15s cubic-bezier(0.16,1,0.3,1) forwards; }
+.animate-pop-in    { animation: popIn  0.15s cubic-bezier(0.16,1,0.3,1) forwards; }
+.animate-fade-in   { animation: fadeIn 0.2s ease-out forwards; }
+.animate-pulse-glow { animation: pulse-glow 2.5s ease-in-out infinite; }
+
+/* Skeleton shimmer */
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--c-raised)) 25%,
+    rgb(var(--c-line))   50%,
+    rgb(var(--c-raised)) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pop-in, .animate-slide-up, .animate-fade-in,
+  .animate-pulse-glow, .animate-shimmer { animation: none; }
+}
+
+/* ── Brand surfaces (calm, single-hue blue; red is reserved for alerts) ──── */
+.gradient-brand {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+}
+.gradient-brand-soft {
+  background: rgba(37,99,235,0.10);
+}
+
+/* ── Premium card glow border (opt-in) ───────────────────────────────────── */
+.card-glow {
+  border-color: transparent;
+  background-image: linear-gradient(rgb(var(--c-surface)), rgb(var(--c-surface))),
+    linear-gradient(135deg, rgba(37,99,235,0.55), rgba(37,99,235,0.15));
+  background-clip: padding-box, border-box;
+  background-origin: border-box;
+}
+
+/* ── Premium typography: lighter weights, tighter headings ───────────────── */
+h1, h2, h3 { letter-spacing: -0.015em; }
+.font-extrabold { font-weight: 700; }
+.font-bold      { font-weight: 600; }
+.uppercase      { letter-spacing: 0.06em; }
+button, input, select, textarea { font-family: inherit; }
+
+/* ── Printing (request pages, reports): clean page, no app chrome ───────── */
+@media print {
+  html, body { background: #fff !important; }
+  main { overflow: visible !important; }
+  .h-screen { height: auto !important; }
+  section, table { break-inside: avoid; }
+}
