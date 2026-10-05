@@ -55,7 +55,7 @@ const Stat: React.FC<{ label: string; n: number; tone: string; onClick: () => vo
   </button>
 );
 
-const Overview: React.FC<{ onOpen: (filter: string) => void; onDownloadAll: () => void; downloadingAll: boolean; scope: string }> = ({ onOpen, onDownloadAll, downloadingAll, scope }) => {
+const Overview: React.FC<{ onOpen: (filter: string) => void; onDownloadAll: () => void; downloadingAll: boolean; ready: boolean; scope: string }> = ({ onOpen, onDownloadAll, downloadingAll, ready, scope }) => {
   const { requests, me, waitingForMe, toArrange } = useRequests();
   const n = (f: string) => requests.filter(r => matches(r, f)).length;
   const total = requests.length;
@@ -73,7 +73,7 @@ const Overview: React.FC<{ onOpen: (filter: string) => void; onDownloadAll: () =
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h2 className="text-sm font-medium text-ink">{scope}</h2>
           <p className="text-xs text-mute mt-0.5">Select a number to filter requests.</p></div>
-        {me.isExec && <button type="button" className={btnGhost} disabled={downloadingAll} onClick={onDownloadAll}><FileSpreadsheet size={14} />{downloadingAll ? 'Preparing Excel…' : 'Download all requests'}</button>}
+        {me.isExec && <button type="button" className={btnGhost} disabled={!ready || downloadingAll} onClick={onDownloadAll}><FileSpreadsheet size={14} />{downloadingAll ? 'Preparing Excel…' : 'Download all requests'}</button>}
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Stat label="All requests" n={total} tone="text-ink" onClick={() => onOpen('all')} />
@@ -129,7 +129,7 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
     finally { setDownloadingAll(false); }
   };
   const needle = q.trim().toLowerCase();
-  const all = requests.filter(r => matches(r, filter) && (!needle || r.title.toLowerCase().includes(needle) || r.number.toLowerCase().includes(needle) || r.requesterName.toLowerCase().includes(needle)));
+  const all = requests.filter(r => matches(r, filter) && (!needle || r.title.toLowerCase().includes(needle) || r.number.toLowerCase().includes(needle) || r.requesterName.toLowerCase().includes(needle) || (r.subDepartment ? DEPTS[r.subDepartment] : 'other department').toLowerCase().includes(needle)));
   const inProgress = requests.filter(r => r.status === 'approved' && !toArrange.some(t => t.id === r.id));
 
   const filterBar = (
@@ -146,7 +146,7 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
       {loadError && <div role="alert" className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{loadError}</div>}
       {!ready && !loadError && <p className="text-sm text-mute">Loading…</p>}
 
-      {cur === 'overview' && <Overview onDownloadAll={downloadAll} downloadingAll={downloadingAll} scope={me.isExec ? 'All requests in the organization' : me.level === 'sub_dept_head' ? 'Requests from your department' : 'Your requests'}
+      {cur === 'overview' && <Overview onDownloadAll={downloadAll} downloadingAll={downloadingAll} ready={ready} scope={me.isExec ? 'All requests in the organization' : me.level === 'sub_dept_head' ? 'Requests from your department' : 'Your requests'}
         onOpen={f => { setFilter(f); go(me.isExec || me.level === 'sub_dept_head' ? 'all' : 'mine'); }} />}
       {cur === 'mine' && <>{filterBar}<List rows={mine} empty={filter === 'all' ? 'You have not raised any request yet. Use “New request” to start.' : 'No requests with this status.'} /></>}
       {cur === 'new' && <NewRequest key={copy ? 'copy' : 'blank'} copyFrom={copy} onDone={id => { setCopy(null); go(id); }} />}
@@ -166,7 +166,7 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
           <div className="flex flex-wrap items-center gap-2 justify-between">{filterBar}
             <div className="flex items-center gap-2">
               {canExport && <button className={btnGhost} onClick={() => exportList(all, 'requests')}><FileSpreadsheet size={14} />Excel: current results</button>}
-              {me.isExec && <button className={btnGhost} disabled={downloadingAll} onClick={downloadAll}><FileSpreadsheet size={14} />{downloadingAll ? 'Preparing…' : 'Download all by department'}</button>}
+              {me.isExec && <button className={btnGhost} disabled={!ready || downloadingAll} onClick={downloadAll}><FileSpreadsheet size={14} />{downloadingAll ? 'Preparing…' : 'Download all by department'}</button>}
               <input className={inputCls + ' !w-56'} placeholder="Search number, title, person" aria-label="Search requests" value={q} onChange={e => setQ(e.target.value)} /></div></div>
           <List rows={all} showWho empty="No requests match." />
         </div>)}

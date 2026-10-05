@@ -19,6 +19,18 @@ const mapPart = (r: any): ReqPart => ({
 });
 const mapEvent = (r: any): ReqEvent => ({ id: r.id, requestId: r.request_id, at: r.at, by: r.actor_name || '', kind: r.kind, text: r.text || '' });
 
+const fetchAll = async (table: string, sortColumn: string, ascending: boolean) => {
+  const rows: any[] = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await (supabase as any).from(table).select('*').order(sortColumn, { ascending }).range(offset, offset + pageSize - 1);
+    if (error) return { data: null, error };
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < pageSize) return { data: rows, error: null };
+  }
+};
+
 const dbMessage = (e: any): string => {
   const m: string = e?.message || 'Something went wrong.';
   if (/could not find the function|schema cache|does not exist/i.test(m)) return 'Requests are not fully set up yet. Run migrations v16 through v19, then supabase/migration_v28_request_it_owner_approval.sql in the Supabase SQL Editor.';
@@ -74,10 +86,10 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!uid) return;
     setLoading(true);
     const [rq, it, pt, ev, oi, cat] = await Promise.all([
-      supabase.from('requests').select('*').order('created_at', { ascending: false }).limit(300),
-      supabase.from('request_items').select('*').order('position', { ascending: true }),
-      supabase.from('request_fulfilments').select('*').order('created_at', { ascending: true }),
-      supabase.from('request_events').select('*').order('at', { ascending: true }),
+      fetchAll('requests', 'created_at', false),
+      fetchAll('request_items', 'position', true),
+      fetchAll('request_fulfilments', 'created_at', true),
+      fetchAll('request_events', 'at', true),
       supabase.rpc('request_order_info'),
       supabase.rpc('catalogue_list'),
     ]);
