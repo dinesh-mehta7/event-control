@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
@@ -15,6 +15,7 @@ const MaintenanceView = lazy(() => import('./components/MaintenanceView'));
 const HistoryView = lazy(() => import('./components/HistoryView'));
 const SettingsView = lazy(() => import('./components/SettingsView'));
 const ServiceInbox = lazy(() => import('../requests/ServiceInbox'));
+const EventRadioRequests = lazy(() => import('./components/EventRadioRequests'));
 
 function ViewLoadingFallback() {
   return (
@@ -24,7 +25,7 @@ function ViewLoadingFallback() {
   );
 }
 
-export function MainLayout({ headerExtra = null, embedded = false }) {
+export function MainLayout({ headerExtra = null, embedded = false, initialTab = null }) {
   const { currentTab, settings, currentUser, dataLoading, globalSearch, setGlobalSearch, setCurrentTab } = useApp();
 
   const renderContent = () => {
@@ -47,7 +48,7 @@ export function MainLayout({ headerExtra = null, embedded = false }) {
       case 'users':
         return <SettingsView />;
       case 'requests':
-        return <ServiceInbox kind="radio" title="Walkie-Talkie" />;
+        return <EventRadioRequests />;
       default:
         return <DashboardView />;
     }
@@ -63,16 +64,19 @@ export function MainLayout({ headerExtra = null, embedded = false }) {
     { id: 'departments', label: 'Departments' },
     ...(!isClient ? [{ id: 'allocation', label: 'Allocations' }, { id: 'returns', label: 'Returns' }, { id: 'maintenance', label: 'Maintenance' }] : []),
     { id: 'history', label: 'Activity history' },
-    { id: 'requests', label: 'Department requests' },
+    { id: 'requests', label: 'Event radio requests' },
     ...(isAdmin ? [{ id: 'users', label: 'Walkie users' }] : []),
   ];
+  useEffect(() => {
+    if (initialTab && sectionItems.some(item => item.id === initialTab)) setCurrentTab(initialTab);
+  }, [initialTab, setCurrentTab]);
 
   if (embedded) return (
     <div className="walkie-embedded space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-mute">Radio assets, allocations, returns and maintenance</p>
         <div className="w-full sm:w-72">
-          <input type="search" placeholder="Search serial, walkie ID, model…" value={globalSearch}
+          <input type="search" placeholder="Search walkie ID, model…" value={globalSearch}
             onChange={e => setGlobalSearch(e.target.value)} aria-label="Search walkies"
             className="w-full rounded-md border border-line bg-field px-3 py-2 text-sm text-ink outline-none focus:border-blue-500" />
         </div>

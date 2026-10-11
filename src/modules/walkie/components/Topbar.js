@@ -62,7 +62,7 @@ export default function Topbar({ extra = null }) {
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search serial, walkie ID, model..."
+            placeholder="Search walkie ID, model..."
             value={globalSearch}
             onChange={(e) => setGlobalSearch(e.target.value)}
             className={`w-full pl-9 pr-4 py-2 text-sm rounded-full border outline-none transition-all

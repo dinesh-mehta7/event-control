@@ -66,7 +66,7 @@ export default function WalkiesView() {
   const [showAssignModal, setShowAssignModal] = useState(false);
 
   // Form States
-  const [newWalkie, setNewWalkie] = useState({ id: '', label: '', serial: '', model: '', status: 'Available', notes: '' });
+  const [newWalkie, setNewWalkie] = useState({ id: '', label: '', model: '', status: 'Available', notes: '' });
   const [bulkConfig, setBulkConfig] = useState({ prefix: 'WT', startNum: '1', count: 5, model: 'Motorola CP200', notes: 'Bulk Warehouse Batch' });
   const [editingWalkie, setEditingWalkie] = useState(null);
   const [assigningWalkie, setAssigningWalkie] = useState(null);
@@ -89,7 +89,6 @@ export default function WalkiesView() {
     const term = search.toLowerCase();
     const matchesSearch = w.id.toLowerCase().includes(term) ||
       w.label.toLowerCase().includes(term) ||
-      w.serial.toLowerCase().includes(term) ||
       w.model.toLowerCase().includes(term) ||
       (w.channel || '').toLowerCase().includes(term) ||
       (w.assignedPerson?.name || '').toLowerCase().includes(term);
@@ -130,7 +129,7 @@ export default function WalkiesView() {
     const success = await addWalkie(newWalkie);
     if (success) {
       setShowAddModal(false);
-      setNewWalkie({ id: '', label: '', serial: '', model: '', status: 'Available', notes: '' });
+      setNewWalkie({ id: '', label: '', model: '', status: 'Available', notes: '' });
     }
   };
 
@@ -208,7 +207,7 @@ export default function WalkiesView() {
   };
 
   const exportCSV = () => {
-    const headers = ['Walkie ID', 'Unit Name', 'Serial', 'Model', 'Status', 'Department', 'Channel', 'Assigned To', 'Contact', 'Notes'];
+    const headers = ['Walkie ID', 'Unit Name', 'Model', 'Status', 'Rental', 'Department', 'Channel', 'Assigned To', 'Contact', 'Notes'];
     const exportSource = selectedWalkies.length > 0
       ? walkies.filter(w => selectedWalkies.includes(w.id))
       : filteredWalkies;
@@ -216,7 +215,7 @@ export default function WalkiesView() {
     const rows = exportSource.map(w => {
       const dept = departments.find(d => d.id === w.departmentId);
       return [
-        w.id, w.label, w.serial, w.model, w.status,
+        w.id, w.label, w.model, w.status, w.isRented ? 'Rented' : 'Owned',
         dept ? dept.name : '',
         w.channel || '',
         w.assignedPerson?.name || '',
@@ -381,117 +380,43 @@ export default function WalkiesView() {
           No walkie talkies found matching your criteria.
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-          {paginatedWalkies.map((walkie) => {
-            const dept = departments.find(d => d.id === walkie.departmentId);
-            const isSelected = selectedWalkies.includes(walkie.id);
-            return (
-              <div
-                key={walkie.id}
-                className={`relative rounded-xl border p-4 transition-all
-                  ${isSelected ? 'border-blue-500 ring-2 ring-blue-500/20' : isDark ? 'border-slate-800' : 'border-slate-100'}
-                  ${isDark ? 'bg-slate-950' : 'bg-white shadow-sm hover:shadow-md'}`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleSelect(walkie.id)}
-                      className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
-                    />
-                    <span className="font-bold text-blue-600 dark:text-blue-400 text-sm">{walkie.id}</span>
-                  </label>
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${STATUS_STYLES[walkie.status]}`}>
-                    {walkie.status}
-                  </span>
-                </div>
-
-                <div className={`grid grid-cols-2 gap-2 mb-3 p-2.5 rounded-xl ${isDark ? 'bg-slate-900' : 'bg-slate-50'}`}>
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-slate-400 mb-0.5">Unit name</p>
-                    <p className="font-bold text-sm leading-snug truncate" title={walkie.label}>{walkie.label || '—'}</p>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-slate-400 mb-0.5">Serial no.</p>
-                    <p className="font-mono text-sm leading-snug truncate" title={walkie.serial}>{walkie.serial || '—'}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5 text-xs mb-4">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Model</span>
-                    <span className="font-semibold text-right">{walkie.model}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Department</span>
-                    <span className="font-semibold text-right">{walkie.status === 'Allocated' && dept ? dept.name : '—'}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400">Channel</span>
-                    {walkie.channel ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold bg-blue-500/10 text-blue-500">
-                        <Radio className="w-3 h-3" />
-                        {walkie.channel}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Holder</span>
-                    <span className="font-semibold text-right">{walkie.assignedPerson?.name || 'Unassigned'}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-1 pt-3 border-t dark:border-slate-800">
-                  <button
-                    onClick={() => openAssignModal(walkie)}
-                    className={`p-1.5 rounded-lg transition-all
-                      ${isClient
-                        ? 'text-slate-300 dark:text-slate-750 cursor-not-allowed'
-                        : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-blue-500 hover:text-blue-700'}`}
-                    title={isClient ? 'Locked' : 'Assign to Person'}
-                  >
-                    {isClient ? <Lock className="w-3.5 h-3.5" /> : <UserCog className="w-4 h-4" />}
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (isClient) {
-                        addToast('Unauthorized: Clients cannot edit walkies.', 'error');
-                        return;
-                      }
-                      setEditingWalkie(walkie);
-                      setShowEditModal(true);
-                    }}
-                    className={`p-1.5 rounded-lg transition-all
-                      ${isClient
-                        ? 'text-slate-300 dark:text-slate-750 cursor-not-allowed'
-                        : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-blue-500 hover:text-blue-700'}`}
-                    title={isClient ? 'Locked' : 'Edit Walkie'}
-                  >
-                    {isClient ? <Lock className="w-3.5 h-3.5" /> : <Edit3 className="w-4 h-4" />}
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (!isAdmin) {
-                        addToast('Unauthorized: Only Administrators can delete assets.', 'error');
-                        return;
-                      }
-                      deleteWalkie(walkie.id);
-                    }}
-                    className={`p-1.5 rounded-lg transition-all
-                      ${isAdmin
-                        ? 'hover:bg-slate-100 dark:hover:bg-slate-800 text-rose-500 hover:text-rose-700'
-                        : 'text-slate-300 dark:text-slate-700 cursor-not-allowed'}`}
-                    title={isAdmin ? 'Delete' : 'Locked for Operators/Clients'}
-                  >
-                    {isAdmin ? <Trash2 className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+        <div className={`overflow-x-auto rounded-xl border ${isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-200 bg-white shadow-sm'}`}>
+          <table className="w-full min-w-[800px] text-left text-sm">
+            <thead className={`${isDark ? 'bg-slate-900 text-slate-400' : 'bg-slate-50 text-slate-500'} text-xs uppercase tracking-wide`}>
+              <tr>
+                <th className="w-10 px-4 py-3"><span className="sr-only">Select</span></th>
+                <th className="px-3 py-3">Device</th><th className="px-3 py-3">Source</th><th className="px-3 py-3">Model</th>
+                <th className="px-3 py-3">Status</th><th className="px-3 py-3">Department</th><th className="px-3 py-3">Channel</th><th className="px-3 py-3">Holder</th><th className="px-3 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className={`divide-y ${isDark ? 'divide-slate-800' : 'divide-slate-100'}`}>
+              {paginatedWalkies.map(walkie => {
+                const dept = departments.find(d => d.id === walkie.departmentId);
+                const isSelected = selectedWalkies.includes(walkie.id);
+                return <tr key={walkie.id} className={`${isSelected ? 'bg-blue-500/5' : ''} ${isDark ? 'hover:bg-white/[0.025]' : 'hover:bg-slate-50'}`}>
+                  <td className="px-4 py-3"><input type="checkbox" checked={isSelected} onChange={() => toggleSelect(walkie.id)} aria-label={`Select ${walkie.id}`} className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500" /></td>
+                  <td className="px-3 py-3"><div className="font-semibold text-ink">{walkie.label || walkie.id}</div><div className="mt-0.5 text-[11px] text-mute">ID: {walkie.id}</div></td>
+                  <td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10px] ${walkie.isRented ? 'bg-violet-500/10 text-violet-300' : 'bg-slate-500/10 text-mute'}`}>{walkie.isRented ? 'Rented' : 'Owned'}</span></td>
+                  <td className="px-3 py-3 text-ink-soft">{walkie.model || '—'}</td>
+                  <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${STATUS_STYLES[walkie.status]}`}>{walkie.status}</span></td>
+                  <td className="max-w-44 truncate px-3 py-3 text-ink-soft" title={dept?.name}>{walkie.status === 'Allocated' && dept ? dept.name : '—'}</td>
+                  <td className="px-3 py-3">{walkie.channel ? <span className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 px-2 py-1 text-xs font-semibold text-blue-400"><Radio className="h-3 w-3" />{walkie.channel}</span> : <span className="text-mute">—</span>}</td>
+                  <td className="max-w-40 truncate px-3 py-3 text-ink-soft" title={walkie.assignedPerson?.name}>{walkie.assignedPerson?.name || 'Unassigned'}</td>
+                  <td className="px-3 py-3"><div className="flex justify-end gap-1">
+                    <button type="button" onClick={() => openAssignModal(walkie)} className="rounded-md p-2 text-blue-400 hover:bg-raised" title={isClient ? 'Locked' : 'Assign to person'} aria-label={`Assign ${walkie.id}`}>
+                      {isClient ? <Lock className="h-4 w-4" /> : <UserCog className="h-4 w-4" />}
+                    </button>
+                    <button type="button" onClick={() => { if (isClient) { addToast('Unauthorized: Clients cannot edit walkies.', 'error'); return; } setEditingWalkie(walkie); setShowEditModal(true); }} className="rounded-md p-2 text-blue-400 hover:bg-raised" title={isClient ? 'Locked' : 'Edit device'} aria-label={`Edit ${walkie.id}`}>
+                      {isClient ? <Lock className="h-4 w-4" /> : <Edit3 className="h-4 w-4" />}
+                    </button>
+                    <button type="button" onClick={() => { if (!isAdmin) { addToast('Unauthorized: Only Administrators can delete assets.', 'error'); return; } deleteWalkie(walkie.id); }} className="rounded-md p-2 text-rose-400 hover:bg-rose-500/10" title={isAdmin ? 'Delete' : 'Locked'} aria-label={`Delete ${walkie.id}`}>
+                      {isAdmin ? <Trash2 className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                    </button>
+                  </div></td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -553,17 +478,6 @@ export default function WalkiesView() {
                 />
               </div>
               <div>
-                <label className={labelCls}>Serial Number</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. SN-99821-X3"
-                  value={newWalkie.serial}
-                  onChange={(e) => setNewWalkie({ ...newWalkie, serial: e.target.value })}
-                  className={inputCls}
-                />
-              </div>
-              <div>
                 <label className={labelCls}>Model</label>
                 <input
                   type="text"
@@ -613,7 +527,7 @@ export default function WalkiesView() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-slate-400 mb-4">Generates multiple walkies sequentially with unique serials.</p>
+            <p className="text-xs text-slate-400 mb-4">Generates multiple walkies sequentially with unique IDs.</p>
             <form onSubmit={handleBulkSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -715,16 +629,6 @@ export default function WalkiesView() {
                   required
                   value={editingWalkie.label}
                   onChange={(e) => setEditingWalkie({ ...editingWalkie, label: e.target.value })}
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Serial Number</label>
-                <input
-                  type="text"
-                  required
-                  value={editingWalkie.serial}
-                  onChange={(e) => setEditingWalkie({ ...editingWalkie, serial: e.target.value })}
                   className={inputCls}
                 />
               </div>

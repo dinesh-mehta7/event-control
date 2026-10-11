@@ -26,7 +26,7 @@ export const MenuView: React.FC = () => {
   const { meals, mealsOn, canManageMenu, isDark: dark, loading, createDay, saveMeal, setMealStatus, deleteDay, addMeal, deleteMeal } = useAccommodation();
   const now = useNow();
   const today = todayStr();
-  const muted = dark ? 'text-slate-400' : 'text-slate-500';
+  const muted = 'text-mute';
 
   const [date, setDate] = useState(today);
   const [view, setView] = useState<'day' | 'all'>('day');
@@ -54,111 +54,76 @@ export const MenuView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Menu &amp; Live Status</h1>
-          <p className={cx('text-sm', muted)}>What is served when, and where each meal is right now.</p>
+          <h1 className="text-xl font-bold tracking-tight">Meal service</h1>
+          <p className={cx('text-xs', muted)}>Today’s live service and meal planning.</p>
         </div>
         {!canManageMenu && <p className={cx('flex items-center gap-1.5 text-xs', muted)}><Lock className="w-3.5 h-3.5" />View only — the Accommodation head or owner updates this.</p>}
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-5 items-start">
-      {/* ---------------- LIVE CARD ---------------- */}
-      <section aria-label="Live meal status" className={cx('lg:col-span-3 rounded-xl border p-5 sm:p-6', dark ? 'bg-gradient-to-br from-slate-900 to-slate-900/60 border-slate-700' : 'bg-gradient-to-br from-blue-50 to-white border-blue-200 shadow-sm')}>
-        <div className="flex items-center justify-between gap-2 mb-4">
-          <span className="inline-flex items-center gap-2 text-xs font-bold tracking-wider text-rose-500">
-            <span className="relative flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" /></span>
-            LIVE · {prettyDate(today)}
-          </span>
-          {pinned && <button onClick={() => setPinned(null)} className="text-xs text-blue-500 hover:underline">Back to auto</button>}
-        </div>
-
-        {!focus ? (
-          <div className="py-4">
-            <UtensilsCrossed className="w-7 h-7 text-slate-400 mb-2" />
-            <p className="font-semibold">Today's menu hasn't been published yet.</p>
-            {canManageMenu && !loading && (
-              <button disabled={creating} className={cx(btnPrimary, 'mt-3')} onClick={() => { setDate(today); createMenu(today, previousDayWithMenu || undefined); }}><Plus className="w-4 h-4" />{creating ? 'Creating…' : "Create today's menu"}</button>
-            )}
+      <div className="grid items-stretch gap-3 lg:grid-cols-5">
+        <section aria-label="Live meal status" className="flex h-full flex-col lg:col-span-3 rounded-lg border border-line bg-gradient-to-br from-raised to-surface p-3 shadow-sm">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-2 text-[11px] font-bold tracking-wider text-rose-400">
+              <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-60" /><span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" /></span>
+              LIVE · {prettyDate(today)}
+            </span>
+            {pinned && <button onClick={() => setPinned(null)} className="text-[11px] text-blue-400 hover:underline">Back to automatic</button>}
           </div>
-        ) : (
-          <>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-3xl font-extrabold tracking-tight">{focus.label}</h2>
-                <p className={cx('flex items-center gap-1.5 text-sm mt-0.5', muted)}><Clock className="w-3.5 h-3.5" />{fmtTime(focus.start)} – {fmtTime(focus.end)}</p>
-              </div>
+          {!focus ? (
+            <div className="py-3">
+              <p className="text-xs font-medium">Today's menu hasn't been published yet.</p>
+              {canManageMenu && !loading && <button disabled={creating} className={cx(btnPrimary, 'mt-3 rounded-lg px-3 py-2 text-xs')} onClick={() => { setDate(today); createMenu(today, previousDayWithMenu || undefined); }}><Plus className="h-3.5 w-3.5" />{creating ? 'Creating…' : "Create today's menu"}</button>}
+            </div>
+          ) : <div className="flex flex-1 flex-col">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div><h2 className="text-lg font-bold tracking-tight">{focus.label}</h2><p className={cx('mt-0.5 flex items-center gap-1 text-[11px]', muted)}><Clock className="h-3 w-3" />{fmtTime(focus.start)}–{fmtTime(focus.end)}</p></div>
               <StatusBadge s={focus.status} dark={dark} />
             </div>
-
-            {dishes(focus.items).length > 0 ? (
-              <ul className="flex flex-wrap gap-2 mt-4">
-                {dishes(focus.items).map((d, i) => <li key={i} className={cx('text-sm px-3 py-1.5 rounded-full border', dark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200')}>{d}</li>)}
-              </ul>
-            ) : <p className={cx('text-sm mt-4 italic', muted)}>Dishes not added yet.</p>}
-
-            {/* Stage tracker: Preparation → Distribution → Distributed */}
-            <ol className="grid grid-cols-3 gap-2 mt-6" aria-label="Meal progress">
+            <p className={cx('mt-2 truncate text-xs', muted)}>{dishes(focus.items).join(' · ') || 'Dishes not added yet.'}</p>
+            <ol className="mt-auto grid grid-cols-3 gap-1.5 pt-4" aria-label="Meal progress">
               {STATUS_STEPS.slice(1).map((step, i) => {
                 const cur = STATUS_STEPS.findIndex(s => s.key === focus.status);
                 const reached = cur >= i + 1;
                 const isCurrent = cur === i + 1;
-                const base = cx('w-full text-left rounded-xl border p-3 transition-colors', reached ? statusTone(step.key, dark) : (dark ? 'border-slate-700 text-slate-500' : 'border-slate-200 text-slate-400'), isCurrent && 'ring-2 ring-current');
-                const inner = (<><div className="text-xs font-bold uppercase tracking-wider opacity-70">Step {i + 1}</div><div className="text-sm font-bold mt-0.5">{step.label}</div></>);
-                return (
-                  <li key={step.key}>
-                    {canManageMenu ? (
-                      <button className={cx(base, 'hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400')} aria-pressed={isCurrent} onClick={() => setMealStatus(focus.id, step.key)}>{inner}</button>
-                    ) : <div className={base} aria-current={isCurrent ? 'step' : undefined}>{inner}</div>}
-                  </li>
-                );
+                const stepClass = cx('w-full rounded-lg border p-2 text-left transition-colors', reached ? statusTone(step.key, dark) : 'border-line text-faint', isCurrent && 'ring-1 ring-current');
+                const content = <><span className="block text-[9px] font-bold uppercase tracking-wider opacity-70">Step {i + 1}</span><span className="mt-0.5 block text-[11px] font-semibold">{step.label}</span></>;
+                return <li key={step.key}>{canManageMenu ? <button type="button" className={cx(stepClass, 'hover:opacity-90')} aria-pressed={isCurrent} onClick={() => setMealStatus(focus.id, step.key)}>{content}</button> : <div className={stepClass} aria-current={isCurrent ? 'step' : undefined}>{content}</div>}</li>;
               })}
             </ol>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 mt-3 text-xs">
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px]">
               <span className={muted}>{focus.changedAt ? `Updated ${timeAgo(focus.changedAt)}${focus.changedBy ? ` by ${focus.changedBy}` : ''}` : 'Not started yet'}</span>
-              {canManageMenu && focus.status !== 'scheduled' && <button className="text-blue-500 hover:underline" onClick={() => setMealStatus(focus.id, 'scheduled')}>Reset to "Not started"</button>}
+              {canManageMenu && focus.status !== 'scheduled' && <button className="text-blue-400 hover:underline" onClick={() => setMealStatus(focus.id, 'scheduled')}>Reset</button>}
             </div>
+          </div>}
+        </section>
 
-          </>
-        )}
-      </section>
-
-      {/* ---------------- TODAY'S SCHEDULE ---------------- */}
-      <section aria-label="Today's schedule" className={cx('lg:col-span-2 rounded-xl border p-5', card(dark))}>
-        <h2 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-blue-500" />Today's schedule</h2>
-        {todays.length === 0 ? <p className={cx('text-sm', muted)}>Nothing scheduled yet.</p> : (
-          <ol className="relative space-y-4 pl-6 before:absolute before:left-[7px] before:top-1.5 before:bottom-1.5 before:w-px before:bg-slate-500/30">
-            {[...todays].sort((a, b) => minutesOf(a.start) - minutesOf(b.start)).map(m => {
-              const isFocus = m.id === focus?.id;
-              const dot = m.status === 'distributed' ? 'bg-emerald-500' : m.status === 'distributing' ? 'bg-blue-500' : m.status === 'preparing' ? 'bg-amber-500' : 'bg-slate-400';
-              return (
-                <li key={m.id} className="relative">
-                  <span className={cx('absolute -left-6 top-1 w-3.5 h-3.5 rounded-full ring-4', dot, dark ? 'ring-slate-900' : 'ring-white', m.status !== 'scheduled' && m.status !== 'distributed' && 'animate-pulse')} />
-                  <button onClick={() => setPinned(m.id === auto?.id ? null : m.id)} className={cx('w-full text-left rounded-xl p-2 -m-2 transition-colors', isFocus && (dark ? 'bg-slate-800' : 'bg-blue-50'))}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold text-sm">{m.label}</span>
-                      <StatusBadge s={m.status} dark={dark} />
-                    </div>
-                    <div className={cx('text-xs mt-0.5', muted)}>{fmtTime(m.start)} – {fmtTime(m.end)}</div>
-                    {dishes(m.items).length > 0 && <div className={cx('text-xs mt-1 truncate', muted)}>{dishes(m.items).join(' · ')}</div>}
-                  </button>
-                </li>
-              );
+        <section aria-label="Today's schedule" className={cx('h-full lg:col-span-2 rounded-lg border p-3', card(dark))}>
+          <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider"><Clock className="h-4 w-4 text-blue-500" />Today's schedule</h2>
+          {!todays.length ? <p className={cx('text-xs', muted)}>Nothing scheduled yet.</p> : <ol className="relative space-y-2 border-l border-line-strong pl-4">
+            {[...todays].sort((a, b) => minutesOf(a.start) - minutesOf(b.start)).map(meal => {
+              const isFocus = meal.id === focus?.id;
+              const dot = meal.status === 'distributed' ? 'bg-emerald-500' : meal.status === 'distributing' ? 'bg-blue-500' : meal.status === 'preparing' ? 'bg-amber-500' : 'bg-faint';
+              return <li key={meal.id} className="relative"><span className={cx('absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full ring-2 ring-surface', dot)} />
+                <button type="button" onClick={() => setPinned(meal.id === auto?.id ? null : meal.id)} className={cx('w-full rounded-md px-2 py-1 text-left transition-colors hover:bg-raised', isFocus && 'bg-brand-soft')}>
+                  <span className="flex items-center justify-between gap-2"><span className="truncate text-xs font-semibold">{meal.label}</span><StatusBadge s={meal.status} dark={dark} /></span>
+                  <span className={cx('mt-0.5 block text-[10px]', muted)}>{fmtTime(meal.start)}–{fmtTime(meal.end)}{dishes(meal.items).length ? ` · ${dishes(meal.items).join(', ')}` : ''}</span>
+                </button>
+              </li>;
             })}
-          </ol>
-        )}
-      </section>
+          </ol>}
+        </section>
       </div>
 
       {/* ---------------- MENU CHART ---------------- */}
-      <section aria-label="Menu chart" className="space-y-3">
+      <section aria-label="Menu planner" className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold flex items-center gap-2"><CalendarDays className="w-5 h-5 text-blue-500" />Menu chart</h2>
-          <div role="tablist" aria-label="Chart view" className={cx('inline-flex p-1 rounded-xl', dark ? 'bg-slate-900' : 'bg-slate-100')}>
+          <h2 className="text-sm font-bold flex items-center gap-2"><CalendarDays className="w-4 h-4 text-blue-500" />Menu chart</h2>
+          <div role="tablist" aria-label="Chart view" className="inline-flex p-1 rounded-lg bg-raised">
             {([['day', 'Day'], ['all', 'All days']] as const).map(([k, l]) => (
-              <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)} className={cx('px-4 py-1.5 rounded-lg text-xs font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400', view === k ? 'bg-blue-600 text-white shadow' : muted)}>{l}</button>
+              <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)} className={cx('px-3 py-1.5 rounded-md text-[11px] font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400', view === k ? 'bg-blue-600 text-white shadow-sm' : muted)}>{l}</button>
             ))}
           </div>
         </div>
@@ -166,16 +131,16 @@ export const MenuView: React.FC = () => {
         {view === 'day' && (
           <>
             <div className="flex items-center gap-2">
-              <button aria-label="Previous day" className={btnGhost(dark)} onClick={() => setDate(shiftDate(date, -1))}><ChevronLeft className="w-4 h-4" /></button>
-              <input type="date" aria-label="Menu date" value={date} onChange={e => e.target.value && setDate(e.target.value)} className={cx(inputCls(dark), 'w-auto')} />
-              <button aria-label="Next day" className={btnGhost(dark)} onClick={() => setDate(shiftDate(date, 1))}><ChevronRight className="w-4 h-4" /></button>
-              {date !== today && <button className={btnGhost(dark)} onClick={() => setDate(today)}>Today</button>}
-              <span className={cx('hidden sm:inline text-sm ml-1', muted)}>{prettyDate(date, true)}</span>
+              <button aria-label="Previous day" className={cx(btnGhost(dark), 'rounded-lg px-2 py-1.5')} onClick={() => setDate(shiftDate(date, -1))}><ChevronLeft className="w-4 h-4" /></button>
+              <input type="date" aria-label="Menu date" value={date} onChange={e => e.target.value && setDate(e.target.value)} className={cx(inputCls(dark), 'w-auto rounded-lg py-1.5 text-xs')} />
+              <button aria-label="Next day" className={cx(btnGhost(dark), 'rounded-lg px-2 py-1.5')} onClick={() => setDate(shiftDate(date, 1))}><ChevronRight className="w-4 h-4" /></button>
+              {date !== today && <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5 text-xs')} onClick={() => setDate(today)}>Today</button>}
+              <span className={cx('hidden sm:inline text-xs ml-1', muted)}>{prettyDate(date, true)}</span>
             </div>
 
             {dayRows.length === 0 ? (
               <div className={cx('rounded-xl border p-8 text-center', card(dark))}>
-                <UtensilsCrossed className="w-7 h-7 mx-auto mb-2 text-slate-400" />
+                <UtensilsCrossed className="w-7 h-7 mx-auto mb-2 text-faint" />
                 <p className="font-semibold">No menu for this day yet</p>
                 {canManageMenu ? (
                   <div className="flex flex-wrap justify-center gap-2 mt-4">
@@ -186,15 +151,15 @@ export const MenuView: React.FC = () => {
               </div>
             ) : (
               <>
-                <div className={cx('rounded-xl border divide-y', card(dark), dark ? 'divide-slate-800' : 'divide-slate-100')}>
+                <div className={cx('rounded-xl border divide-y divide-line', card(dark))}>
                   {dayRows.map(m => (
-                    <div key={m.id} className="p-4 flex flex-col sm:flex-row sm:items-start gap-3">
+                    <div key={m.id} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-start">
                       <div className="sm:w-44 shrink-0">
-                        <div className="font-bold">{m.label}</div>
+                        <div className="text-xs font-semibold">{m.label}</div>
                         <div className={cx('text-xs flex items-center gap-1 mt-0.5', muted)}><Clock className="w-3 h-3" />{fmtTime(m.start)} – {fmtTime(m.end)}</div>
                       </div>
                       <div className="flex-1 min-w-0">
-                        {dishes(m.items).length ? <ul className="text-sm space-y-0.5 list-disc list-inside">{dishes(m.items).map((d, i) => <li key={i}>{d}</li>)}</ul> : <span className={cx('text-sm italic', muted)}>Dishes not added yet</span>}
+                        {dishes(m.items).length ? <ul className="list-inside list-disc space-y-0.5 text-xs">{dishes(m.items).map((d, i) => <li key={i}>{d}</li>)}</ul> : <span className={cx('text-xs italic', muted)}>Dishes not added yet</span>}
                       </div>
                       <div className="flex items-center gap-2 sm:flex-col sm:items-end">
                         {m.date === today && <StatusBadge s={m.status} dark={dark} />}
@@ -234,7 +199,7 @@ export const MenuView: React.FC = () => {
 // ---------------------------------------------------------------------------
 const AllDays: React.FC<{ dark: boolean; onPick: (d: string) => void }> = ({ dark, onPick }) => {
   const { meals } = useAccommodation();
-  const muted = dark ? 'text-slate-400' : 'text-slate-500';
+  const muted = 'text-mute';
   const dates = Array.from(new Set(meals.map(m => m.date))).sort();
   const cols = Array.from(new Map(meals.map(m => [m.meal, m.label])).entries())
     .map(([key, label]) => ({ key, label, at: Math.min(...meals.filter(x => x.meal === key).map(x => minutesOf(x.start))) }))
@@ -242,22 +207,22 @@ const AllDays: React.FC<{ dark: boolean; onPick: (d: string) => void }> = ({ dar
   if (!dates.length) return <div className={cx('rounded-xl border p-8 text-center text-sm', card(dark), muted)}>No menus published yet.</div>;
   return (
     <div className={cx('rounded-xl border overflow-x-auto', card(dark))}>
-      <table className="w-full text-sm min-w-[40rem]">
+      <table className="w-full min-w-[40rem] text-xs">
         <thead>
           <tr className={cx('text-left text-xs uppercase tracking-wider', muted)}>
-            <th className="px-4 py-3 font-semibold">Date</th>
-            {cols.map(c => <th key={c.key} className="px-4 py-3 font-semibold">{c.label}</th>)}
+            <th className="px-3 py-2.5 font-semibold">Date</th>
+            {cols.map(c => <th key={c.key} className="px-3 py-2.5 font-semibold">{c.label}</th>)}
           </tr>
         </thead>
-        <tbody className={dark ? 'divide-y divide-slate-800' : 'divide-y divide-slate-100'}>
+        <tbody className="divide-y divide-line">
           {dates.map(d => (
             <tr key={d}>
-              <td className="px-4 py-3 whitespace-nowrap"><button onClick={() => onPick(d)} className="font-semibold text-blue-500 hover:underline">{prettyDate(d)}</button></td>
+              <td className="px-3 py-2.5 whitespace-nowrap"><button onClick={() => onPick(d)} className="font-semibold text-blue-500 hover:underline">{prettyDate(d)}</button></td>
               {cols.map(slot => {
                 const m = meals.find(x => x.date === d && x.meal === slot.key);
                 const list = m ? dishes(m.items) : [];
                 return (
-                  <td key={slot.key} className="px-4 py-3 align-top">
+                  <td key={slot.key} className="px-3 py-2.5 align-top">
                     {m ? (<>
                       <div className={cx('text-xs mb-0.5', muted)}>{fmtTime(m.start)}</div>
                       <div>{list.slice(0, 3).join(', ') || <span className={cx('italic', muted)}>—</span>}{list.length > 3 && <span className={muted}> +{list.length - 3}</span>}</div>
@@ -310,12 +275,12 @@ const MealForm: React.FC<{ dark: boolean; meal: MealRow; onClose: () => void; on
           </div>
           <ul className="flex flex-wrap gap-2 mt-3">
             {list.map((d, i) => (
-              <li key={d + i} className={cx('inline-flex items-center gap-1.5 text-sm pl-3 pr-1.5 py-1 rounded-full border', dark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200')}>
+              <li key={d + i} className="inline-flex items-center gap-1.5 text-sm pl-3 pr-1.5 py-1 rounded-full border border-line bg-raised">
                 {d}
                 <button type="button" aria-label={`Remove ${d}`} onClick={() => setList(l => l.filter((_, j) => j !== i))} className="p-0.5 rounded-full hover:bg-rose-500/20 text-rose-500"><X className="w-3.5 h-3.5" /></button>
               </li>
             ))}
-            {!list.length && <li className="text-xs italic text-slate-400">No dishes yet.</li>}
+            {!list.length && <li className="text-xs italic text-faint">No dishes yet.</li>}
           </ul>
         </div>
         <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className={btnGhost(dark)}>Cancel</button><button type="submit" disabled={busy} className={btnPrimary}>{busy ? 'Saving…' : 'Save'}</button></div>

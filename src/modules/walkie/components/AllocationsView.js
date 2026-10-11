@@ -86,7 +86,6 @@ export default function AllocationsView() {
     return sortedAvailableWalkies.filter(w =>
       w.id.toLowerCase().includes(term) ||
       w.label.toLowerCase().includes(term) ||
-      (w.serial || '').toLowerCase().includes(term) ||
       w.model.toLowerCase().includes(term)
     );
   }, [sortedAvailableWalkies, pickSearch]);
@@ -98,7 +97,6 @@ export default function AllocationsView() {
       return (
         w.id.toLowerCase().includes(term) ||
         w.label.toLowerCase().includes(term) ||
-        (w.serial || '').toLowerCase().includes(term) ||
         (currentDept?.name || '').toLowerCase().includes(term)
       );
     });
@@ -192,10 +190,6 @@ export default function AllocationsView() {
 
   const getWalkieDetailLine = (walkie) => {
     return walkie?.model?.trim() || '';
-  };
-
-  const getWalkieSerialLine = (walkie) => {
-    return walkie?.serial?.trim() ? `S/N ${walkie.serial.trim()}` : '';
   };
 
   const handleSelectAllFiltered = () => {
@@ -422,9 +416,6 @@ export default function AllocationsView() {
                             />
                             <div className="min-w-0 flex-1">
                               <p className="truncate font-bold text-slate-700 dark:text-slate-200">{getWalkieDisplayName(w)}</p>
-                              {getWalkieSerialLine(w) ? (
-                                <p className="text-xs font-mono text-slate-400 mt-0.5 truncate">{getWalkieSerialLine(w)}</p>
-                              ) : null}
                               {getWalkieDetailLine(w) ? (
                                 <p className="text-xs text-slate-400 truncate">{getWalkieDetailLine(w)}</p>
                               ) : null}
@@ -560,9 +551,6 @@ export default function AllocationsView() {
                             : 'border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300'}`}
                         >
                           <div className="font-semibold text-sm">{getWalkieDisplayName(w)}</div>
-                          {getWalkieSerialLine(w) ? (
-                            <div className="text-xs font-mono text-slate-400 mt-0.5">{getWalkieSerialLine(w)}</div>
-                          ) : null}
                           <div className="text-xs text-slate-400 mt-0.5">
                             {currentDept ? currentDept.name : 'Unknown'}{w.channel ? ` • CH ${w.channel}` : ''}
                           </div>
@@ -710,7 +698,7 @@ export default function AllocationsView() {
                     const walkie = walkies.find(w => w.id === id);
                     return (
                       <li key={id} className="font-semibold">
-                        {walkie ? `${getWalkieDisplayName(walkie)}${walkie.serial ? ` • S/N ${walkie.serial}` : ''}${walkie.model ? ` • ${walkie.model}` : ''}` : id}
+                        {walkie ? `${getWalkieDisplayName(walkie)}${walkie.model ? ` • ${walkie.model}` : ''}` : id}
                         {walkie?.assignedPerson?.name ? ` — Held by ${walkie.assignedPerson.name}` : ''}
                       </li>
                     );

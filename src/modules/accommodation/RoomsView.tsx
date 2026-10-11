@@ -26,9 +26,9 @@ const parseCsv = (input: string): string[][] => {
   return rows;
 };
 
-export const RoomsView: React.FC = () => {
+export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
   const { rooms, members, canManageRooms, isDark: dark, loading, membersInRoom,
-    addRoom, updateRoom, deleteRoom, addMembers, importMembers, updateMember, deleteMember, logMemberCall } = useAccommodation();
+    addRoom, updateRoom, deleteRoom, addMembers, importMembers, updateMember, deleteMember } = useAccommodation();
   const auth: any = useWalkie();
   const orgId = auth.currentUser?.organizationId;
   const canManageTasks = canManageRooms;
@@ -85,7 +85,7 @@ export const RoomsView: React.FC = () => {
     { label: 'Total beds', value: totalBeds, icon: BedDouble, tone: 'text-blue-500' },
     { label: 'Total members', value: members.length, icon: Users, tone: 'text-emerald-500' },
     { label: 'Beds free', value: Math.max(0, totalBeds - placed), icon: BedDouble, tone: 'text-amber-500' },
-    { label: 'Not in a room', value: unassigned, icon: Users, tone: unassigned ? 'text-rose-500' : 'text-slate-400' },
+    { label: 'Not in a room', value: unassigned, icon: Users, tone: unassigned ? 'text-rose-500' : 'text-faint' },
   ];
 
   // rooms grouped by block
@@ -105,7 +105,7 @@ export const RoomsView: React.FC = () => {
     return m.name.toLowerCase().includes(q) || (room?.name || '').toLowerCase().includes(q) || (DEPT_LABEL[m.department] || '').toLowerCase().includes(q);
   });
 
-  const muted = dark ? 'text-slate-400' : 'text-slate-500';
+  const muted = 'text-mute';
   const importCsv = async (file?: File) => {
     if (!file) return;
     setImportBusy(true); setImportMessage('');
@@ -141,18 +141,17 @@ export const RoomsView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5">
+    <div className={cx(embedded ? 'space-y-3 text-[13px]' : 'space-y-5', embedded && 'text-ink')}>
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Rooms &amp; Members</h1>
-          <p className={cx('text-sm', muted)}>Every room, and who is staying in which one.</p>
+          {!embedded && <><h1 className="text-2xl font-bold tracking-tight">Rooms &amp; Members</h1><p className={cx('text-sm', muted)}>Every room, and who is staying in which one.</p></>}
         </div>
         {canManageRooms ? (
           <div className="flex gap-2">
             <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" aria-label="Import members from CSV" onChange={e => importCsv(e.target.files?.[0])} />
-            <button className={btnGhost(dark)} disabled={importBusy} onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4" />{importBusy ? 'Importing…' : 'Import CSV'}</button>
-            <button className={btnGhost(dark)} onClick={() => setMemberModal({})}><UserPlus className="w-4 h-4" />Add members</button>
-            <button className={btnPrimary} onClick={() => setRoomModal('new')}><Plus className="w-4 h-4" />Add room</button>
+            <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-2')} disabled={importBusy} onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4" />{importBusy ? 'Importing…' : 'Import CSV'}</button>
+            <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-2')} onClick={() => setMemberModal({})}><UserPlus className="w-4 h-4" />Add members</button>
+            <button className={cx(btnPrimary, 'rounded-lg px-3 py-2 text-xs')} onClick={() => setRoomModal('new')}><Plus className="w-4 h-4" />Add room</button>
           </div>
         ) : (
           <p className={cx('flex items-center gap-1.5 text-xs', muted)}><Lock className="w-3.5 h-3.5" />View only — room and member edits are limited to accommodation leads and IT owners.</p>
@@ -160,19 +159,19 @@ export const RoomsView: React.FC = () => {
       </div>
       {importMessage && <div role="status" className={cx('rounded-lg border px-3 py-2 text-xs', importMessage.includes('imported.') ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-amber-500/30 bg-amber-500/10 text-amber-300')}>{importMessage} CSV headers can match Sr. No., B. No., Name, Rel, Relation Name, Mobile, Village/City, Branch, Occupation, Remarks, SEWA JOINING DATE, EMP CODE, Employee ID, Address, Address 2, Department, Member Type, and Room.</div>}
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
         {stats.map(s => (
-          <div key={s.label} className={cx('rounded-xl border p-4', card(dark))}>
-            <div className={cx('flex items-center gap-1.5 text-xs font-semibold', muted)}><s.icon className={cx('w-3.5 h-3.5', s.tone)} />{s.label}</div>
-            <div className="text-2xl font-bold mt-1 tabular-nums">{s.value}</div>
+          <div key={s.label} className={cx('rounded-lg border p-3', card(dark))}>
+            <div className={cx('flex items-center gap-1.5 text-[11px] font-semibold', muted)}><s.icon className={cx('w-3.5 h-3.5', s.tone)} />{s.label}</div>
+            <div className="text-lg font-bold mt-0.5 tabular-nums">{s.value}</div>
           </div>
         ))}
       </div>
 
-      <div role="tablist" aria-label="Rooms or members" className={cx('inline-flex p-1 rounded-xl', dark ? 'bg-slate-900' : 'bg-slate-100')}>
+      <div role="tablist" aria-label="Rooms or members" className="inline-flex p-1 rounded-lg bg-raised">
         {(['rooms', 'members'] as Mode[]).map(m => (
           <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
-            className={cx('px-4 py-2 rounded-lg text-xs font-bold capitalize transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
+            className={cx('px-3 py-1.5 rounded-md text-[11px] font-semibold capitalize transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
               mode === m ? 'bg-blue-600 text-white shadow' : muted)}>
             {m === 'rooms' ? `Rooms (${rooms.length})` : `Members (${members.length})`}
           </button>
@@ -185,35 +184,35 @@ export const RoomsView: React.FC = () => {
         <>
           {!loading && !rooms.length && (
             <div className={cx('rounded-xl border p-10 text-center', card(dark))}>
-              <Building2 className="w-8 h-8 mx-auto mb-3 text-slate-400" />
+              <Building2 className="w-8 h-8 mx-auto mb-3 text-faint" />
               <p className="font-semibold">No rooms yet</p>
               <p className={cx('text-sm mt-1', muted)}>{canManageRooms ? 'Add your first room to start placing members.' : 'The department owner has not added any rooms yet.'}</p>
             </div>
           )}
           {grouped.map(([block, list]) => (
             <section key={block} aria-label={block}>
-              <h2 className={cx('text-xs font-bold uppercase tracking-wider mb-2', muted)}>{block} · {list.length} room{list.length === 1 ? '' : 's'}</h2>
+              <h2 className={cx('text-[11px] font-bold uppercase tracking-wider mb-2', muted)}>{block} · {list.length} room{list.length === 1 ? '' : 's'}</h2>
               <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 {list.map(r => {
                   const inside = membersInRoom(r.id);
                   const pct = Math.min(100, Math.round((inside.length / r.capacity) * 100));
                   const full = inside.length >= r.capacity;
                   return (
-                    <article key={r.id} className={cx('rounded-xl border p-4 flex flex-col', card(dark))}>
+                    <article key={r.id} className={cx('flex flex-col rounded-lg border p-3', card(dark))}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <h3 className="font-bold text-base truncate" title={r.name}>{r.name}</h3>
-                          {r.notes && <p className={cx('text-xs truncate', muted)} title={r.notes}>{r.notes}</p>}
+                          <h3 className="font-bold text-sm truncate" title={r.name}>{r.name}</h3>
+                          {r.notes && <p className={cx('text-[11px] truncate', muted)} title={r.notes}>{r.notes}</p>}
                         </div>
                         <span className={cx('shrink-0 text-xs font-bold px-2 py-1 rounded-lg tabular-nums',
                           full ? 'bg-rose-500/15 text-rose-500' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400')}>
                           {inside.length}/{r.capacity}{full ? ' · Full' : ''}
                         </span>
                       </div>
-                      <div className={cx('h-1.5 rounded-full mt-3 overflow-hidden', dark ? 'bg-slate-800' : 'bg-slate-100')} aria-hidden>
+                      <div className="h-1.5 rounded-full mt-3 overflow-hidden bg-raised" aria-hidden>
                         <div className={cx('h-full rounded-full', full ? 'bg-rose-500' : pct >= 75 ? 'bg-amber-500' : 'bg-emerald-500')} style={{ width: `${pct}%` }} />
                       </div>
-                      <ul className="mt-3 space-y-1 text-sm flex-1 max-h-40 overflow-y-auto">
+                          <ul className="mt-3 space-y-1 text-[13px] flex-1 max-h-40 overflow-y-auto">
                         {inside.map(m => (
                           <li key={m.id} className="flex items-center justify-between gap-2">
                             <span className="truncate">{m.name}</span>
@@ -223,10 +222,10 @@ export const RoomsView: React.FC = () => {
                         {!inside.length && <li className={cx('text-xs italic', muted)}>Empty</li>}
                       </ul>
                       {canManageRooms && (
-                        <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-slate-500/20">
-                          <button className={btnGhost(dark)} disabled={full} onClick={() => setMemberModal({ room: r.id })}><UserPlus className="w-3.5 h-3.5" />Add people</button>
-                          <button className={btnGhost(dark)} onClick={() => setRoomModal(r)} aria-label={`Edit room ${r.name}`}><Edit3 className="w-3.5 h-3.5" /></button>
-                          <button className={cx(btnGhost(dark), 'text-rose-500')} aria-label={`Delete room ${r.name}`}
+                        <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-line">
+                          <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5')} disabled={full} onClick={() => setMemberModal({ room: r.id })}><UserPlus className="w-3.5 h-3.5" />Add people</button>
+                          <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5')} onClick={() => setRoomModal(r)} aria-label={`Edit room ${r.name}`}><Edit3 className="w-3.5 h-3.5" /></button>
+                          <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5 text-rose-500')} aria-label={`Delete room ${r.name}`}
                             onClick={() => setConfirm({
                               title: `Delete room ${r.name}?`,
                               body: inside.length ? `${inside.length} member(s) will be left without a room. They are not deleted.` : 'This room is empty.',
@@ -245,9 +244,9 @@ export const RoomsView: React.FC = () => {
 
       {mode === 'members' && (
         <div className={cx('rounded-xl border', card(dark))}>
-          <div className="p-3 flex flex-col sm:flex-row gap-2 border-b border-slate-500/20">
+          <div className="p-3 flex flex-col sm:flex-row gap-2 border-b border-line">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-faint" aria-hidden />
               <input aria-label="Search members" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, room or department…" className={cx(inputCls(dark), 'pl-9')} />
             </div>
             <select aria-label="Filter by member type" value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className={cx(inputCls(dark), 'sm:w-48')}>
@@ -262,31 +261,31 @@ export const RoomsView: React.FC = () => {
               {rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </div>
-          <section className="border-b border-slate-500/20 p-4 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-semibold flex items-center gap-2"><ListTodo className="w-4 h-4 text-blue-400"/>Member work</h2><p className={cx('text-xs mt-0.5', muted)}>Assign work, then track to do, in progress and complete.</p></div><div className="flex gap-3 text-xs text-mute"><span>{tasks.filter(t => t.status === 'todo').length} to do</span><span>{tasks.filter(t => t.status === 'in_progress').length} ongoing</span><span>{tasks.filter(t => t.status === 'complete').length} done</span></div></div>
+          <section className="border-b border-line p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-[13px] font-semibold flex items-center gap-2"><ListTodo className="w-4 h-4 text-blue-400"/>Member work</h2><p className={cx('text-[11px] mt-0.5', muted)}>Assign work, then track to do, in progress and complete.</p></div><div className="flex gap-3 text-[11px] text-mute"><span>{tasks.filter(t => t.status === 'todo').length} to do</span><span>{tasks.filter(t => t.status === 'in_progress').length} ongoing</span><span>{tasks.filter(t => t.status === 'complete').length} done</span></div></div>
             <form onSubmit={saveTask} className="grid grid-cols-1 md:grid-cols-4 gap-2">
               <input required value={taskTitle} onChange={e => setTaskTitle(e.target.value)} placeholder="Task to do" className={cx(inputCls(dark), 'md:col-span-2')}/>
               <select value={taskMember} onChange={e => setTaskMember(e.target.value)} className={inputCls(dark)} aria-label="Assign member"><option value="">{canManageTasks ? 'Assign to a member' : 'Assign to myself'}</option>{canManageTasks && members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
               <button disabled={taskBusy} className={btnPrimary}><Plus className="w-4 h-4"/>{taskBusy ? 'Saving…' : 'Add task'}</button>
               <input value={taskDetails} onChange={e => setTaskDetails(e.target.value)} placeholder="Task details (optional)" className={cx(inputCls(dark), 'md:col-span-4')}/>
             </form>
-            <div className="divide-y divide-slate-500/20 max-h-64 overflow-y-auto">{tasks.map(task => <div key={task.id} className="py-2.5 flex flex-wrap items-center gap-2"><span className={cx('w-2 h-2 rounded-full', task.status === 'complete' ? 'bg-emerald-400' : task.status === 'in_progress' ? 'bg-blue-400' : 'bg-amber-400')}/><div className="flex-1 min-w-0"><div className="text-sm font-medium">{task.title}</div><div className={cx('text-xs', muted)}>{[members.find(m => m.id === task.member_id)?.name || task.assigned_to, task.details].filter(Boolean).join(' · ')}</div></div><span className={cx('text-xs capitalize', muted)}>{task.status.replace('_', ' ')}</span>{task.status === 'todo' && <button type="button" onClick={() => updateTaskStatus(task, 'in_progress')} className={btnGhost(dark)}><Play className="w-3.5 h-3.5"/>Start</button>}{task.status === 'in_progress' && <button type="button" onClick={() => updateTaskStatus(task, 'complete')} className={btnGhost(dark)}><CircleCheck className="w-3.5 h-3.5"/>Complete</button>}</div>)}{!tasks.length && <p className={cx('py-4 text-center text-xs', muted)}>No member tasks yet.</p>}</div>
+            <div className="divide-y divide-line max-h-64 overflow-y-auto">{tasks.map(task => <div key={task.id} className="py-2.5 flex flex-wrap items-center gap-2"><span className={cx('w-2 h-2 rounded-full', task.status === 'complete' ? 'bg-emerald-400' : task.status === 'in_progress' ? 'bg-blue-400' : 'bg-amber-400')}/><div className="flex-1 min-w-0"><div className="text-sm font-medium">{task.title}</div><div className={cx('text-xs', muted)}>{[members.find(m => m.id === task.member_id)?.name || task.assigned_to, task.details].filter(Boolean).join(' · ')}</div></div><span className={cx('text-xs capitalize', muted)}>{task.status.replace('_', ' ')}</span>{task.status === 'todo' && <button type="button" onClick={() => updateTaskStatus(task, 'in_progress')} className={btnGhost(dark)}><Play className="w-3.5 h-3.5"/>Start</button>}{task.status === 'in_progress' && <button type="button" onClick={() => updateTaskStatus(task, 'complete')} className={btnGhost(dark)}><CircleCheck className="w-3.5 h-3.5"/>Complete</button>}</div>)}{!tasks.length && <p className={cx('py-4 text-center text-xs', muted)}>No member tasks yet.</p>}</div>
           </section>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead>
                 <tr className={cx('text-left text-xs uppercase tracking-wider', muted)}>
                   <th className="px-4 py-3 font-semibold">Member</th>
                   <th className="px-4 py-3 font-semibold">Type / batch</th>
                   <th className="px-4 py-3 font-semibold">Department</th>
                   <th className="px-4 py-3 font-semibold">Mobile / branch</th>
-                  <th className="px-4 py-3 font-semibold">Calls / expected arrival</th>
                   <th className="px-4 py-3 font-semibold">Arrival / team</th>
+                  <th className="px-4 py-3 font-semibold">Arrived at</th>
                   <th className="px-4 py-3 font-semibold">Room</th>
                   {canManageRooms && <th className="px-4 py-3 font-semibold text-right">Actions</th>}
                 </tr>
               </thead>
-              <tbody className={dark ? 'divide-y divide-slate-800' : 'divide-y divide-slate-100'}>
+              <tbody className="divide-y divide-line">
                 {visibleMembers.map(m => {
                   const room = m.roomId ? roomById.get(m.roomId) : null;
                   return (
@@ -295,8 +294,8 @@ export const RoomsView: React.FC = () => {
                       <td className="px-4 py-2.5"><div>{m.memberType === 'salary_based' ? 'Salary based' : m.memberType === 'annual' ? 'Annual' : 'Monthly'}</div><div className={cx('text-xs', muted)}>{m.batchNo || '—'}</div></td>
                       <td className={cx('px-4 py-2.5', muted)}>{DEPT_LABEL[m.department] || '—'}</td>
                       <td className="px-4 py-2.5"><div>{m.mobile || '—'}</div><div className={cx('text-xs', muted)}>{[m.branch, m.villageCity].filter(Boolean).join(' · ')}</div></td>
-                      <td className="px-4 py-2.5"><div>{m.callCount} calls · {m.lastCallOutcome ? m.lastCallOutcome.replace('_', ' ') : 'not called'}</div><div className={cx('text-xs', muted)}>Last call: {m.lastCallAt ? new Date(m.lastCallAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '—'} · Expected: {m.expectedArrival || m.joiningDate || '—'}</div>{canManageRooms && <div className="flex gap-1 mt-1">{(['answered','busy','wrong_number','no_answer'] as const).map(outcome => <button key={outcome} title={`Log ${outcome.replace('_',' ')}`} onClick={() => logMemberCall(m.id, outcome)} className="px-1.5 py-0.5 rounded border border-slate-500/30 text-[10px] capitalize">{outcome.replace('_',' ')}</button>)}</div>}</td>
                       <td className="px-4 py-2.5">{canManageRooms ? <><select aria-label={`Arrival for ${m.name}`} value={m.arrivalStatus} onChange={e => updateMember(m.id, { arrivalStatus: e.target.value as Member['arrivalStatus'], arrivedAt: e.target.value === 'arrived' ? new Date().toISOString() : '' })} className={cx(inputCls(dark), 'py-1.5 text-xs')}><option value="pending">Expected</option><option value="arrived">Arrived</option><option value="not_coming">Not coming</option></select><div className={cx('text-xs mt-1', muted)}>{[m.teamName, m.teamLead && `Lead: ${m.teamLead}`].filter(Boolean).join(' · ') || 'No team'}</div></> : <div>{m.arrivalStatus}{m.teamName ? ` · ${m.teamName}` : ''}</div>}</td>
+                      <td className={cx('px-4 py-2.5 text-xs tabular-nums', muted)}>{m.arrivalStatus === 'arrived' && m.arrivedAt ? new Date(m.arrivedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}</td>
                       <td className="px-4 py-2.5">
                         {canManageRooms ? (
                           <select aria-label={`Room for ${m.name}`} value={m.roomId || ''} onChange={e => updateMember(m.id, { roomId: e.target.value || null })} className={cx(inputCls(dark), 'py-1.5 text-xs min-w-[10rem]')}>
@@ -414,8 +413,8 @@ const MemberForm: React.FC<{
             </select>
           </div>
         </div>
-        {!edit && <div className="grid grid-cols-2 gap-3 border-t border-slate-500/20 pt-3"><div><label className={labelCls(dark)}>Member type</label><select value={detail.memberType} onChange={e => setDetail(p => ({ ...p, memberType: e.target.value as Member['memberType'] }))} className={inputCls(dark)}><option value="salary_based">Salary based (hired)</option><option value="monthly">Monthly</option><option value="annual">Annual (main event)</option></select></div><div><label className={labelCls(dark)}>Sewa joining / promised date</label><input type="date" value={detail.joiningDate} onChange={e => setDetail(p => ({ ...p, joiningDate: e.target.value, expectedArrival: e.target.value }))} className={inputCls(dark)} /></div></div>}
-        {edit && <div className="space-y-3 border-t border-slate-500/20 pt-3"><div className={cx('text-xs font-semibold', dark ? 'text-slate-400' : 'text-slate-500')}>Member record</div>
+        {!edit && <div className="grid grid-cols-2 gap-3 border-t border-line pt-3"><div><label className={labelCls(dark)}>Member type</label><select value={detail.memberType} onChange={e => setDetail(p => ({ ...p, memberType: e.target.value as Member['memberType'] }))} className={inputCls(dark)}><option value="salary_based">Salary based (hired)</option><option value="monthly">Monthly</option><option value="annual">Annual (main event)</option></select></div><div><label className={labelCls(dark)}>Sewa joining / promised date</label><input type="date" value={detail.joiningDate} onChange={e => setDetail(p => ({ ...p, joiningDate: e.target.value, expectedArrival: e.target.value }))} className={inputCls(dark)} /></div></div>}
+        {edit && <div className="space-y-3 border-t border-line pt-3"><div className="text-xs font-semibold text-mute">Member record</div>
           <div className="grid grid-cols-2 gap-3"><div><label className={labelCls(dark)}>Member type</label><select value={detail.memberType} onChange={e => setDetail(p => ({ ...p, memberType: e.target.value as Member['memberType'] }))} className={inputCls(dark)}><option value="salary_based">Salary based (hired)</option><option value="monthly">Monthly</option><option value="annual">Annual (main event)</option></select></div>
             <div><label className={labelCls(dark)}>Sewa joining / promised date</label><input type="date" value={detail.joiningDate} onChange={e => setDetail(p => ({ ...p, joiningDate: e.target.value }))} className={inputCls(dark)} /></div></div>
           <div className="grid grid-cols-2 gap-3">{([['serialNo','Sr. No.'],['batchNo','B. No. / Batch'],['relation','Relation'],['relationName','Relation name'],['mobile','Mobile'],['villageCity','Village / city'],['branch','Branch'],['occupation','Occupation'],['employeeCode','Employee code'],['employeeId','Employee ID'],['address','Address'],['address2','Address 2'],['remarks','Remarks'],['expectedArrival','Expected arrival date'],['teamName','Team'],['teamLead','Team lead']] as [keyof typeof detail,string][]).map(([key,label]) => <div key={key}><label className={labelCls(dark)}>{label}</label><input type={key === 'expectedArrival' ? 'date' : 'text'} value={detail[key] as string} onChange={e => setDetail(p => ({ ...p, [key]: e.target.value }))} className={inputCls(dark)} /></div>)}</div>

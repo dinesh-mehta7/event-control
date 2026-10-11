@@ -30,7 +30,7 @@ export const ServiceInbox: React.FC<{ kind: LineKind; title: string }> = ({ kind
       const stage = filter === 'approval' ? ['pending_sub', 'pending_it', 'pending_owner'].includes(r.status)
         : filter === 'active' ? r.status === 'approved'
           : filter === 'complete' ? r.status === 'fulfilled' || r.status === 'rejected' || r.status === 'cancelled' : true;
-      return stage && (!q || [r.number, r.title, r.requesterName, r.subDepartment ? DEPTS[r.subDepartment] : ''].join(' ').toLowerCase().includes(q));
+      return stage && (!q || [r.number, r.title, r.requesterName, r.departmentName, r.subDepartment ? DEPTS[r.subDepartment] : ''].join(' ').toLowerCase().includes(q));
     });
   }, [matching, filter, query]);
 
@@ -66,7 +66,7 @@ const InboxRow: React.FC<{ request: Req; kind: LineKind; onOpen: () => void }> =
   const date = r.neededBy ? new Date(`${r.neededBy}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '—';
   return <tr className="hover:bg-raised/40">
     <td className="px-3 py-2"><button onClick={onOpen} className="text-left"><span className="font-mono text-[10px] text-mute">{r.number}</span><span className="ml-2 font-medium text-ink">{r.title}</span>{r.priority === 'urgent' && <span className="ml-2"><UrgentBadge /></span>}</button></td>
-    <td className="px-3 py-2 text-ink-soft">{r.subDepartment ? DEPTS[r.subDepartment] : 'Department'}<span className="block text-[10px] text-faint">{r.requesterName || 'Requester'}</span></td>
+    <td className="px-3 py-2 text-ink-soft">{r.departmentName || (r.subDepartment ? DEPTS[r.subDepartment] : 'Department')}<span className="block text-[10px] text-faint">{r.requesterName || 'Requester'}</span></td>
     <td className="px-3 py-2 text-ink-soft">{lines.map(i => `${i.requested} ${i.unit} ${i.name}`).join(', ')}</td>
     <td className="px-3 py-2"><StatusBadge status={r.status} closed={!!r.confirmedAt} /></td>
     <td className="px-3 py-2 text-ink-soft">{date}</td>

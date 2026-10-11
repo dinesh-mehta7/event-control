@@ -40,8 +40,6 @@ export default function ReturnsView() {
     switch (sortBy) {
       case 'id':
         return collator.compare(a.id || '', b.id || '');
-      case 'serial':
-        return collator.compare(a.serial || '', b.serial || '');
       case 'name':
       default:
         return collator.compare(a.label || '', b.label || '');
@@ -160,7 +158,6 @@ export default function ReturnsView() {
             >
               <option value="name">Name</option>
               <option value="id">Walkie ID</option>
-              <option value="serial">Serial</option>
             </select>
           </label>
           {selectedToReturn.length > 0 && !isClient && (
@@ -256,7 +253,6 @@ export default function ReturnsView() {
                               )}
                               <div>
                                 <p className="font-semibold text-sm">{w.id} - {w.label}</p>
-                                <p className="text-xs text-slate-400 font-mono">Serial: {w.serial}</p>
                               </div>
                             </div>
                             <div className="text-right text-xs">

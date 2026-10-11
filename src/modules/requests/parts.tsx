@@ -7,26 +7,26 @@ import type { OrderInfo, Req, ReqStatus } from './types';
 export const StatusBadge: React.FC<{ status: ReqStatus; closed?: boolean }> = ({ status, closed }) => <Pill c={STATUS_TONE[status]}>{status === 'fulfilled' && closed ? 'Closed' : STATUS_LABEL[status]}</Pill>;
 export const UrgentBadge: React.FC = () => <Pill c="bg-red-500/15 text-red-300">Urgent</Pill>;
 
-// Requested → Department head → Owner → Arranged → Delivered → Received
+// The IT Department Head's review includes the arrangement, so there is no separate Arranged step.
 export const Stepper: React.FC<{ r: Pick<Req, 'status' | 'items' | 'parts'> & Partial<Req> }> = ({ r }) => {
   const dead = r.status === 'rejected' || r.status === 'cancelled';
-  const hasBranchStep = r.status === 'pending_sub' || !!r.events?.some(e => e.kind === 'sub_approved' || (e.kind === 'rejected' && e.text.toLowerCase().includes('branch head')));
-  const steps = hasBranchStep ? STEPS : STEPS.filter((_, i) => i !== 1);
+  const hasEscalation = r.status === 'pending_owner' || !!r.events?.some(e => e.kind === 'escalated');
+  const steps = hasEscalation ? STEPS : STEPS.filter((_, i) => i !== 2);
   const rawAt = dead ? 0 : stepOf(r as Req);
-  const at = hasBranchStep || rawAt <= 1 ? rawAt : rawAt - 1;
+  const at = !hasEscalation && rawAt >= 2 ? rawAt - 1 : rawAt;
   return (
-    <ol className="flex items-center w-full" aria-label="Progress">
+    <ol className="grid w-full items-start" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }} aria-label="Request progress">
       {steps.map((s, i) => {
         const done = !dead && i < at; const cur = !dead && i === at;
         return (
-          <li key={s} className="flex-1 flex items-center last:flex-none">
-            <div className="flex flex-col items-center gap-1 min-w-[56px]">
-              <span className={`grid place-items-center w-6 h-6 rounded-full text-xs font-semibold border ${done ? 'bg-blue-600 border-blue-600 text-white' : cur ? 'border-blue-500 text-blue-400 bg-blue-500/10' : 'border-line-strong text-faint'}`}>
-                {done ? <Check size={13} /> : i + 1}
+          <li key={s} className="min-w-0 text-center">
+            <div className="relative flex h-7 items-center justify-center">
+              {i < steps.length - 1 && <span aria-hidden="true" className={`absolute left-1/2 right-[-50%] top-1/2 h-[2px] -translate-y-1/2 rounded-full transition-colors duration-500 ease-out ${done ? 'bg-gradient-to-r from-blue-500 to-sky-400' : 'bg-line-strong'}`} />}
+              <span className={`relative z-10 grid h-6 w-6 place-items-center rounded-full border text-[11px] font-semibold transition-[background-color,border-color,color,box-shadow,transform] duration-300 ease-out ${done ? 'scale-100 border-blue-500 bg-blue-600 text-white shadow-[0_0_12px_rgba(37,99,235,0.28)]' : cur ? 'scale-105 border-blue-400 bg-blue-500/15 text-blue-300 ring-4 ring-blue-500/10' : 'border-line-strong bg-surface text-faint'}`}>
+                {done ? <Check size={13} strokeWidth={2.5} /> : i + 1}
               </span>
-              <span className={`text-xs text-center leading-tight ${done || cur ? 'text-ink-soft' : 'text-faint'}`}>{s}</span>
             </div>
-            {i < steps.length - 1 && <span className={`flex-1 h-px mx-1 mb-5 ${done ? 'bg-blue-600' : 'bg-line-strong'}`} />}
+            <span className={`mt-1.5 block px-1 text-[11px] leading-tight transition-colors duration-300 ${done ? 'font-medium text-blue-300' : cur ? 'font-semibold text-ink' : 'text-faint'}`}>{s}</span>
           </li>
         );
       })}
@@ -35,47 +35,34 @@ export const Stepper: React.FC<{ r: Pick<Req, 'status' | 'items' | 'parts'> & Pa
 };
 
 const TONE = { ok: 'bg-emerald-500/15 text-emerald-300', warn: 'bg-amber-500/15 text-amber-300', mute: 'bg-raised text-ink-soft', bad: 'bg-red-500/15 text-red-300' } as const;
-const rupee = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 
-// One row per line: what was asked and why, what was approved (and why less), and where it stands in plain words.
-// Vendor and rate appear only when the database let this person see them (the owner decides that per ticket).
+// Keep one fact in each cell so the request summary stays easy to scan.
+// Vendor and rate appear only when the database let this person see them (the Super Admin decides per ticket).
 export const ItemsTable: React.FC<{ r: Req; orders: Record<string, OrderInfo> }> = ({ r, orders }) => {
   const decided = r.status === 'approved' || r.status === 'fulfilled';
   return (
     <div className="overflow-x-auto border border-line rounded-lg">
-      <table className="w-full text-sm">
+      <table className="w-full min-w-[640px] text-sm">
         <thead>
           <tr className="bg-canvas text-xs font-medium text-mute">
             <th className="px-3 py-2 text-left">Item</th>
-            <th className="px-3 py-2 text-right whitespace-nowrap">Asked</th>
-            <th className="px-3 py-2 text-right whitespace-nowrap">Approved</th>
+            <th className="px-3 py-2 text-left whitespace-nowrap">Asked</th>
+            <th className="px-3 py-2 text-left whitespace-nowrap">Request type</th>
+            <th className="px-3 py-2 text-left whitespace-nowrap">Line budget</th>
             <th className="px-3 py-2 text-left">Status</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
           {r.items.map(i => {
-            const cut = decided && i.approved !== null && i.approved < i.requested;
             const st = lineStatus(r, i, orders);
-            const buys = r.parts.filter(p => p.itemId === i.id && p.source === 'purchase' && p.purchaseItemId).map(p => orders[p.purchaseItemId as string]).filter(Boolean);
             return (
-              <tr key={i.id} className="align-top">
+              <tr key={i.id} className="align-middle">
+                <td className="px-3 py-2.5 whitespace-nowrap text-ink font-medium">{i.name}</td>
+                <td className="px-3 py-2.5 text-left tabular-nums text-ink-soft whitespace-nowrap">{i.requested} {i.unit}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap text-ink-soft">{i.returnRequired ? 'Return after use' : 'Purchase / keep'}</td>
+                <td className="px-3 py-2.5 text-left whitespace-nowrap tabular-nums text-ink-soft">{decided && i.approved !== null ? `₹${(i.budgetAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}</td>
                 <td className="px-3 py-2.5">
-                  <div className="text-ink font-medium">{i.name}{i.kind === 'radio' && <span className="ml-2 text-xs text-blue-400">Walkie-talkie</span>}</div>
-                  {i.reason && <div className="text-xs text-ink-soft">Why: {i.reason}</div>}
-                  {i.note && <div className="text-xs text-mute">{i.note}</div>}
-                </td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-ink-soft whitespace-nowrap">{i.requested} {i.unit}</td>
-                <td className={`px-3 py-2.5 text-right tabular-nums ${!decided ? 'text-faint' : cut ? 'text-amber-300 font-medium' : 'text-ink'}`}>
-                  <div className="whitespace-nowrap">{decided && i.approved !== null ? `${i.approved} ${i.unit}` : '—'}</div>
-                  {cut && i.cutReason && <div className="text-xs font-normal text-amber-200/80 text-right max-w-[180px] ml-auto">{i.cutReason}</div>}
-                </td>
-                <td className="px-3 py-2.5">
-                  <Pill c={TONE[st.tone]}>{st.text}</Pill>
-                  {buys.map(o => (o.vendor !== null || o.rate !== null || o.poNumber) && (
-                    <div key={o.purchaseItemId} className="text-xs text-mute mt-1">
-                      {o.poNumber ? `${o.poNumber} · ` : ''}{o.vendor !== null ? `from ${o.vendor || 'vendor not chosen yet'}` : ''}{o.rate !== null && o.rate > 0 ? ` · ${rupee(o.rate)} each` : ''}
-                      {` · ${o.received} of ${o.ordered} arrived`}
-                    </div>))}
+                  <span className="whitespace-nowrap"><Pill c={TONE[st.tone]}>{st.text}</Pill></span>
                 </td>
               </tr>
             );

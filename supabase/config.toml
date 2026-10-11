@@ -1,0 +1,5 @@
+[functions.aftership-webhook]
+verify_jwt = false
+
+[functions.aftership-register-tracking]
+verify_jwt = true

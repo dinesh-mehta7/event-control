@@ -2,6 +2,13 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Radio, KeyRound, User, ChevronRight, AlertCircle, Info } from 'lucide-react';
 
+const DEMO_ACCOUNTS = [
+  { label: 'Super Admin', email: process.env.REACT_APP_DEMO_SUPER_ADMIN_EMAIL, password: process.env.REACT_APP_DEMO_SUPER_ADMIN_PASSWORD },
+  { label: 'IT Admin', email: process.env.REACT_APP_DEMO_IT_ADMIN_EMAIL, password: process.env.REACT_APP_DEMO_IT_ADMIN_PASSWORD },
+  { label: 'Department Admin 1', email: process.env.REACT_APP_DEMO_DEPT_ADMIN_1_EMAIL, password: process.env.REACT_APP_DEMO_DEPT_ADMIN_1_PASSWORD },
+  { label: 'Department Admin 2', email: process.env.REACT_APP_DEMO_DEPT_ADMIN_2_EMAIL, password: process.env.REACT_APP_DEMO_DEPT_ADMIN_2_PASSWORD },
+].filter(account => account.email && account.password);
+
 export default function LoginView() {
   const { login, setAuthView, authNotice, setAuthNotice, authLoading, resendVerificationEmail } = useApp();
   const [email, setEmail] = useState('');
@@ -12,6 +19,12 @@ export default function LoginView() {
     e.preventDefault();
     setSubmitted(true);
     await login(email, password);
+  };
+
+  const handleDemoLogin = async (account) => {
+    setSubmitted(true);
+    setAuthNotice(null);
+    await login(account.email, account.password);
   };
 
   const isUnverified = authNotice && /verify your email/i.test(authNotice);
@@ -111,6 +124,28 @@ export default function LoginView() {
             </p>
           )}
         </form>
+
+        {DEMO_ACCOUNTS.length > 0 && (
+          <div className="space-y-3 border-t border-line pt-5">
+            <div>
+              <h2 className="text-xs font-bold text-mute uppercase tracking-wider">One-click demo access</h2>
+              <p className="text-xs text-faint mt-1">Choose a role to sign in with its demo account.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {DEMO_ACCOUNTS.map(account => (
+                <button
+                  key={account.label}
+                  type="button"
+                  onClick={() => handleDemoLogin(account)}
+                  disabled={authLoading}
+                  className="py-2.5 px-3 text-xs font-semibold rounded-xl border border-line bg-canvas text-ink hover:border-blue-500 hover:text-blue-400 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                >
+                  {authLoading ? 'Signing in…' : account.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Sign up link */}
         <div className="pt-4 border-t border-line text-center">

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { User, LayoutDashboard, Sun, Moon, LogOut } from 'lucide-react';
 import { useApp as useWalkie } from '../modules/walkie/context/AppContext';
 import { HeaderTools } from './HeaderTools';
+import { useAnimatedPresence } from '../hooks/useAnimatedPresence';
 
 // The one account menu for every screen: a round icon button at the top right.
 // Click to open; click outside / Esc to close. Screens can pass extra items (e.g. admin tools) as children.
@@ -10,6 +11,7 @@ const LEVEL: Record<string, string> = { owner: 'Organization Head', dept_head: '
 export const ProfileMenu: React.FC<{ extra?: React.ReactNode }> = ({ extra }) => {
   const w: any = useWalkie();
   const [open, setOpen] = useState(false);
+  const present = useAnimatedPresence(open);
   const box = useRef<HTMLDivElement>(null);
   const u = w.currentUser;
   const isDark = w.settings?.theme === 'dark';
@@ -29,8 +31,8 @@ export const ProfileMenu: React.FC<{ extra?: React.ReactNode }> = ({ extra }) =>
         className={`grid place-items-center w-9 h-9 rounded-full border transition-colors ${open ? 'bg-blue-600 border-blue-600 text-white' : 'bg-raised border-line text-ink-soft hover:border-line-strong hover:text-ink'}`}>
         <User size={17} />
       </button>
-      {open && (
-        <div role="menu" className="animate-pop-in absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-line bg-surface shadow-xl overflow-hidden">
+      {present && (
+        <div role="menu" aria-hidden={!open} {...({ inert: !open } as any)} className={`absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-line bg-surface shadow-xl overflow-hidden transition-[opacity,transform] duration-200 ease-out ${open ? 'animate-pop-in translate-y-0 scale-100 opacity-100' : '-translate-y-1 scale-[0.98] opacity-0 pointer-events-none'}`}>
           <div className="px-4 py-3 border-b border-line">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-sm font-semibold text-ink truncate">{u?.name || 'Account'}</span>

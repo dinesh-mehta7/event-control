@@ -32,6 +32,7 @@ export default function DepartmentsView() {
   const isDark = settings.theme === 'dark';
   const isAdmin = currentUser?.role === 'Admin';
   const isClient = currentUser?.role === 'Client';
+  const mayManageDepartment = ['Admin', 'Operator'].includes(currentUser?.role);
 
   // State
   const [search, setSearch] = useState('');
@@ -135,18 +136,20 @@ export default function DepartmentsView() {
       const modelField = modelLines.length > 0 ? modelLines.join('\n') : 'No allocated walkie talkies';
       return {
         name: dept.name,
+        channelNumber: dept.channelNumber || '',
         total: allocatedWalkies.length,
         models: modelField
       };
     });
 
     const escapeCsv = (value) => `"${String(value).replace(/"/g, '""')}"`;
-    const headers = ['Department Name', 'Total Walkie Talkies', 'Walkie Model Breakdown'];
+    const headers = ['Department Name', 'Channel Number', 'Total Walkie Talkies', 'Walkie Model Breakdown'];
     const csvRows = [headers.map(escapeCsv).join(',')];
 
     reportRows.forEach((row) => {
       csvRows.push([
         escapeCsv(row.name),
+        escapeCsv(row.channelNumber),
         escapeCsv(row.total),
         escapeCsv(row.models)
       ].join(','));
@@ -378,8 +381,9 @@ export default function DepartmentsView() {
       {showEditModal && editingDept && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className={`w-full max-w-md rounded-xl shadow-2xl p-6 transition-all ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}>
-            <h3 className="text-lg font-bold mb-4">Edit Department Details</h3>
+            <h3 className="text-lg font-bold mb-4">{mayManageDepartment ? 'Edit Department Details' : 'Set Department Channel'}</h3>
             <form onSubmit={handleEditSubmit} className="space-y-4">
+              {mayManageDepartment && <>
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Department Name</label>
                 <input
@@ -391,6 +395,19 @@ export default function DepartmentsView() {
                 />
               </div>
               <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Radio naming code</label>
+                <input
+                  type="text"
+                  maxLength={8}
+                  placeholder="e.g. ELEC"
+                  value={editingDept.code || ''}
+                  onChange={(e) => setEditingDept({ ...editingDept, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
+                  className={`w-full p-2.5 rounded-xl border outline-none text-sm ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}
+                />
+                <p className="text-xs text-slate-400 mt-1">Used in event labels such as GP-2027-ELEC-0001. Blank uses the first four letters.</p>
+              </div>
+              </>}
+              <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Channel Number</label>
                 <input
                   type="text"
@@ -401,17 +418,17 @@ export default function DepartmentsView() {
                 />
                 <p className="text-xs text-slate-400 mt-1">Changing this updates every radio currently allocated to this department.</p>
               </div>
-              <div>
+              {mayManageDepartment && <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Description</label>
                 <textarea
                   value={editingDept.description}
                   onChange={(e) => setEditingDept({ ...editingDept, description: e.target.value })}
                   className={`w-full p-2.5 rounded-xl border outline-none text-sm h-24 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}
                 />
-              </div>
+              </div>}
 
               {/* Department Heads Management */}
-              <div className={`pt-4 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+              {mayManageDepartment && <div className={`pt-4 border-t ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
                   Department Heads <span className="normal-case font-normal">(can have more than one, editable any time)</span>
                 </label>
@@ -481,7 +498,7 @@ export default function DepartmentsView() {
                     Add
                   </button>
                 </div>
-              </div>
+              </div>}
 
               <div className="flex justify-end gap-3 pt-4">
                 <button

@@ -21,6 +21,23 @@ Organization Head (owner)
 New people sign up with their department's **sign-up code**, then the Organization Head approves them
 (**Users & Access**). Roles can be changed there too; the database refuses anyone else.
 
+For a one-click demo login screen, create the demo users in Supabase Auth, then set these optional values in
+`.env`. The login page shows a shortcut for each configured account and still signs in through Supabase.
+Use disposable demo accounts only: frontend environment values are visible to users of the deployed app.
+Map Super Admin to Organization Head, IT Admin to IT Department Head, and the other two accounts to their
+chosen sub-department heads in **Users & Access**.
+
+```
+REACT_APP_DEMO_SUPER_ADMIN_EMAIL=
+REACT_APP_DEMO_SUPER_ADMIN_PASSWORD=
+REACT_APP_DEMO_IT_ADMIN_EMAIL=
+REACT_APP_DEMO_IT_ADMIN_PASSWORD=
+REACT_APP_DEMO_DEPT_ADMIN_1_EMAIL=
+REACT_APP_DEMO_DEPT_ADMIN_1_PASSWORD=
+REACT_APP_DEMO_DEPT_ADMIN_2_EMAIL=
+REACT_APP_DEMO_DEPT_ADMIN_2_PASSWORD=
+```
+
 ## The request flow
 
 Any department asks for what it needs. It never sees stock.

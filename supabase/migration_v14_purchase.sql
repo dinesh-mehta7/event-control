@@ -18,6 +18,26 @@
 -- item also books the stock into Inventory (a 'receive' movement, ref = PO no.).
 -- ============================================================================
 
+-- Repair an inventory schema that missed the v13 department -> location rename.
+-- Preserve the existing values when the legacy column is still present; purchase
+-- receipts use NULL for this field because received goods go into the central store.
+do $$ begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'inventory_movements' and column_name = 'department'
+  ) and not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'inventory_movements' and column_name = 'location'
+  ) then
+    alter table public.inventory_movements rename column department to location;
+  end if;
+end $$;
+alter table public.inventory_movements add column if not exists location text;
+alter table public.inventory_movements
+  add column if not exists given_by text not null default '',
+  add column if not exists received_by text not null default '',
+  add column if not exists returned_by text not null default '';
+
 create or replace function public.can_view_purchase()
 returns boolean language sql stable security definer set search_path = public as $$
   select coalesce((select approved and is_active and (level in ('owner','dept_head') or sub_department in ('purchase','inventory'))

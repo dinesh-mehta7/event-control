@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { CircleAlert, X } from 'lucide-react';
 import { useApp as useWalkie } from '../modules/walkie/context/AppContext';
 import { supabase } from '../modules/walkie/lib/supabaseClient';
+import { useAnimatedPresence } from '../hooks/useAnimatedPresence';
 
 type Kind = 'material' | 'site_event';
 type Issue = { id: string; kind: Kind; material: string; location: string; title: string; details: string; status: 'open' | 'in_progress' | 'resolved'; reporter_name: string; created_at: string };
@@ -12,6 +13,7 @@ export const IssueReportsButton: React.FC = () => {
   const user = auth.currentUser;
   const canManage = ['owner', 'dept_head', 'sub_dept_head'].includes(user?.level);
   const [open, setOpen] = useState(false);
+  const present = useAnimatedPresence(open);
   const [kind, setKind] = useState<Kind>('material');
   const [material, setMaterial] = useState('');
   const [location, setLocation] = useState('');
@@ -55,8 +57,8 @@ export const IssueReportsButton: React.FC = () => {
   return <>
     <button type="button" onClick={() => setOpen(true)} aria-label="Report an issue or complaint" title="Report an issue"
       className="p-2 rounded-lg text-mute transition-colors hover:bg-raised hover:text-ink"><CircleAlert size={18} /></button>
-    {open && <div className="fixed inset-0 z-[70] grid place-items-center bg-black/60 p-4" onMouseDown={e => { if (e.target === e.currentTarget) setOpen(false); }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="issue-report-title" className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl">
+    {present && <div aria-hidden={!open} {...({ inert: !open } as any)} className={`fixed inset-0 z-[70] grid place-items-center bg-black/60 p-4 transition-opacity duration-200 ease-out ${open ? 'animate-fade-in opacity-100' : 'pointer-events-none opacity-0'}`} onMouseDown={e => { if (e.target === e.currentTarget) setOpen(false); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="issue-report-title" className={`flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl transition-transform duration-200 ease-out ${open ? 'animate-slide-up translate-y-0 scale-100' : 'translate-y-2 scale-[0.98]'}`}>
         <header className="flex items-center justify-between border-b border-line px-4 py-3"><div><h2 id="issue-report-title" className="font-semibold text-ink">Report an issue</h2><p className="text-xs text-mute">Quickly report a material problem or a site/event complaint.</p></div><button type="button" onClick={() => setOpen(false)} aria-label="Close issue reports" className="rounded-md p-1.5 text-mute hover:bg-raised"><X size={17} /></button></header>
         <div className="overflow-y-auto p-4 space-y-4">
           <form onSubmit={submit} className="space-y-3 rounded-lg border border-line bg-raised/30 p-3">

@@ -55,6 +55,31 @@ body {
 .walkie-embedded [class*="text-slate-100"], .walkie-embedded [class*="text-slate-200"], .walkie-embedded [class*="text-slate-300"], .walkie-embedded [class*="text-slate-700"], .walkie-embedded [class*="text-slate-800"] { color: rgb(var(--c-ink-soft)) !important; }
 .walkie-embedded [class*="text-slate-400"], .walkie-embedded [class*="text-slate-500"], .walkie-embedded [class*="text-slate-600"] { color: rgb(var(--c-mute)) !important; }
 
+/* Keep keyboard focus visible and make reduced motion apply across the app,
+   including Tailwind animations and transitions. */
+:where(button, a, input, select, textarea, [role="button"]):focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+:where(button, a[href], [role="button"]) {
+  transition-property: color, background-color, border-color, opacity, transform, box-shadow, filter;
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+:where(button, a[href], [role="button"]):not(:disabled):hover { filter: brightness(1.04); }
+:where(button, a[href], [role="button"]):not(:disabled):active { animation: buttonPress 140ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+:where(input, select, textarea) {
+  transition: border-color 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1), background-color 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ── Keyframes ───────────────────────────────────────────────────────────── */
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(16px) scale(0.96); }
@@ -68,6 +93,15 @@ body {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+@keyframes menuEnter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes buttonPress {
+  0% { transform: scale(1); }
+  45% { transform: scale(0.99); }
+  100% { transform: scale(1); }
+}
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position:  200% 0; }
@@ -80,6 +114,7 @@ body {
 .animate-slide-up  { animation: slideUp 0.15s cubic-bezier(0.16,1,0.3,1) forwards; }
 .animate-pop-in    { animation: popIn  0.15s cubic-bezier(0.16,1,0.3,1) forwards; }
 .animate-fade-in   { animation: fadeIn 0.2s ease-out forwards; }
+.animate-menu-enter { animation: menuEnter 180ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 .animate-pulse-glow { animation: pulse-glow 2.5s ease-in-out infinite; }
 
 /* Skeleton shimmer */
@@ -96,7 +131,9 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .animate-pop-in, .animate-slide-up, .animate-fade-in,
-  .animate-pulse-glow, .animate-shimmer { animation: none; }
+  .animate-pulse-glow, .animate-shimmer,
+  .animate-menu-enter { animation: none !important; }
+  :where(button, a[href], [role="button"]):not(:disabled):active { animation: none !important; }
 }
 
 /* ── Brand surfaces (calm, single-hue blue; red is reserved for alerts) ──── */

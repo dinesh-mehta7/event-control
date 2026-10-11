@@ -4,6 +4,7 @@ import { useRequests } from '../modules/requests';
 import { useMeetings } from '../context/MeetingsContext';
 import type { NotificationRow } from '../context/MeetingsContext';
 import { IssueReportsButton } from './IssueReportsButton';
+import { useAnimatedPresence } from '../hooks/useAnimatedPresence';
 
 // The two header buttons every screen gets (they live inside ProfileMenu, which every module already shows):
 //   Meetings button  -> opens the meetings panel from any department
@@ -47,6 +48,7 @@ const RequestsButton: React.FC = () => {
 const Bell_: React.FC = () => {
   const { notifications, unread, markRead, markAllRead, openPanel } = useMeetings();
   const [open, setOpen] = useState(false);
+  const present = useAnimatedPresence(open);
   const box = useRef<HTMLDivElement>(null);
   const last = useRef<string>('');
   useEffect(() => {
@@ -76,9 +78,9 @@ const Bell_: React.FC = () => {
         <Bell size={18} />
         {unread > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-xs font-bold leading-4 text-center">{unread > 9 ? '9+' : unread}</span>}
       </button>
-      {open && (
-        <div className="absolute right-0 top-full pt-2 z-50 w-[min(22rem,calc(100vw-1.5rem))]">
-          <div className="animate-pop-in rounded-xl border border-line bg-surface shadow-xl overflow-hidden">
+      {present && (
+        <div aria-hidden={!open} {...({ inert: !open } as any)} className={`absolute right-0 top-full pt-2 z-50 w-[min(22rem,calc(100vw-1.5rem))] transition-[opacity,transform] duration-200 ease-out ${open ? 'animate-pop-in translate-y-0 opacity-100' : '-translate-y-1 opacity-0 pointer-events-none'}`}>
+          <div className="rounded-xl border border-line bg-surface shadow-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-line">
               <div className="text-sm font-semibold text-ink">Notifications{unread > 0 && <span className="ml-2 text-xs font-normal text-mute">{unread} new</span>}</div>
               {unread > 0 && <button onClick={markAllRead} className="text-xs text-blue-400 hover:underline">Mark all read</button>}

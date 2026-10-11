@@ -69,7 +69,7 @@ create table if not exists public.departments (
 create table if not exists public.walkies (
   id text primary key,
   label text not null,
-  serial text not null unique,
+  serial text,
   model text not null,
   status text not null default 'Available' check (status in ('Available', 'Allocated', 'Under Maintenance')),
   department_id text references public.departments(id) on delete set null,

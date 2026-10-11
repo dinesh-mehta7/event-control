@@ -12,7 +12,6 @@ const AppContext = createContext();
 const mapWalkie = (row) => ({
   id: row.id,
   label: row.label,
-  serial: row.serial,
   model: row.model,
   status: row.status,
   departmentId: row.department_id || '',
@@ -20,6 +19,7 @@ const mapWalkie = (row) => ({
   assignedPerson: row.assigned_person_name
     ? { name: row.assigned_person_name, contact: row.assigned_person_contact || '' }
     : null,
+  isRented: row.is_rented === true,
   notes: row.notes || ''
 });
 
@@ -27,7 +27,8 @@ const mapDepartment = (row) => ({
   id: row.id,
   name: row.name,
   description: row.description || '',
-  channelNumber: row.channel_number
+  channelNumber: row.channel_number,
+  code: row.code || ''
 });
 
 const mapAllocation = (row) => ({
@@ -212,7 +213,8 @@ export function AppProvider({ children }) {
             organizationId: data.organization_id || null,
             approved: data.approved !== false,   // an existing row decides; only a failed read is treated as not signed in
             level: data.level || (data.role === 'Admin' ? 'owner' : 'other'),
-            subDepartment: data.sub_department || null
+            subDepartment: data.sub_department || null,
+            departmentId: data.department_id || null
           };
         }
       } catch (e) { /* retry */ }
@@ -571,6 +573,7 @@ export function AppProvider({ children }) {
         approved: p.approved !== false,
         level: p.level || 'other',
         subDepartment: p.sub_department || null,
+        departmentId: p.department_id || null,
         createdAt: p.created_at
       })));
     }
@@ -595,7 +598,7 @@ export function AppProvider({ children }) {
   // Admin: set where someone sits in the org hierarchy. This is what decides
   // who may edit Accommodation rooms (level 'owner') and the live meal menu
   // (level 'sub_dept_head' + sub-department 'accommodation').
-  const updateUserHierarchy = async (userId, level, subDepartment) => {
+  const updateUserHierarchy = async (userId, level, subDepartment, departmentId) => {
     if (currentUser?.role !== 'Admin') {
       addToast('Only Administrators can change access levels.', 'error');
       return false;
@@ -606,7 +609,7 @@ export function AppProvider({ children }) {
       return false;
     }
     const { data, error } = await supabase.from('profiles')
-      .update({ level, sub_department: sub }).eq('id', userId).select('level, sub_department').single();
+      .update({ level, sub_department: sub, department_id: departmentId || null }).eq('id', userId).select('level, sub_department, department_id').single();
     if (error || !data) {
       addToast(`Failed to update access level: ${describeDbError(error)}`, 'error');
       return false;
@@ -615,7 +618,7 @@ export function AppProvider({ children }) {
       addToast('The database refused the change. Run supabase/migration_v4_hierarchy.sql first.', 'error');
       return false;
     }
-    setAllProfiles(prev => prev.map(p => (p.id === userId ? { ...p, level: data.level, subDepartment: data.sub_department } : p)));
+    setAllProfiles(prev => prev.map(p => (p.id === userId ? { ...p, level: data.level, subDepartment: data.sub_department, departmentId: data.department_id } : p)));
     logAction('Access Level Changed', `${currentUser.name} set a user to ${level}${sub ? ` (${sub})` : ''}`, 'warning');
     addToast('Access level updated.', 'success');
     return true;
@@ -865,14 +868,10 @@ export function AppProvider({ children }) {
       addToast('Clients are not authorized to add assets', 'error');
       return false;
     }
-    if (walkies.some(w => w.serial.toLowerCase() === walkie.serial.toLowerCase())) {
-      addToast(`Serial number ${walkie.serial} already exists!`, 'error');
-      return false;
-    }
     const newWalkieRow = {
       id: walkie.id || `WT-${Math.floor(100 + Math.random() * 900)}`,
       label: walkie.label,
-      serial: walkie.serial,
+      serial: null,
       model: walkie.model,
       status: walkie.status || 'Available',
       department_id: null,
@@ -890,7 +889,7 @@ export function AppProvider({ children }) {
     if (error) {
       setWalkies(prev => prev.filter(w => w.id !== newWalkieRow.id));
       const dup = /duplicate|unique/i.test(error.message);
-      addToast(dup ? `A walkie with ID ${newWalkieRow.id} or serial ${newWalkieRow.serial} already exists.` : `Failed to save walkie: ${describeDbError(error)}`, 'error');
+      addToast(dup ? `A walkie with ID ${newWalkieRow.id} already exists.` : `Failed to save walkie: ${describeDbError(error)}`, 'error');
       return false;
     }
     addToast(`Walkie ${newWalkieRow.id} added successfully!`);
@@ -903,16 +902,8 @@ export function AppProvider({ children }) {
       addToast('Clients are not authorized to edit assets', 'error');
       return false;
     }
-    if (updatedFields.serial) {
-      const duplicate = walkies.find(w => w.serial.toLowerCase() === updatedFields.serial.toLowerCase() && w.id !== id);
-      if (duplicate) {
-        addToast(`Serial number ${updatedFields.serial} is already assigned to another walkie!`, 'error');
-        return false;
-      }
-    }
     const payload = {};
     if (updatedFields.label !== undefined) payload.label = updatedFields.label;
-    if (updatedFields.serial !== undefined) payload.serial = updatedFields.serial;
     if (updatedFields.model !== undefined) payload.model = updatedFields.model;
     if (updatedFields.notes !== undefined) payload.notes = updatedFields.notes;
     payload.updated_at = new Date().toISOString();
@@ -994,12 +985,11 @@ export function AppProvider({ children }) {
     for (let i = 0; i < count; i++) {
       const currentIdNum = parseInt(startNum, 10) + i;
       const generatedId = `${prefix}-${currentIdNum}`;
-      const generatedSerial = `SN-${prefix}-${currentIdNum}-${Math.floor(1000 + Math.random() * 9000)}`;
-      if (!walkies.some(w => w.id === generatedId || w.serial === generatedSerial)) {
+      if (!walkies.some(w => w.id === generatedId)) {
         newItems.push({
           id: generatedId,
           label: `${prefix} ${currentIdNum}`,
-          serial: generatedSerial,
+          serial: null,
           model: model || 'Standard UHF',
           status: 'Available',
           department_id: null,
@@ -1013,7 +1003,7 @@ export function AppProvider({ children }) {
     }
 
     if (newItems.length === 0) {
-      addToast('No new walkies were added. IDs or Serials might already exist.', 'error');
+      addToast('No new walkies were added. The Walkie IDs might already exist.', 'error');
       return false;
     }
 
@@ -1053,6 +1043,7 @@ export function AppProvider({ children }) {
       id: `dept-${Date.now()}`,
       name: dept.name,
       description: dept.description || '',
+      code: dept.code || '',
       channel_number: channelNumber,
       organization_id: currentUser.organizationId
     };
@@ -1081,9 +1072,19 @@ export function AppProvider({ children }) {
       return false;
     }
 
+    if (!['Admin', 'Operator'].includes(currentUser?.role)) {
+      const { error } = await supabase.rpc('department_set_channel', { p_department_id: id, p_channel: updatedFields.channelNumber || '' });
+      if (error) { addToast(`Failed to update channel: ${error.message}`, 'error'); return false; }
+      setDepartments(prev => prev.map(d => d.id === id ? { ...d, channelNumber: updatedFields.channelNumber.trim() } : d));
+      setWalkies(prev => prev.map(w => w.departmentId === id && w.status === 'Allocated' ? { ...w, channel: updatedFields.channelNumber.trim() } : w));
+      addToast('Department channel updated and synced to allocated radios.');
+      return true;
+    }
+
     const payload = {};
     if (updatedFields.name !== undefined) payload.name = updatedFields.name;
     if (updatedFields.description !== undefined) payload.description = updatedFields.description;
+    if (updatedFields.code !== undefined) payload.code = (updatedFields.code || '').trim().toUpperCase();
 
     let channelChanged = false;
     let newChannelNumber = null;
@@ -1837,12 +1838,12 @@ export function AppProvider({ children }) {
     ]);
 
     await supabase.from('walkies').insert([
-      { id: `WT-101-${suf}`, label: 'Security Alpha', serial: `SN-90210-X1-${suf}`, model: 'Motorola CP200', status: 'Allocated', department_id: `dept-1-${suf}`, channel: 'CH-04', assigned_person_name: 'Marcus Webb', assigned_person_contact: '555-0142', notes: 'Main gate patrol unit', organization_id: orgId },
-      { id: `WT-102-${suf}`, label: 'Security Beta', serial: `SN-90210-X2-${suf}`, model: 'Motorola CP200', status: 'Available', department_id: null, channel: '', notes: 'Backup gate unit', organization_id: orgId },
-      { id: `WT-103-${suf}`, label: 'Logistics Lead', serial: `SN-88319-Y5-${suf}`, model: 'Kenwood NX-3220', status: 'Allocated', department_id: `dept-2-${suf}`, channel: 'CH-07', assigned_person_name: 'Priya Anand', assigned_person_contact: '555-0198', notes: 'Warehouse coordinator', organization_id: orgId },
-      { id: `WT-104-${suf}`, label: 'Events Coordinator', serial: `SN-77215-Z9-${suf}`, model: 'Baofeng UV-5R', status: 'Under Maintenance', department_id: null, channel: '', notes: 'Needs battery replacement', organization_id: orgId },
-      { id: `WT-105-${suf}`, label: 'Medical Response', serial: `SN-55219-M4-${suf}`, model: 'Motorola CP200', status: 'Available', department_id: null, channel: '', notes: 'First aid team', organization_id: orgId },
-      { id: `WT-106-${suf}`, label: 'Facilities Staff', serial: `SN-44102-F1-${suf}`, model: 'Kenwood NX-3220', status: 'Allocated', department_id: `dept-3-${suf}`, channel: 'CH-11', assigned_person_name: 'Dana Osei', assigned_person_contact: '555-0163', notes: 'Maintenance crew', organization_id: orgId }
+      { id: `WT-101-${suf}`, label: 'Security Alpha', model: 'Motorola CP200', status: 'Allocated', department_id: `dept-1-${suf}`, channel: 'CH-04', assigned_person_name: 'Marcus Webb', assigned_person_contact: '555-0142', notes: 'Main gate patrol unit', organization_id: orgId },
+      { id: `WT-102-${suf}`, label: 'Security Beta', model: 'Motorola CP200', status: 'Available', department_id: null, channel: '', notes: 'Backup gate unit', organization_id: orgId },
+      { id: `WT-103-${suf}`, label: 'Logistics Lead', model: 'Kenwood NX-3220', status: 'Allocated', department_id: `dept-2-${suf}`, channel: 'CH-07', assigned_person_name: 'Priya Anand', assigned_person_contact: '555-0198', notes: 'Warehouse coordinator', organization_id: orgId },
+      { id: `WT-104-${suf}`, label: 'Events Coordinator', model: 'Baofeng UV-5R', status: 'Under Maintenance', department_id: null, channel: '', notes: 'Needs battery replacement', organization_id: orgId },
+      { id: `WT-105-${suf}`, label: 'Medical Response', model: 'Motorola CP200', status: 'Available', department_id: null, channel: '', notes: 'First aid team', organization_id: orgId },
+      { id: `WT-106-${suf}`, label: 'Facilities Staff', model: 'Kenwood NX-3220', status: 'Allocated', department_id: `dept-3-${suf}`, channel: 'CH-11', assigned_person_name: 'Dana Osei', assigned_person_contact: '555-0163', notes: 'Maintenance crew', organization_id: orgId }
     ]);
 
     await supabase.from('allocations').insert([

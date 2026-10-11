@@ -1,18 +1,20 @@
 export type POStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'ordered' | 'partial' | 'received' | 'cancelled';
+export type VendorMode = 'online' | 'offline';
 
-export interface Vendor { id: string; name: string; contact: string; phone: string; email: string; address: string; notes: string }
+export interface Vendor { id: string; name: string; vendorMode: VendorMode | null; contact: string; phone: string; email: string; address: string; notes: string }
 export interface POItem { id: string; inventoryItemId: string | null; name: string; unit: string; qtyOrdered: number; qtyReceived: number; rate: number; requestId: string | null; requestNumber: string }
+export interface PurchaseTracking { id: string; poId: string; purchaseItemId: string; marketplace: string; marketplaceOrderNumber: string; trackingNumber: string; courierSlug: string; status: string; subStatus: string; trackingUrl: string; estimatedDelivery: string; checkpoints: { checkpoint_time?: string; message?: string; location?: string; tag?: string }[]; updatedAt: string }
 export interface PO {
-  id: string; number: string; vendorId: string | null; title: string; requestedBy: string; deliverTo: string; expectedDate: string;
+  id: string; number: string; vendorId: string | null; vendorMode: VendorMode | null; title: string; requestedBy: string; deliverTo: string; expectedDate: string;
   status: POStatus; notes: string; paid: number; createdBy: string; approvedBy: string; approvedAt: string; createdAt: string; decisionNote: string; items: POItem[];
 }
 // A delivery against an order line (goods received note).
-export interface Receipt { id: string; poId: string; itemId: string; qty: number; givenBy: string; receivedBy: string; challan: string; note: string; doneBy: string; doneAt: string }
+export interface Receipt { id: string; poId: string; itemId: string; qty: number; location: string; givenBy: string; receivedBy: string; challan: string; note: string; doneBy: string; doneAt: string }
 export interface Payment { id: string; poId: string; amount: number; mode: string; ref: string; paidBy: string; note: string; doneBy: string; doneAt: string }
 
 export const STATUS: Record<POStatus, { label: string; tone: 'ok' | 'warn' | 'bad' | 'info' | 'mute' }> = {
   draft: { label: 'Draft', tone: 'mute' },
-  pending: { label: 'Awaiting approval', tone: 'warn' },
+  pending: { label: 'Ready to place', tone: 'warn' },
   approved: { label: 'Approved', tone: 'info' },
   rejected: { label: 'Rejected', tone: 'bad' },
   ordered: { label: 'Ordered', tone: 'info' },
@@ -21,14 +23,14 @@ export const STATUS: Record<POStatus, { label: string; tone: 'ok' | 'warn' | 'ba
   cancelled: { label: 'Cancelled', tone: 'mute' },
 };
 
-// Purchase asks, the owner approves, Purchase pays.
+// Payment requests are recorded by Purchase after the request has final approval.
 export type PayReqStatus = 'pending' | 'approved' | 'rejected' | 'paid' | 'cancelled';
 export interface PaymentRequest {
   id: string; poId: string; amount: number; note: string; status: PayReqStatus; requestedBy: string; requestedById: string | null; requestedAt: string;
   decidedBy: string; decidedAt: string; decisionNote: string; paymentId: string | null; paidAt: string;
 }
 export const PAYREQ: Record<PayReqStatus, { label: string; tone: 'ok' | 'warn' | 'bad' | 'info' | 'mute' }> = {
-  pending: { label: 'Waiting for the owner', tone: 'warn' }, approved: { label: 'Approved, ready to pay', tone: 'info' },
+  pending: { label: 'Ready to pay', tone: 'info' }, approved: { label: 'Ready to pay', tone: 'info' },
   rejected: { label: 'Rejected', tone: 'bad' }, paid: { label: 'Paid', tone: 'ok' }, cancelled: { label: 'Withdrawn', tone: 'mute' },
 };
 

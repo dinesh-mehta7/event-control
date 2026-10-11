@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, CircleCheck, ClipboardList, Download, Edit3, ExternalLink, FileSpreadsheet, History, Laptop, ListTodo, LoaderCircle, Package, Phone, PhoneCall, Play, Plus, Radio, Search, Smartphone, Tablet, Trash2, Upload, Users } from 'lucide-react';
+import { BedDouble, Check, ChevronLeft, ChevronRight, CircleCheck, ClipboardList, Download, Edit3, ExternalLink, FileSpreadsheet, History, Laptop, ListTodo, LoaderCircle, Package, Phone, PhoneCall, Play, Plus, Radio, Search, Smartphone, Tablet, Trash2, Upload, Users, UserPlus, UserMinus } from 'lucide-react';
 import { useWalkie } from '../walkie';
 import { supabase } from '../walkie/lib/supabaseClient';
 import { DEPT_LABEL, DEPT_OPTIONS } from '../accommodation/types';
 import { Modal, ConfirmModal, btnGhost, btnPrimary, cx, inputCls, labelCls } from '../accommodation/ui';
+import { RoomsView } from '../accommodation/RoomsView';
+import { useInventory } from '../inventory';
 import { useManpower } from './ManpowerContext';
 import type { SewadarInput } from './ManpowerContext';
 import { DEVICES, DEVICE_LABEL, OUTCOMES, OUTCOME_LABEL, OUTCOME_TONE } from './types';
@@ -37,18 +39,35 @@ const inStage = (s: Sewadar, st: Stage) => {
 
 export const ManpowerApp: React.FC = () => {
   const m = useManpower();
+  const inventory = useInventory();
   const auth: any = useWalkie();
   const orgId = auth.currentUser?.organizationId;
   const { sewadars, stats, canManage, loading, loadError } = m;
   const [tasks, setTasks] = useState<any[]>([]);
-  const [workspace, setWorkspace] = useState<'members' | 'teams' | 'tasks'>('members');
+  const [workspace, setWorkspace] = useState<'members' | 'teams' | 'tasks' | 'rooms'>('members');
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDetails, setTaskDetails] = useState('');
   const [taskTeam, setTaskTeam] = useState('');
   const [taskAssignee, setTaskAssignee] = useState('');
-  const [taskMember, setTaskMember] = useState('');
+  const [taskMembers, setTaskMembers] = useState<string[]>([]);
+  const [taskMemberQuery, setTaskMemberQuery] = useState('');
+  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [taskMemberDraft, setTaskMemberDraft] = useState<string[]>([]);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamLead, setNewTeamLead] = useState('');
+  const [teamBusy, setTeamBusy] = useState(false);
+  const [activeTeamId, setActiveTeamId] = useState('');
+  const [teamMemberSelection, setTeamMemberSelection] = useState<string[]>([]);
+  const [teamMemberQuery, setTeamMemberQuery] = useState('');
   const [taskDue, setTaskDue] = useState('');
   const [taskBusy, setTaskBusy] = useState(false);
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState<any | null>(null);
+  const [deliveryTask, setDeliveryTask] = useState<any | null>(null);
+  const [deliveryLocation, setDeliveryLocation] = useState('');
+  const [deliveryReceivedBy, setDeliveryReceivedBy] = useState('');
+  const [deliveryNote, setDeliveryNote] = useState('');
+  const [busyTaskIds, setBusyTaskIds] = useState<Set<string>>(new Set());
   const [taskFilter, setTaskFilter] = useState<TaskFilter>('all');
   const [stage, setStage] = useState<Stage>('all');
   const [memberType, setMemberType] = useState<'all' | SewadarMemberType>('all');
@@ -67,40 +86,39 @@ export const ManpowerApp: React.FC = () => {
     return sewadars.filter(s => inStage(s, stage)
       && (memberType === 'all' || s.memberType === memberType)
       && (dept === 'all' || (dept === 'none' ? !s.department : s.department === dept))
-      && (!t || [s.name, s.phone, s.deviceRef, s.serialNo, s.batchNo, s.teamName, s.teamLead, s.villageCity].some(v => v.toLowerCase().includes(t))));
+      && (!t || [s.name, s.phone, s.deviceRef, s.serialNo, s.batchNo, s.teamName, ...(s.teams || []), s.teamLead, s.villageCity].some(v => v.toLowerCase().includes(t))));
   }, [sewadars, stage, memberType, dept, q]);
-  const teamGroups = useMemo(() => {
-    const byName = new Map<string, { name: string; lead: string; members: Sewadar[] }>();
-    sewadars.filter(s => s.teamName.trim()).forEach(s => {
-      const key = s.teamName.trim().toLocaleLowerCase();
-      const group = byName.get(key) || { name: s.teamName.trim(), lead: '', members: [] };
-      group.members.push(s);
-      if (!group.lead && s.teamLead.trim()) group.lead = s.teamLead.trim();
-      byName.set(key, group);
-    });
-    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [sewadars]);
-  const unassignedSewadars = useMemo(() => sewadars.filter(s => !s.teamName.trim()), [sewadars]);
+  const teamGroups = useMemo(() => m.teams.map(t => ({ ...t, members: sewadars.filter(s => (s.teams || []).some(name => name.toLocaleLowerCase() === t.name.toLocaleLowerCase())) })), [m.teams, sewadars]);
+  const activeTeam = teamGroups.find(team => team.id === activeTeamId);
+  const eligibleTeamMembers = activeTeam ? sewadars.filter(person => !(person.teams || []).some(name => name.toLowerCase() === activeTeam.name.toLowerCase())) : [];
+  const visibleTeamMembers = eligibleTeamMembers.filter(person => person.name.toLowerCase().includes(teamMemberQuery.trim().toLowerCase()));
+  const unassignedSewadars = useMemo(() => sewadars.filter(s => !(s.teams || []).length), [sewadars]);
   const activeTaskCount = tasks.filter(t => t.status !== 'complete').length;
   const completedTaskCount = tasks.filter(t => t.status === 'complete').length;
   const visibleTasks = tasks.filter(t => taskFilter === 'all' || (taskFilter === 'active' ? t.status !== 'complete' : t.status === 'complete'));
 
   const loadTasks = async () => {
     if (!orgId) return;
-    const [{ data: manpowerRows, error: manpowerError }, { data: memberRows, error: memberError }] = await Promise.all([
+    const [{ data: manpowerRows, error: manpowerError }, { data: memberRows, error: memberError }, { data: taskMemberRows }] = await Promise.all([
       supabase.from('manpower_tasks').select('*, accommodation_members(name)').order('created_at', { ascending: false }),
       supabase.from('accommodation_member_tasks').select('*, accommodation_members(name)').order('created_at', { ascending: false }),
+      supabase.from('manpower_task_members').select('task_id,member_id,accommodation_members(name)'),
     ]);
-    if (!manpowerError || !memberError) setTasks([
-      ...(manpowerRows || []).map((t: any) => ({ ...t, source: 'manpower', assigned_to: t.accommodation_members?.name || t.assigned_to })),
+    if (!manpowerError || !memberError) {
+      const linkedNames = new Map<string, string[]>();
+      (taskMemberRows || []).forEach((link: any) => linkedNames.set(link.task_id, [...(linkedNames.get(link.task_id) || []), link.accommodation_members?.name].filter(Boolean)));
+      setTasks([
+      ...(manpowerRows || []).map((t: any) => ({ ...t, source: 'manpower', assigned_to: t.accommodation_members?.name || t.assigned_to, sewadar_names: Array.from(new Set(linkedNames.get(t.id) || (t.accommodation_members?.name ? [t.accommodation_members.name] : []))) })),
       ...(memberRows || []).map((t: any) => ({ ...t, source: 'accommodation', team: 'Accommodation', assigned_to: t.accommodation_members?.name || t.assigned_to })),
-    ].sort((a: any, b: any) => String(b.created_at).localeCompare(String(a.created_at))));
+      ].sort((a: any, b: any) => String(b.created_at).localeCompare(String(a.created_at))));
+    }
   };
   useEffect(() => {
     loadTasks();
     if (!orgId) return;
     const channel = supabase.channel(`manpower-tasks-${orgId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'manpower_tasks', filter: `organization_id=eq.${orgId}` }, loadTasks)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'manpower_task_members', filter: `organization_id=eq.${orgId}` }, loadTasks)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'accommodation_member_tasks', filter: `organization_id=eq.${orgId}` }, loadTasks).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [orgId]); // eslint-disable-line
@@ -109,20 +127,60 @@ export const ManpowerApp: React.FC = () => {
     if (!taskTitle.trim() || !orgId) return;
     setTaskBusy(true);
     const assignee = canManage ? taskAssignee.trim() : (auth.currentUser?.name || '');
+    const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const { error } = await supabase.from('manpower_tasks').insert({
-      id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, organization_id: orgId,
+      id: taskId, organization_id: orgId,
       title: taskTitle.trim(), details: taskDetails.trim(), team: taskTeam.trim(), assigned_to: assignee,
-      member_id: taskMember || null, sewadar_id: null, due_date: taskDue || null, created_by: auth.currentUser?.id,
+      member_id: taskMembers[0] || null, sewadar_id: null, due_date: taskDue || null, created_by: auth.currentUser?.id,
     });
+    if (error) { setTaskBusy(false); auth.addToast?.(`Could not create task: ${error.message}`, 'error'); return; }
+    if (taskMembers.length) {
+      const links = taskMembers.map(member_id => ({ id: `task-member-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, organization_id: orgId, task_id: taskId, member_id }));
+      const { error: linkError } = await supabase.from('manpower_task_members').insert(links);
+      if (linkError) auth.addToast?.(`Task created, but Sewadars could not be linked: ${linkError.message}`, 'error');
+    }
     setTaskBusy(false);
-    if (error) { auth.addToast?.(`Could not create task: ${error.message}`, 'error'); return; }
-    setTaskTitle(''); setTaskDetails(''); setTaskTeam(''); setTaskAssignee(''); setTaskMember(''); setTaskDue('');
+    setTaskTitle(''); setTaskDetails(''); setTaskTeam(''); setTaskAssignee(''); setTaskMembers([]); setTaskDue('');
+    setTaskMemberQuery(''); setTaskPickerOpen(false);
     await loadTasks();
+    setTaskDialogOpen(false);
   };
   const setTaskStatus = async (t: any, status: string) => {
+    if (status === 'complete' && t.request_fulfilment_id) {
+      setDeliveryTask(t); setDeliveryLocation(''); setDeliveryReceivedBy(auth.currentUser?.name || ''); setDeliveryNote('');
+      return;
+    }
     const table = t.source === 'accommodation' ? 'accommodation_member_tasks' : 'manpower_tasks';
+    const oldStatus = t.status;
+    setBusyTaskIds(current => new Set(current).add(t.id));
+    setTasks(current => current.map(task => task.id === t.id ? { ...task, status } : task));
     const { error } = await supabase.from(table).update({ status, updated_at: new Date().toISOString() }).eq('id', t.id);
-    if (error) auth.addToast?.(`Could not update task: ${error.message}`, 'error'); else await loadTasks();
+    if (error) { setTasks(current => current.map(task => task.id === t.id ? { ...task, status: oldStatus } : task)); auth.addToast?.(`Could not update task: ${error.message}`, 'error'); }
+    else await loadTasks();
+    setBusyTaskIds(current => { const next = new Set(current); next.delete(t.id); return next; });
+  };
+  const completeDeliveryTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deliveryTask) return;
+    setBusyTaskIds(current => new Set(current).add(deliveryTask.id));
+    const { error } = await supabase.rpc('request_complete_delivery_task', {
+      p_task: deliveryTask.id, p_location: deliveryLocation, p_received_by: deliveryReceivedBy.trim(), p_note: deliveryNote.trim(),
+    });
+    if (error) auth.addToast?.(`Could not complete delivery: ${error.message}`, 'error');
+    else { auth.addToast?.('Delivery recorded and request updated.', 'success'); setDeliveryTask(null); await loadTasks(); }
+    setBusyTaskIds(current => { const next = new Set(current); next.delete(deliveryTask.id); return next; });
+  };
+  const deleteTask = async (t: any) => {
+    if (t.source !== 'manpower' || !canManage) return;
+    setTaskToDelete(t);
+  };
+  const confirmDeleteTask = async () => {
+    const t = taskToDelete;
+    if (!t) return;
+    const { error } = await supabase.from('manpower_tasks').delete().eq('id', t.id);
+    if (error) auth.addToast?.(`Could not remove task: ${error.message}`, 'error');
+    else { auth.addToast?.('Task removed.', 'success'); await loadTasks(); }
+    setTaskToDelete(null);
   };
 
   useEffect(() => { setPage(0); }, [stage, memberType, dept, q, size]);
@@ -134,8 +192,8 @@ export const ManpowerApp: React.FC = () => {
   const ids = Array.from(sel);
 
   const exportCSV = () => {
-    const head = ['Name', 'Member type', 'Serial no.', 'Batch no.', 'Relation', 'Relation name', 'Mobile', 'Village / city', 'Branch', 'Occupation', 'Department', 'Remarks', 'Sewa joining date', 'Employee code', 'Employee ID', 'Address', 'Address 2', 'Expected arrival', 'Team', 'Shift', 'Team lead', 'Device', 'Device ID', 'Calls', 'Last call outcome', 'Last call at', 'Arrival', 'Arrived at', 'Badge'];
-    const body = rows.map(s => [s.name, s.memberType, s.serialNo, s.batchNo, s.relation, s.relationName, s.phone, s.villageCity, s.branch, s.occupation, DEPT_LABEL[s.department] || s.department, s.remarks, s.joiningDate, s.employeeCode, s.employeeId, s.address, s.address2, s.expectedArrival, s.teamName, s.shift, s.teamLead, DEVICE_LABEL[s.deviceType], s.deviceRef, s.callCount,
+    const head = ['Name', 'Member type', 'Serial no.', 'Batch no.', 'Relation', 'Relation name', 'Mobile', 'Village / city', 'Branch', 'Occupation', 'Department', 'Remarks', 'Sewa joining date', 'Employee code', 'Employee ID', 'Address', 'Address 2', 'Expected arrival', 'Teams', 'Shift', 'Team lead', 'Device', 'Device ID', 'Calls', 'Last call outcome', 'Last call at', 'Arrival', 'Arrived at', 'Badge'];
+    const body = rows.map(s => [s.name, s.memberType, s.serialNo, s.batchNo, s.relation, s.relationName, s.phone, s.villageCity, s.branch, s.occupation, DEPT_LABEL[s.department] || s.department, s.remarks, s.joiningDate, s.employeeCode, s.employeeId, s.address, s.address2, s.expectedArrival, (s.teams || []).join('; '), s.shift, s.teamLead, DEVICE_LABEL[s.deviceType], s.deviceRef, s.callCount,
       s.lastCallOutcome ? OUTCOME_LABEL[s.lastCallOutcome] : '', s.lastCallAt || '', s.arrival, s.arrivedAt || '', s.badgeIssued ? 'Issued' : 'Pending']);
     const csv = [head, ...body].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
@@ -161,8 +219,8 @@ export const ManpowerApp: React.FC = () => {
     <div className="space-y-3">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold tracking-tight flex items-center gap-2"><Users className="w-4 h-4 text-blue-400" />Sewadar roster</h1>
-          <p className="text-xs text-mute">Shared member list · contact, type, arrival, teams and devices</p>
+          <h1 className="text-lg font-bold tracking-tight flex items-center gap-2"><Users className="w-4 h-4 text-blue-400" />{workspace === 'rooms' ? 'Rooms & Members' : 'Sewadar roster'}</h1>
+          <p className="text-xs text-mute">{workspace === 'rooms' ? 'Room assignments and accommodation members' : 'Shared member list · contact, type, arrival, teams and devices'}</p>
         </div>
         {workspace === 'members' && <div className="flex flex-wrap gap-2">
           <button className={cx(btnGhost(D), 'px-2.5 py-1.5 text-xs')} onClick={exportCSV}><Download className="w-3.5 h-3.5" />Export</button>
@@ -173,54 +231,99 @@ export const ManpowerApp: React.FC = () => {
 
       {loadError && <div role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-400 text-sm p-3">Could not load Sewadars: {loadError}</div>}
 
-      <nav aria-label="Sewadars workspace" className="flex gap-1 rounded-lg border border-line bg-surface/50 p-1">
-        <button onClick={() => setWorkspace('members')} aria-pressed={workspace === 'members'} className={cx('flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 py-2 text-xs font-semibold', workspace === 'members' ? 'bg-blue-600 text-white' : 'text-mute hover:bg-raised hover:text-ink')}><Users className="h-3.5 w-3.5" />Members</button>
-        <button onClick={() => setWorkspace('teams')} aria-pressed={workspace === 'teams'} className={cx('flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 py-2 text-xs font-semibold', workspace === 'teams' ? 'bg-blue-600 text-white' : 'text-mute hover:bg-raised hover:text-ink')}><Users className="h-3.5 w-3.5" />Teams <span className="rounded bg-raised px-1.5 py-0.5 tabular-nums">{teamGroups.length}</span></button>
-        <button onClick={() => setWorkspace('tasks')} aria-pressed={workspace === 'tasks'} className={cx('flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 py-2 text-xs font-semibold', workspace === 'tasks' ? 'bg-blue-600 text-white' : 'text-mute hover:bg-raised hover:text-ink')}><ClipboardList className="h-3.5 w-3.5" />Team tasks <span className="rounded bg-raised px-1.5 py-0.5 tabular-nums">{tasks.filter(t => t.status !== 'complete').length}</span></button>
+      <nav aria-label="Sewadars workspace" className="inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-line bg-surface/50 p-1">
+        <button onClick={() => setWorkspace('members')} aria-pressed={workspace === 'members'} className={cx('flex shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold transition-colors', workspace === 'members' ? 'bg-blue-600 text-white shadow-sm' : 'text-mute hover:bg-raised hover:text-ink')}><Users className="h-3.5 w-3.5" />Members</button>
+        <button onClick={() => setWorkspace('teams')} aria-pressed={workspace === 'teams'} className={cx('flex shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold transition-colors', workspace === 'teams' ? 'bg-blue-600 text-white shadow-sm' : 'text-mute hover:bg-raised hover:text-ink')}><Users className="h-3.5 w-3.5" />Teams <span className="rounded bg-black/10 px-1.5 py-0.5 tabular-nums">{teamGroups.length}</span></button>
+        <button onClick={() => setWorkspace('tasks')} aria-pressed={workspace === 'tasks'} className={cx('flex shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold transition-colors', workspace === 'tasks' ? 'bg-blue-600 text-white shadow-sm' : 'text-mute hover:bg-raised hover:text-ink')}><ClipboardList className="h-3.5 w-3.5" />Team tasks <span className="rounded bg-black/10 px-1.5 py-0.5 tabular-nums">{tasks.filter(t => t.status !== 'complete').length}</span></button>
+        <button onClick={() => setWorkspace('rooms')} aria-pressed={workspace === 'rooms'} className={cx('flex shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold transition-colors', workspace === 'rooms' ? 'bg-blue-600 text-white shadow-sm' : 'text-mute hover:bg-raised hover:text-ink')}><BedDouble className="h-3.5 w-3.5" />Rooms &amp; Members</button>
       </nav>
 
+      {workspace === 'rooms' && <section><RoomsView embedded /></section>}
+
       {workspace === 'teams' && <section className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-lg font-semibold text-ink">Teams</h2><p className="text-sm text-mute">All roster members appear here. Assign ungrouped sewadars to a team when ready.</p></div><span className="text-xs text-mute">{teamGroups.length} teams · {sewadars.length} sewadars · {unassignedSewadars.length} unassigned</span></div>
-        {sewadars.length ? <div className="grid gap-3 xl:grid-cols-2">{teamGroups.map(team => <section key={team.name.toLowerCase()} className={cx(panel, 'overflow-hidden')}>
-          <header className="flex items-start justify-between gap-3 border-b border-line px-4 py-3"><div><h3 className="font-semibold text-ink">{team.name}</h3><p className="mt-0.5 text-xs text-mute">{team.lead ? `Team lead · ${team.lead}` : 'Team lead not set'}</p></div><span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-300">{team.members.length} {team.members.length === 1 ? 'member' : 'members'}</span></header>
-          <ul className="divide-y divide-line">{team.members.map(person => <li key={person.id} className="flex items-center gap-3 px-4 py-2.5"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-raised text-xs font-semibold text-ink-soft">{person.name.trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase()}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-ink">{person.name}</span><span className="block truncate text-xs text-mute">{[person.phone, DEPT_LABEL[person.department] || person.department, person.batchNo && `Batch ${person.batchNo}`].filter(Boolean).join(' · ')}</span></span><span className={cx('rounded-full px-2 py-1 text-[11px]', person.arrival === 'arrived' ? 'bg-emerald-500/10 text-emerald-300' : person.arrival === 'not_coming' ? 'bg-rose-500/10 text-rose-300' : 'bg-raised text-mute')}>{person.arrival === 'arrived' ? 'Arrived' : person.arrival === 'not_coming' ? 'Not coming' : 'Expected'}</span><div className="flex gap-1"><button className={btnGhost(D)} onClick={() => setCalling(person)} aria-label={`Call ${person.name}`}><PhoneCall className="h-3.5 w-3.5" /></button>{canManage && <button className={btnGhost(D)} onClick={() => setEditing(person)} aria-label={`Edit ${person.name}`}><Edit3 className="h-3.5 w-3.5" /></button>}</div></li>)}</ul>
+        <div className="flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-lg font-semibold text-ink">Teams</h2><p className="text-sm text-mute">Create reusable teams and link each Sewadar to one or more teams.</p></div><span className="text-xs text-mute">{teamGroups.length} teams · {sewadars.length} sewadars · {unassignedSewadars.length} unassigned</span></div>
+        {canManage && <form onSubmit={async e => { e.preventDefault(); setTeamBusy(true); const ok = await m.createTeam(newTeamName, newTeamLead); setTeamBusy(false); if (ok) { setNewTeamName(''); setNewTeamLead(''); } }} className={cx(panel, 'grid gap-2 p-3 sm:grid-cols-[1fr_1fr_auto]')}>
+          <label className="text-xs text-mute">Predefined team<input required value={newTeamName} onChange={e => setNewTeamName(e.target.value)} placeholder="e.g. Gate support" className={cx(inputCls(D), 'mt-1')} /></label>
+          <label className="text-xs text-mute">Team lead<input value={newTeamLead} onChange={e => setNewTeamLead(e.target.value)} placeholder="Optional" className={cx(inputCls(D), 'mt-1')} /></label>
+          <button disabled={teamBusy} className={cx(btnPrimary, 'self-end')}>{teamBusy ? 'Creating…' : <><Plus className="h-4 w-4" />Create team</>}</button>
+        </form>}
+        {teamGroups.length || sewadars.length ? <div className="grid gap-3 xl:grid-cols-2">{teamGroups.map(team => <section key={team.name.toLowerCase()} className={cx(panel, 'animate-fade-in overflow-hidden')}>
+          <header className="flex items-start justify-between gap-3 border-b border-line px-4 py-3"><div><h3 className="font-semibold text-ink">{team.name}</h3><p className="mt-0.5 text-xs text-mute">{team.lead ? `Team lead · ${team.lead}` : 'Team lead not set'}</p></div><div className="flex items-center gap-2"><span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-300">{team.members.length} {team.members.length === 1 ? 'member' : 'members'}</span>{canManage && <button type="button" className={cx(btnGhost(D), 'text-blue-300')} onClick={() => { setActiveTeamId(team.id); setTeamMemberSelection([]); setTeamMemberQuery(''); }}><UserPlus className="h-3.5 w-3.5" />Add members</button>}</div></header>
+          <ul className="divide-y divide-line">{team.members.map(person => <li key={person.id} className="animate-fade-in flex flex-wrap items-center gap-3 px-4 py-2.5"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-raised text-xs font-semibold text-ink-soft">{person.name.trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase()}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-ink">{person.name}</span><span className="block truncate text-xs text-mute">{[person.phone, DEPT_LABEL[person.department] || person.department, person.batchNo && `Batch ${person.batchNo}`].filter(Boolean).join(' · ')}</span></span><span className={cx('rounded-full px-2 py-1 text-[11px]', person.arrival === 'arrived' ? 'bg-emerald-500/10 text-emerald-300' : person.arrival === 'not_coming' ? 'bg-rose-500/10 text-rose-300' : 'bg-raised text-mute')}>{person.arrival === 'arrived' ? 'Arrived' : person.arrival === 'not_coming' ? 'Not coming' : 'Expected'}</span>{canManage && <button type="button" className={cx(btnGhost(D), 'text-rose-300')} onClick={() => void m.removeFromTeam(person.id, team.name)} aria-label={`Remove ${person.name} from ${team.name}`} title="Remove from team"><UserMinus className="h-3.5 w-3.5" /></button>}<div className="flex gap-1"><button className={btnGhost(D)} onClick={() => setCalling(person)} aria-label={`Call ${person.name}`}><PhoneCall className="h-3.5 w-3.5" /></button>{canManage && <button className={btnGhost(D)} onClick={() => setEditing(person)} aria-label={`Edit ${person.name}`}><Edit3 className="h-3.5 w-3.5" /></button>}</div></li>)}</ul>
         </section>)}
           {unassignedSewadars.length > 0 && <section className={cx(panel, 'overflow-hidden')}>
             <header className="flex items-start justify-between gap-3 border-b border-line px-4 py-3"><div><h3 className="font-semibold text-ink">Unassigned sewadars</h3><p className="mt-0.5 text-xs text-mute">These are already in the shared roster; assign them to a team or leave them unassigned.</p></div><span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-300">{unassignedSewadars.length}</span></header>
             <ul className="divide-y divide-line">{unassignedSewadars.map(person => <li key={person.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-raised text-xs font-semibold text-ink-soft">{person.name.trim().split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase()}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-ink">{person.name}</span><span className="block truncate text-xs text-mute">{[person.phone, DEPT_LABEL[person.department] || person.department, person.batchNo && `Batch ${person.batchNo}`].filter(Boolean).join(' · ') || 'No contact details'}</span></span>
-              {canManage && teamGroups.length > 0 && <select aria-label={`Assign ${person.name} to a team`} defaultValue="" onChange={e => { const selected = teamGroups.find(t => t.name === e.target.value); if (selected) void m.setTeam([person.id], selected.name, selected.lead); e.currentTarget.value = ''; }} className={rosterSelect}><option value="">Assign to team…</option>{teamGroups.map(team => <option key={team.name} value={team.name}>{team.name} · {team.members.length} members</option>)}</select>}
+              {canManage && teamGroups.length > 0 && <select aria-label={`Assign ${person.name} to a team`} defaultValue="" onChange={e => { const selected = teamGroups.find(t => t.name === e.target.value); if (selected) void m.setTeam([person.id], selected.name, selected.lead); e.currentTarget.value = ''; }} className={rosterSelect}><option value="">Assign to team…</option>{teamGroups.map(team => <option key={team.id} value={team.name}>{team.name} · {team.members.length} members</option>)}</select>}
               <div className="flex gap-1"><button className={btnGhost(D)} onClick={() => setCalling(person)} aria-label={`Call ${person.name}`}><PhoneCall className="h-3.5 w-3.5" /></button>{canManage && <button className={btnGhost(D)} onClick={() => setEditing(person)} aria-label={`Edit ${person.name}`}><Edit3 className="h-3.5 w-3.5" /></button>}</div>
             </li>)}</ul>
           </section>}
         </div> : <div className={cx(panel, 'p-10 text-center')}><Users className="mx-auto mb-3 h-7 w-7 text-faint" /><h3 className="font-semibold text-ink">No sewadars in the shared roster yet</h3><p className="mt-1 text-sm text-mute">Add members in the Members tab first. They will appear here automatically.</p><button onClick={() => setWorkspace('members')} className={cx(btnPrimary, 'mt-4')}><Users className="h-4 w-4" />Open members</button></div>}
       </section>}
 
-      {workspace === 'tasks' && <section className={cx(panel, 'overflow-hidden')}>
-        <div className="px-4 py-3 border-b border-line flex items-center justify-between gap-3">
-          <div><h2 className="text-sm font-semibold flex items-center gap-2"><ListTodo className="w-4 h-4 text-blue-400" />Team tasks</h2><p className="text-xs text-mute mt-0.5">Assign work to a member and follow it from to-do through completion.</p></div>
-          <div role="group" aria-label="Filter team tasks" className="flex shrink-0 gap-1 rounded-md border border-line bg-field p-1">
-            {([['all', 'All tasks', tasks.length], ['active', 'Active', activeTaskCount], ['completed', 'Completed', completedTaskCount]] as [TaskFilter, string, number][]).map(([key, label, count]) => <button key={key} type="button" aria-pressed={taskFilter === key} onClick={() => setTaskFilter(key)} className={cx('rounded px-2.5 py-1.5 text-[11px] font-medium', taskFilter === key ? 'bg-blue-600 text-white' : 'text-mute hover:bg-raised hover:text-ink')}>{label} <span className="ml-1 tabular-nums opacity-80">{count}</span></button>)}
+      {workspace === 'tasks' && <section className="space-y-2">
+        <div className="flex justify-end"><button type="button" className={cx(btnPrimary, 'rounded-lg px-3 py-2 text-xs')} onClick={() => { setTaskMemberQuery(''); setTaskPickerOpen(false); setTaskDialogOpen(true); }}><Plus className="h-4 w-4" />Allocate task</button></div>
+        <div className={cx(panel, 'overflow-hidden')}>
+        <div className="flex flex-col gap-3 border-b border-line px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div><h2 className="flex items-center gap-2 text-base font-semibold"><ListTodo className="h-4 w-4 text-blue-400" />Team tasks</h2><p className="mt-1 text-xs text-mute">Allocate work to a team or selected Sewadars and track progress.</p></div>
+          <div role="group" aria-label="Filter team tasks" className="flex w-full gap-1 rounded-lg border border-line bg-field p-1 sm:w-auto">
+            {([['all', 'All tasks', tasks.length], ['active', 'Active', activeTaskCount], ['completed', 'Completed', completedTaskCount]] as [TaskFilter, string, number][]).map(([key, label, count]) => <button key={key} type="button" aria-pressed={taskFilter === key} onClick={() => setTaskFilter(key)} className={cx('flex-1 rounded-md px-3 py-2 text-xs font-medium transition-colors sm:flex-none', taskFilter === key ? 'bg-blue-600 text-white shadow-sm' : 'text-mute hover:bg-raised hover:text-ink')}>{label}<span className="ml-1.5 tabular-nums opacity-80">{count}</span></button>)}
           </div>
         </div>
-        <form onSubmit={saveTask} className="p-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-2 border-b border-line">
-          <input required value={taskTitle} onChange={e => setTaskTitle(e.target.value)} placeholder="Task name" className={cx(inputCls(D), 'xl:col-span-2')} />
-          <label className="text-xs text-mute"><span className="sr-only">Assigned team</span><input list="sewadar-teams" value={taskTeam} onChange={e => setTaskTeam(e.target.value)} placeholder="Select or enter team" className={inputCls(D)} /><datalist id="sewadar-teams">{teamGroups.map(team => <option key={team.name} value={team.name}>{team.members.length} members · {team.lead || 'lead not set'}</option>)}</datalist></label>
-          {canManage ? <input value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)} placeholder="Assign to member" className={inputCls(D)} /> : <div className="px-3 py-2 text-xs text-mute">Creating for {auth.currentUser?.name}</div>}
-          <select value={taskMember} onChange={e => setTaskMember(e.target.value)} className={inputCls(D)} aria-label="Link member"><option value="">Link sewadar (optional)</option>{sewadars.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-          <div className="flex gap-2"><input type="date" value={taskDue} onChange={e => setTaskDue(e.target.value)} className={cx(inputCls(D), 'min-w-0')} aria-label="Due date" /><button disabled={taskBusy} className={btnPrimary}><Plus className="w-4 h-4" />{taskBusy ? 'Saving' : 'Add'}</button></div>
-          <textarea value={taskDetails} onChange={e => setTaskDetails(e.target.value)} placeholder="Task details (optional)" rows={1} className={cx(inputCls(D), 'md:col-span-2 xl:col-span-6')} />
-        </form>
-        <div className="divide-y divide-line max-h-80 overflow-y-auto">
-          {visibleTasks.map(t => <div key={t.id} className="px-4 py-3 flex flex-wrap items-center gap-3">
-            <span className={cx('w-2 h-2 rounded-full', t.status === 'complete' ? 'bg-emerald-400' : t.status === 'in_progress' ? 'bg-blue-400' : 'bg-amber-400')} />
-            <div className="min-w-0 flex-1"><div className="text-sm font-medium">{t.title}</div><div className="text-xs text-mute">{[t.team, t.assigned_to, t.due_date && `Due ${t.due_date}`].filter(Boolean).join(' · ') || 'Unassigned'}{t.details ? ` · ${t.details}` : ''}</div></div>
-            <span className="text-xs text-mute capitalize">{t.status.replace('_', ' ')}</span>
-            {t.status === 'todo' && <button onClick={() => setTaskStatus(t, 'in_progress')} className={btnGhost(D)}><Play className="w-3.5 h-3.5" />Start</button>}
-            {t.status === 'in_progress' && <button onClick={() => setTaskStatus(t, 'complete')} className={btnGhost(D)}><CircleCheck className="w-3.5 h-3.5" />Complete</button>}
-          </div>)}
-          {!visibleTasks.length && <div className="p-6 text-center text-xs text-mute">{tasks.length ? `No ${taskFilter} tasks.` : 'No tasks yet. Add work above to get the team started.'}</div>}
+        {taskDialogOpen && <Modal dark={D} title="Allocate task" xl onClose={() => setTaskDialogOpen(false)}><form onSubmit={saveTask} className="animate-slide-up space-y-4">
+          <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-12">
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-5">Task name<input required value={taskTitle} onChange={e => setTaskTitle(e.target.value)} placeholder="e.g. Prepare welcome desk" className={cx(inputCls(D), 'h-10 w-full')} /></label>
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4">Team<select value={taskTeam} onChange={e => { const name = e.target.value; setTaskTeam(name); const team = teamGroups.find(t => t.name === name); setTaskMembers(team ? team.members.map(person => person.id) : []); }} className={cx(inputCls(D), 'h-10 w-full')}><option value="">Choose a team</option>{teamGroups.map(team => <option key={team.id} value={team.name}>{team.name} · {team.members.length} members</option>)}</select></label>
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-2 xl:col-span-3">Due date<input type="date" value={taskDue} onChange={e => setTaskDue(e.target.value)} className={cx(inputCls(D), 'h-10 w-full')} /></label>
+            <div className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4"><span>Task owner</span>{canManage ? <input value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)} placeholder="Name (optional)" className={cx(inputCls(D), 'h-10 w-full')} /> : <div className="flex h-10 items-center rounded-md border border-line bg-field px-3 text-sm text-ink-soft">{auth.currentUser?.name || 'Current user'}</div>}</div>
+            <div className="min-w-0 md:col-span-1 xl:col-span-8"><span className="mb-1.5 block text-xs font-medium text-mute">Assign Sewadars <span className="ml-1 rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] text-blue-300">{taskMembers.length} selected</span></span><button type="button" onClick={() => { setTaskMemberQuery(''); setTaskMemberDraft(taskMembers); setTaskPickerOpen(true); }} className={cx(inputCls(D), 'flex min-h-11 items-center justify-between gap-2 text-left')}><span className="truncate">{taskMembers.length ? taskMembers.map(id => sewadars.find(person => person.id === id)?.name).filter(Boolean).join(', ') : 'Choose Sewadars'}</span><Users className="h-4 w-4 shrink-0 text-mute" /></button></div>
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-2 xl:col-span-9"><span>Task details <span className="font-normal text-faint">· optional</span></span><textarea value={taskDetails} onChange={e => setTaskDetails(e.target.value)} placeholder="Add instructions or useful context…" rows={2} className={cx(inputCls(D), 'min-h-[72px] w-full resize-y')} /></label>
+            <div className="flex items-end md:col-span-2 xl:col-span-3"><button disabled={taskBusy || !taskTitle.trim()} className={cx(btnPrimary, 'h-10 w-full justify-center disabled:cursor-not-allowed disabled:opacity-50')}><Plus className="h-4 w-4" />{taskBusy ? 'Saving task…' : 'Create task'}</button></div>
+          </div>
+        </form></Modal>}
+        {deliveryTask && <Modal dark={D} title="Complete delivery" onClose={() => setDeliveryTask(null)}><form onSubmit={completeDeliveryTask} className="animate-slide-up space-y-3">
+          <div className="rounded-lg border border-line bg-raised/40 px-3 py-2"><div className="text-sm font-semibold text-ink">{deliveryTask.title}</div><p className="mt-1 whitespace-pre-line text-xs text-mute">{deliveryTask.details}</p></div>
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-mute">Delivery location <span className="font-normal text-faint">(leave blank to use the request location)</span><select value={deliveryLocation} onChange={e => setDeliveryLocation(e.target.value)} className={inputCls(D)}><option value="">Use request location</option>{inventory.locations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-mute">Delivered to<input required value={deliveryReceivedBy} onChange={e => setDeliveryReceivedBy(e.target.value)} className={inputCls(D)} placeholder="Requester or recipient" /></label>
+          <label className="flex flex-col gap-1.5 text-xs font-medium text-mute">Note <span className="font-normal text-faint">· optional</span><textarea value={deliveryNote} onChange={e => setDeliveryNote(e.target.value)} className={inputCls(D)} rows={2} /></label>
+          <div className="flex justify-end gap-2"><button type="button" className={btnGhost(D)} onClick={() => setDeliveryTask(null)}>Cancel</button><button className={btnPrimary} disabled={busyTaskIds.has(deliveryTask.id) || !deliveryReceivedBy.trim()}>{busyTaskIds.has(deliveryTask.id) ? 'Saving…' : 'Confirm delivery'}</button></div>
+        </form></Modal>}
+        <div className="max-h-[30rem] space-y-2 overflow-y-auto p-3 sm:p-4">
+          {visibleTasks.map(t => <article key={t.id} className="animate-fade-in rounded-lg border border-line bg-surface/70 p-3 transition-colors hover:border-line-strong sm:p-4">
+            <div className="flex flex-wrap items-start gap-3">
+              <span className={cx('mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ring-4', t.status === 'complete' ? 'bg-emerald-400 ring-emerald-400/10' : t.status === 'in_progress' ? 'bg-blue-400 ring-blue-400/10' : 'bg-amber-400 ring-amber-400/10')} />
+              <div className="min-w-0 flex-1"><h3 className="text-sm font-semibold text-ink">{t.title}</h3><p className="mt-1 text-xs leading-5 text-mute">{[t.team, (t.sewadar_names || []).join(', ') || t.assigned_to, t.due_date && `Due ${t.due_date}`].filter(Boolean).join(' · ') || 'No team or owner assigned'}</p>{t.details && <p className="mt-2 text-xs leading-5 text-ink-soft">{t.details}</p>}</div>
+              <div className="ml-auto flex items-center gap-2"><span className={cx('rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize', t.status === 'complete' ? 'bg-emerald-500/10 text-emerald-300' : t.status === 'in_progress' ? 'bg-blue-500/10 text-blue-300' : 'bg-amber-500/10 text-amber-300')}>{busyTaskIds.has(t.id) ? 'Saving…' : t.status.replace('_', ' ')}</span>{t.status === 'todo' && <button disabled={busyTaskIds.has(t.id)} onClick={() => setTaskStatus(t, 'in_progress')} className={btnGhost(D)}><Play className="h-3.5 w-3.5" /><span className="hidden sm:inline">Start</span></button>}{t.status === 'in_progress' && <button disabled={busyTaskIds.has(t.id)} onClick={() => setTaskStatus(t, 'complete')} className={btnGhost(D)}><CircleCheck className="h-3.5 w-3.5" /><span className="hidden sm:inline">Complete</span></button>}{canManage && t.source === 'manpower' && <button onClick={() => void deleteTask(t)} className={cx(btnGhost(D), 'text-rose-300')} aria-label={`Remove task ${t.title}`} title="Remove task"><Trash2 className="h-3.5 w-3.5" /></button>}</div>
+            </div>
+          </article>)}
+          {!visibleTasks.length && <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center"><ListTodo className="mx-auto h-6 w-6 text-faint" /><p className="mt-2 text-sm font-medium text-ink">{tasks.length ? `No ${taskFilter} tasks` : 'No tasks yet'}</p><p className="mt-1 text-xs text-mute">{tasks.length ? 'Try another filter to see more work.' : 'Create a task above to get the team started.'}</p></div>}
+        </div>
         </div>
       </section>}
+
+      {taskDialogOpen && taskPickerOpen && <Modal dark={D} title="Select Sewadars for task" wide onClose={() => setTaskPickerOpen(false)}>
+        <div className="animate-slide-up space-y-4">
+          <p className="text-sm text-mute">Search the roster and choose the people who should receive this task.</p>
+          <label className="relative block"><Search className="absolute left-3 top-3 h-4 w-4 text-faint" /><input autoFocus value={taskMemberQuery} onChange={e => setTaskMemberQuery(e.target.value)} placeholder="Search Sewadars" className={cx(inputCls(D), 'pl-9')} /></label>
+          <div className="flex items-center justify-between gap-3"><span className="text-xs font-medium text-mute">{taskMemberDraft.length} selected · {sewadars.length} available</span><div className="flex gap-2"><button type="button" className={cx(btnGhost(D), 'py-1.5')} onClick={() => setTaskMemberDraft(sewadars.filter(person => person.name.toLowerCase().includes(taskMemberQuery.trim().toLowerCase())).map(person => person.id))} disabled={!sewadars.length}>Select shown</button><button type="button" className={cx(btnGhost(D), 'py-1.5')} onClick={() => setTaskMemberDraft([])} disabled={!taskMemberDraft.length}>Clear</button></div></div>
+          <div className="max-h-[min(42vh,360px)] overflow-y-auto rounded-xl border border-line bg-field/50 p-2">
+            {sewadars.filter(person => person.name.toLowerCase().includes(taskMemberQuery.trim().toLowerCase())).length ? <div className="grid gap-1 sm:grid-cols-2">{sewadars.filter(person => person.name.toLowerCase().includes(taskMemberQuery.trim().toLowerCase())).map(person => <label key={person.id} className={cx('flex min-w-0 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors', taskMemberDraft.includes(person.id) ? 'border-blue-500/40 bg-blue-500/10 text-ink' : 'border-transparent text-ink-soft hover:border-line hover:bg-raised')}><input type="checkbox" checked={taskMemberDraft.includes(person.id)} onChange={e => setTaskMemberDraft(current => e.target.checked ? [...current, person.id] : current.filter(id => id !== person.id))} className="h-4 w-4 accent-blue-500" /><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-raised text-xs font-semibold">{person.name.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</span><span className="truncate">{person.name}</span></label>)}</div> : <p className="px-3 py-8 text-center text-sm text-mute">{sewadars.length ? 'No Sewadars match that search.' : 'Add a Sewadar to the roster first.'}</p>}
+          </div>
+          <div className="flex justify-end gap-2 border-t border-line pt-3"><button type="button" className={btnGhost(D)} onClick={() => setTaskPickerOpen(false)}>Cancel</button><button type="button" className={btnPrimary} onClick={() => { setTaskMembers(taskMemberDraft); setTaskPickerOpen(false); }}>{`Use ${taskMemberDraft.length} selected`}</button></div>
+        </div>
+      </Modal>}
+
+      {activeTeam && canManage && <Modal dark={D} title={`Add members to ${activeTeam.name}`} wide onClose={() => { setActiveTeamId(''); setTeamMemberSelection([]); }}>
+        <div className="animate-slide-up space-y-4">
+          <p className="text-sm text-mute">Choose Sewadars from the shared roster. They stay in the roster if you later remove them from this team.</p>
+          <label className="relative block"><Search className="absolute left-3 top-3 h-4 w-4 text-faint" /><input autoFocus value={teamMemberQuery} onChange={e => setTeamMemberQuery(e.target.value)} placeholder="Search Sewadars" className={cx(inputCls(D), 'pl-9')} /></label>
+          <div className="flex items-center justify-between gap-3"><span className="text-xs font-medium text-mute">{teamMemberSelection.length} selected · {eligibleTeamMembers.length} available</span><div className="flex gap-2"><button type="button" className={cx(btnGhost(D), 'py-1.5')} onClick={() => setTeamMemberSelection(visibleTeamMembers.map(person => person.id))} disabled={!visibleTeamMembers.length}>Select shown</button><button type="button" className={cx(btnGhost(D), 'py-1.5')} onClick={() => setTeamMemberSelection([])} disabled={!teamMemberSelection.length}>Clear</button></div></div>
+          <div className="max-h-[min(42vh,360px)] overflow-y-auto rounded-xl border border-line bg-field/50 p-2">
+            {visibleTeamMembers.length ? <div className="grid gap-1 sm:grid-cols-2">{visibleTeamMembers.map(person => <label key={person.id} className={cx('flex min-w-0 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors', teamMemberSelection.includes(person.id) ? 'border-blue-500/40 bg-blue-500/10 text-ink' : 'border-transparent text-ink-soft hover:border-line hover:bg-raised')}><input type="checkbox" checked={teamMemberSelection.includes(person.id)} onChange={e => setTeamMemberSelection(current => e.target.checked ? [...current, person.id] : current.filter(id => id !== person.id))} className="h-4 w-4 accent-blue-500" /><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-raised text-xs font-semibold">{person.name.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</span><span className="truncate">{person.name}</span></label>)}</div> : <p className="px-3 py-8 text-center text-sm text-mute">{eligibleTeamMembers.length ? 'No Sewadars match that search.' : 'All roster members are already in this team.'}</p>}
+          </div>
+          <div className="flex justify-end gap-2 border-t border-line pt-3"><button type="button" className={btnGhost(D)} onClick={() => { setActiveTeamId(''); setTeamMemberSelection([]); }}>Cancel</button><button type="button" disabled={!teamMemberSelection.length || teamBusy} className={cx(btnPrimary, 'min-w-36 disabled:opacity-50')} onClick={async () => { setTeamBusy(true); const ok = await m.setTeam(teamMemberSelection, activeTeam.name, activeTeam.lead); setTeamBusy(false); if (ok) { setTeamMemberSelection([]); setActiveTeamId(''); setTeamMemberQuery(''); } }}>{teamBusy ? <><LoaderCircle className="h-4 w-4 animate-spin" />Adding members…</> : <><UserPlus className="h-4 w-4" />Add {teamMemberSelection.length || ''} members</>}</button></div>
+        </div>
+      </Modal>}
 
       {/* Compact member search and single-row filters */}
       {workspace === 'members' && <>
@@ -269,11 +372,11 @@ export const ManpowerApp: React.FC = () => {
           {view.map(s => {
             const arrivalLabel = s.arrival === 'arrived' ? `Arrived${clock(s.arrivedAt) ? ` · ${clock(s.arrivedAt)}` : ''}` : s.arrival === 'not_coming' ? 'Not coming' : 'Expected';
             const address = [s.address, s.address2].filter(Boolean).join(', ');
-            const cells = [s.batchNo,s.name,s.memberType === 'salary_based' ? 'Salary based' : s.memberType,s.phone,s.branch,address,DEPT_LABEL[s.department] || s.department,s.teamName,s.shift ? s.shift[0].toUpperCase() + s.shift.slice(1) : '',s.expectedArrival,arrivalLabel,s.badgeIssued ? 'Issued' : 'Pending',`${s.callCount} call${s.callCount === 1 ? '' : 's'}`];
+            const cells = [s.batchNo,s.name,s.memberType === 'salary_based' ? 'Salary based' : s.memberType,s.phone,s.branch,address,DEPT_LABEL[s.department] || s.department,(s.teams || []).join(', '),s.shift ? s.shift[0].toUpperCase() + s.shift.slice(1) : '',s.expectedArrival,arrivalLabel,s.badgeIssued ? 'Issued' : 'Pending',`${s.callCount} call${s.callCount === 1 ? '' : 's'}`];
             return <tr key={s.id} className={cx('hover:bg-raised/50', sel.has(s.id) && 'bg-blue-500/5')}>
               {canManage && <td className="border-r border-line px-2 py-1.5"><input type="checkbox" aria-label={`Select ${s.name}`} checked={sel.has(s.id)} onChange={() => toggle(s.id)} className="rounded" /></td>}
               {cells.map((value, i) => <td key={i} title={value || ''} className={cx('max-w-[200px] truncate whitespace-nowrap border-r border-line/70 px-2 py-1.5', i === 1 ? 'font-semibold text-ink' : 'text-ink-soft', i === 10 && s.arrival === 'arrived' && 'text-emerald-300', i === 10 && s.arrival === 'not_coming' && 'text-rose-300', i === 11 && (s.badgeIssued ? 'text-emerald-300' : 'text-amber-300'))}>{i === 8 && canManage ? <select aria-label={`Shift for ${s.name}`} value={s.shift} onChange={e => void m.update(s.id, { ...sewadarInput(s), shift: e.target.value as SewadarInput['shift'] })} className="rounded border border-line bg-field px-1.5 py-1 text-[10px] text-ink"><option value="">—</option><option value="night">Night</option><option value="morning">Morning</option></select> : i === 3 && s.phone ? <a href={`tel:${s.phone}`} className="hover:text-blue-300">{value}</a> : value || '—'}</td>)}
-              <td className="sticky right-0 border-b border-line bg-surface px-2 py-1"><div className="flex items-center gap-1"><button className="rounded px-2 py-1 text-[10px] font-medium text-blue-300 hover:bg-blue-500/10" onClick={() => setCalling(s)}>Call</button>{canManage && <button className="rounded px-2 py-1 text-[10px] font-medium text-ink-soft hover:bg-raised" onClick={() => setEditing(s)}>Edit</button>}</div></td>
+              <td className="border-b border-line bg-surface px-2 py-1"><div className="flex items-center gap-1"><button className="rounded px-2 py-1 text-[10px] font-medium text-blue-300 hover:bg-blue-500/10" onClick={() => setCalling(s)}>Call</button>{canManage && <button className="rounded px-2 py-1 text-[10px] font-medium text-ink-soft hover:bg-raised" onClick={() => setEditing(s)}>Edit</button>}</div></td>
             </tr>;
           })}
           </tbody>
@@ -302,6 +405,7 @@ export const ManpowerApp: React.FC = () => {
       {importing && <ImportModal onClose={() => setImporting(false)} />}
       {confirmDel && <ConfirmModal dark={D} title={`Delete ${sel.size} sewadar(s)?`} body="They and their call history will be permanently removed." confirmLabel="Delete" onConfirm={async () => { if (await m.remove(ids)) setSel(new Set()); }} onClose={() => setConfirmDel(false)} />}
       </>}
+      {taskToDelete && <ConfirmModal dark={D} title="Remove this task?" body={`“${taskToDelete.title}” will be deleted from the team task board.`} confirmLabel="Remove task" onConfirm={() => void confirmDeleteTask()} onClose={() => setTaskToDelete(null)} />}
     </div>
   );
 };
@@ -310,20 +414,20 @@ export const ManpowerApp: React.FC = () => {
 const emptySewadar = (): SewadarInput => ({
   name: '', memberType: 'salary_based', serialNo: '', batchNo: '', phone: '', department: '', relation: '', relationName: '',
   villageCity: '', branch: '', occupation: '', remarks: '', joiningDate: '', employeeCode: '', employeeId: '', address: '', address2: '',
-  expectedArrival: '', teamName: '', teamLead: '', shift: '', deviceType: 'none', deviceRef: '',
+  expectedArrival: '', teamName: '', teamLead: '', teams: [], shift: '', deviceType: 'none', deviceRef: '',
 });
 
 const sewadarInput = (s: Sewadar): SewadarInput => ({
   name: s.name, memberType: s.memberType, serialNo: s.serialNo, batchNo: s.batchNo, phone: s.phone, department: s.department,
   relation: s.relation, relationName: s.relationName, villageCity: s.villageCity, branch: s.branch, occupation: s.occupation,
   remarks: s.remarks, joiningDate: s.joiningDate, employeeCode: s.employeeCode, employeeId: s.employeeId, address: s.address,
-  address2: s.address2, expectedArrival: s.expectedArrival, teamName: s.teamName, teamLead: s.teamLead, shift: s.shift,
+  address2: s.address2, expectedArrival: s.expectedArrival, teamName: s.teamName, teamLead: s.teamLead, teams: s.teams || (s.teamName ? [s.teamName] : []), shift: s.shift,
   deviceType: s.deviceType, deviceRef: s.deviceRef,
 });
 
 const SewadarForm: React.FC<{
   initial: Sewadar | null;
-  teams: { name: string; lead: string; members: Sewadar[] }[];
+  teams: { id: string; name: string; lead: string; members: Sewadar[] }[];
   onClose: () => void;
   onSave: (i: SewadarInput) => Promise<boolean>;
   onDelete?: () => Promise<boolean>;
@@ -337,7 +441,7 @@ const SewadarForm: React.FC<{
     department: initial.department, relation: initial.relation, relationName: initial.relationName, villageCity: initial.villageCity,
     branch: initial.branch, occupation: initial.occupation, remarks: initial.remarks, joiningDate: initial.joiningDate,
     employeeCode: initial.employeeCode, employeeId: initial.employeeId, address: initial.address, address2: initial.address2,
-    expectedArrival: initial.expectedArrival, teamName: initial.teamName, teamLead: initial.teamLead, shift: initial.shift,
+    expectedArrival: initial.expectedArrival, teamName: initial.teamName, teamLead: initial.teamLead, teams: initial.teams || (initial.teamName ? [initial.teamName] : []), shift: initial.shift,
     deviceType: initial.deviceType, deviceRef: initial.deviceRef,
   }) : emptySewadar());
   const [busy, setBusy] = useState(false);
@@ -373,8 +477,7 @@ const SewadarForm: React.FC<{
         <section className="space-y-3 border-t border-line pt-4"><h3 className="text-xs font-semibold uppercase tracking-wider text-mute">Sewa and team assignment</h3><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="text-xs text-mute">Department<select value={f.department} onChange={e => set('department', e.target.value)} className={cx(inputCls(D), 'mt-1')}><option value="">Not assigned</option>{DEPT_OPTIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
           {field('joiningDate', 'Sewa joining / promised date', 'date')}{field('expectedArrival', 'Expected arrival', 'date')}
-          <label className="text-xs text-mute">Team<input list="sewadar-member-teams" value={f.teamName} onChange={e => { const value = e.target.value; const existing = teams.find(team => team.name.toLocaleLowerCase() === value.trim().toLocaleLowerCase()); setF(p => ({ ...p, teamName: value, teamLead: existing?.lead || p.teamLead })); }} placeholder="Select an existing team or type a new name" className={cx(inputCls(D), 'mt-1')} /><datalist id="sewadar-member-teams">{teams.map(team => <option key={team.name} value={team.name}>{team.members.length} members · {team.lead || 'lead not set'}</option>)}</datalist></label>
-          {field('teamLead', 'Team lead')}
+          <fieldset className="text-xs text-mute sm:col-span-2"><legend className="mb-1">Teams (choose any that apply)</legend><div className="grid max-h-36 grid-cols-1 gap-1 overflow-auto rounded-md border border-line bg-field p-2 sm:grid-cols-2">{teams.map(team => <label key={team.id} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 hover:bg-raised"><input type="checkbox" checked={(f.teams || []).some(n => n.toLowerCase() === team.name.toLowerCase())} onChange={e => setF(p => { const next = e.target.checked ? Array.from(new Set([...(p.teams || []), team.name])) : (p.teams || []).filter(n => n.toLowerCase() !== team.name.toLowerCase()); return { ...p, teams: next, teamName: next[0] || '', teamLead: teams.find(t => t.name === next[0])?.lead || '' }; })} />{team.name}{team.lead && <span className="ml-auto text-[10px] text-faint">Lead: {team.lead}</span>}</label>)}{!teams.length && <span className="text-faint">Create teams in the Teams tab first.</span>}</div></fieldset>
           <label className="text-xs text-mute">Shift<select value={f.shift} onChange={e => set('shift', e.target.value as SewadarInput['shift'])} className={cx(inputCls(D), 'mt-1')}><option value="">Not set</option><option value="night">Night</option><option value="morning">Morning</option></select></label>
           <label className="text-xs text-mute">Issued device<select value={f.deviceType} onChange={e => set('deviceType', e.target.value as DeviceType)} className={cx(inputCls(D), 'mt-1')}>{DEVICES.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}</select></label>
           {field('deviceRef', 'Device ID / serial')}
@@ -543,7 +646,7 @@ const parseSewadarImport = (text: string, defaultType: SewadarMemberType): Sewad
     const shift: SewadarInput['shift'] = shiftValue === 'night' ? 'night' : shiftValue === 'morning' ? 'morning' : '';
     return {
       ...emptySewadar(), name: cell(values, 'name', 0), phone: cell(values, 'phone', 1), department: department?.[0] || '', memberType: type,
-      joiningDate, expectedArrival, batchNo: cell(values, 'batchNo', 5), teamName: cell(values, 'teamName', 6), teamLead: cell(values, 'teamLead', 7),
+              joiningDate, expectedArrival, batchNo: cell(values, 'batchNo', 5), teamName: cell(values, 'teamName', 6), teamLead: cell(values, 'teamLead', 7), teams: cell(values, 'teamName', 6) ? [cell(values, 'teamName', 6)] : [],
       shift,
       villageCity: cell(values, 'villageCity', 8), branch: cell(values, 'branch', 9), occupation: cell(values, 'occupation', 10), remarks: cell(values, 'remarks', 11),
       serialNo: cell(values, 'serialNo', 12), relation: cell(values, 'relation', 13), relationName: cell(values, 'relationName', 14),

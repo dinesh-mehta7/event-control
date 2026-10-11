@@ -23,7 +23,7 @@ const SUB_DEPTS = [
 ];
 
 export default function UsersView({ embedded = false }) {
-  const { allProfiles, fetchAllUsers, updateUserRole, updateUserHierarchy, setUserActive, approveUser, denyUser, settings, currentUser } = useApp();
+  const { allProfiles, fetchAllUsers, updateUserRole, updateUserHierarchy, setUserActive, approveUser, denyUser, settings, currentUser, departments = [] } = useApp();
   const isDark = settings.theme === 'dark';
   const [search, setSearch] = useState('');
 
@@ -182,7 +182,7 @@ export default function UsersView({ embedded = false }) {
                     <select
                       aria-label={`Access level for ${p.name}`}
                       value={p.level || 'other'}
-                      onChange={(e) => updateUserHierarchy(p.id, e.target.value, p.subDepartment)}
+                      onChange={(e) => updateUserHierarchy(p.id, e.target.value, p.subDepartment, p.departmentId)}
                       className={`text-xs font-semibold rounded-lg px-2 py-1.5 border outline-none ${isDark ? 'bg-slate-950 border-slate-700' : 'bg-white border-slate-200'}`}
                     >
                       {LEVELS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
@@ -196,6 +196,17 @@ export default function UsersView({ embedded = false }) {
                       >
                         <option value="">Pick department…</option>
                         {SUB_DEPTS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+                      </select>
+                    )}
+                    {p.level === 'dept_head' && (
+                      <select
+                        aria-label={`Owned department for ${p.name}`}
+                        value={p.departmentId || ''}
+                        onChange={(e) => updateUserHierarchy(p.id, p.level, p.subDepartment, e.target.value)}
+                        className={`text-xs rounded-lg px-2 py-1.5 border outline-none ${isDark ? 'bg-slate-950 border-slate-700' : 'bg-white border-slate-200'}`}
+                      >
+                        <option value="">Assign department…</option>
+                        {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                       </select>
                     )}
                   </div>

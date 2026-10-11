@@ -17,14 +17,26 @@ Everything below is a one-time setup. Takes about 15 minutes.
 2. Click **New Project**. Pick any name/region, set a database password (save it somewhere).
 3. Wait ~2 minutes for the project to finish provisioning.
 
-## 2. Run the database schema
+## 2. Set up the database
 
-1. In your Supabase project, open **SQL Editor** (left sidebar).
-2. Click **New query**.
-3. Open `supabase/schema.sql` from this project, copy the whole file, paste it into the editor, click **Run**.
-4. Click **New query** again, open `supabase/auth_hardening.sql`, copy the whole
-   file, paste it in, and **Run** it too.
-5. Then run these, one at a time, in this order (every one can be re-run safely):
+### New Supabase project
+
+For a fresh database, run **one file**:
+
+1. In your Supabase project, open **SQL Editor** and click **New query**.
+2. Open `supabase/setup.sql`, copy the whole file into the editor, and click **Run**.
+
+`setup.sql` contains the base schema, auth hardening, and the current migrations in
+the required order. This is the easiest path for a new project.
+
+### Existing Supabase project
+
+Do **not** run `setup.sql` on an existing project. Keep its data and apply only
+the migration files it has not received yet, in version order. Each migration
+file remains available below as the upgrade history; migration v16 needs v11–v15
+first.
+
+The migration inventory is:
 
    | File | Adds |
    |---|---|
@@ -50,8 +62,9 @@ Everything below is a one-time setup. Takes about 15 minutes.
    | `migration_v28_request_it_owner_approval.sql` | Request approvals: branch head → IT owner → organization owner; refreshes open requests into the IT review queue |
    | `migration_v29_meeting_minutes.sql` | Meeting minutes stored with each meeting and organizer/owner edit permission |
 
-   `migration_v16` needs v11–v15 first (it reads inventory, purchase, notifications and the history table).
-6. Accommodation permissions (set in the app under **Settings -> Team & Users ->
+`migration_v16` needs v11–v15 first (it reads inventory, purchase, notifications and the history table).
+
+Accommodation permissions (set in the app under **Settings -> Team & Users ->
    Access level**, or with SQL — see the bottom of `migration_v7_accommodation.sql`):
    - **Owner** can add/edit/delete rooms and members and move people between rooms.
    - **Sub-dept head + Accommodation** can edit the meal menu and the live status.
@@ -232,3 +245,57 @@ Adds targeted audiences for meetings and emergency calls: IT staff, Regular and 
 
 ## migration_v32_member_issue_reports.sql
 Adds a portal form for material problems and site/event complaints, private member report history, team issue inbox access, and status notifications. Run after migration_v15_access_meetings.sql.
+
+## migration_v36_department_admin_arrangement.sql
+Run after migrations v16–v19. Restricts request source decisions (stock, purchase, or Walkie pool) to the Super Admin and Department Admin. Sector teams can still carry out delivery, and purchase allocations continue into the shared Procurement buy list.
+
+## migration_v37_request_admin_budget_departments.sql
+Run after migration_v36. New requests go first to the Department Admin, who can approve with a per-unit budget, reject, or escalate to the Super Admin. Escalated requests retain the Super Admin's quantity and budget review. Requests store the selected department ID from the Walkie Departments list, so department names and channel numbers stay synced.
+
+## migration_v38_walkie_serial_optional.sql
+Run after the Walkie schema migrations. Walkie serial numbers are no longer collected or displayed; this makes the database field optional and removes its uniqueness constraint. Existing serial values remain stored for legacy records.
+
+## migration_v39_request_arrangement_returns.sql
+Requesters choose whether each item is returned after use or purchased to keep. This migration adds the return and inventory-arrangement support; migration v40 defines the saved approval plan and budget behavior used by the current request flow.
+
+## migration_v40_request_review_plan.sql
+Department Admins review requests, set approved quantities, unit item budgets and an optional miscellaneous addition, and prepare the inventory/purchase plan. The saved plan can be approved directly or escalated unchanged to Super Admin. Approval reserves inventory and routes purchase quantities to Procurement.
+
+## migration_v41_request_routing_to_it_admin.sql
+All requests go to the IT Department Head for review, regardless of the selected department. The selected department remains attached to the request for reporting and fulfilment. Run after migration_v40_request_review_plan.sql.
+
+## migration_v42_request_misc_items.sql
+Adds a miscellaneous item description next to the IT Department Head's miscellaneous budget addition. The description and amount are saved with the review plan and shown in request details and exports. Run after migration_v41_request_routing_to_it_admin.sql.
+
+## migration_v43_fix_cross_department_request_review.sql
+Fixes request review so the IT Department Head can review requests from any selected department. The request keeps its originating department for reporting and fulfilment; all active IT Department Heads receive review notifications. Run after migrations v41 and v42.
+
+## migration_v44_require_arrangement_before_escalation.sql
+Requires the IT Department Head to confirm the stock quantity for each approved item before approval or escalation. Enter 0 to confirm the item should be purchased in full. Super Admin receives the saved budget and arrangement plan for final approval. Run after migration_v43_fix_cross_department_request_review.sql.
+
+## migration_v45_super_admin_three_actions.sql
+Limits Super Admin request review to Approve, Send back, or Reject. Approval commits the IT Department Head's saved review plan without requesting another decision.
+
+## migration_v46_request_delivery_tasks.sql
+Run after migration_v45_super_admin_three_actions.sql. The IT Department Head assigns delivery to a Sewadar team or IT Sewadar while reviewing the request. Approval creates delivery tasks for stock and Walkie items; purchased item tasks appear after Procurement records those goods as received. Completing a linked task records the handover on the request and issues inventory stock from the selected store location.
+
+## migration_v47_purchase_delivery_tracking.sql
+Adds shipment tracking records to purchase orders. Purchase staff can connect an Amazon, Flipkart, or other marketplace order using its carrier tracking number; AfterShip webhook events update the order and request screens automatically. Received goods are added to Inventory, creating a catalogue entry if needed. Deploy `aftership-register-tracking` and `aftership-webhook` with the Supabase CLI, add `AFTERSHIP_API_KEY` and `AFTERSHIP_WEBHOOK_SECRET` under Supabase Edge Function secrets, then configure AfterShip to post webhooks to `https://<project-ref>.supabase.co/functions/v1/aftership-webhook`. Marketplace order numbers alone do not provide carrier scans; a carrier tracking number is needed.
+
+## migration_v48_assign_delivery_after_approval.sql
+Moves delivery assignment to after final approval. The IT Department Head can assign an approved request to a team or IT Sewadar; stock delivery tasks are created immediately, while purchased-item tasks are created once the goods are received. Apply after migration_v47.
+
+## migration_v49_procurement_no_owner_order_approval.sql
+Separates Procurement into its own sidebar workspace and removes post-request Super Admin approval queues. Purchase enters vendor/rate details, places the order manually, then records it as ordered; payment requests become ready to pay directly. Shipment tracking and receiving continue in Procurement. Apply after migration_v48.
+
+## migration_v50_fix_delivery_assignment.sql
+Fixes delivery task assignment failing on a PL/pgSQL record/alias name collision. Apply after migration_v49.
+
+## migration_v51_vendor_order_mode.sql
+Adds an Online/Offline mode to purchase orders. Online placed orders expose marketplace delivery tracking; offline orders do not. Existing placed orders keep tracking available. Apply after migration_v50.
+
+## migration_v52_vendor_categories.sql
+Adds an Online/Offline category to each vendor. Procurement order mode follows the selected vendor's category. Existing vendors remain uncategorized until edited. Apply after migration_v51.
+
+## migration_v54_order_tracking_stage.sql
+Adds staged online-order tracking and IT Department Head notifications. Purchase can save an order ID before dispatch, then attach the courier AWB later for AfterShip status updates. Notifications are sent when the order is saved, courier tracking starts, and delivery status/checkpoints change. Apply after migration_v52. Deploy `aftership-register-tracking` and `aftership-webhook`; `supabase/config.toml` allows the signed webhook endpoint without a Supabase JWT. Configure the AfterShip API key, webhook secret, and webhook URL as described for migration_v47. Buyer-account marketplace order IDs are references; live scans begin once the courier AWB is available. The same migration is included in `setup.sql` for new databases.

@@ -1,6 +1,44 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Radio, BatteryCharging, Headphones, Wrench, Pencil } from 'lucide-react';
+import * as XLSX from 'xlsx';
+
+function StockBreakdownChart({ title, total, out, free, fix, dark }) {
+  const radius = 38;
+  const circumference = 2 * Math.PI * radius;
+  const segments = [
+    { label: 'Allocated', value: out, color: '#3b82f6' },
+    { label: 'Available', value: free, color: '#10b981' },
+    { label: 'Maintenance', value: fix, color: '#f59e0b' },
+  ];
+  let offset = 0;
+
+  return (
+    <div className="my-3 flex min-h-[104px] items-center justify-center gap-4" role="group" aria-label={`${title} stock breakdown`}>
+      <div className="relative h-24 w-24 shrink-0">
+        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90" aria-hidden="true">
+          <circle cx="50" cy="50" r={radius} fill="none" stroke={dark ? '#3a3a3d' : '#e2e8f0'} strokeWidth="10" />
+          {segments.map(segment => {
+            const length = total > 0 ? Math.min(segment.value, total) / total * circumference : 0;
+            const segmentOffset = offset;
+            offset += length;
+            return <circle key={segment.label} cx="50" cy="50" r={radius} fill="none" stroke={segment.color} strokeWidth="10"
+              strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-segmentOffset} />;
+          })}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center" aria-hidden="true">
+          <strong className="text-xl font-bold leading-none">{total}</strong><span className="mt-1 text-[9px] text-slate-400">total</span>
+        </div>
+      </div>
+      <dl className="min-w-[112px] space-y-2 text-xs">
+        {segments.map(segment => <div key={segment.label} className="flex items-center justify-between gap-3">
+          <dt className="flex items-center gap-1.5 text-slate-400"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: segment.color }} />{segment.label}</dt>
+          <dd className="font-semibold tabular-nums">{segment.value}</dd>
+        </div>)}
+      </dl>
+    </div>
+  );
+}
 
 export default function DashboardView() {
   const { walkies, departments, allocations, history, settings, currentUser, inventorySettings: inv, allocatedChargers, allocatedEarphones, availableChargers, availableEarphones, updateStock } = useApp();
@@ -27,6 +65,12 @@ export default function DashboardView() {
     return { id: d.id, name: d.name, w: walkies.filter(x => x.departmentId === d.id && x.status === 'Allocated').length,
       c: mine.reduce((t, a) => t + (a.chargerCount || 0), 0), e: mine.reduce((t, a) => t + (a.earphoneCount || 0), 0) };
   });
+  const downloadDepartmentAllocations = () => {
+    const sheet = XLSX.utils.json_to_sheet(rows.map(({ name, w, c, e }) => ({ Department: name, Walkies: w, Chargers: c, Earphones: e })));
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, 'Department allocations');
+    XLSX.writeFile(book, 'department-allocations.xlsx');
+  };
   const inp = `w-20 px-2 py-1 rounded-lg border text-sm ${dark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-300'}`;
 
   return (
@@ -40,11 +84,7 @@ export default function DashboardView() {
                 <button title="Edit stock" onClick={() => { setEdit(edit === key ? null : key); setForm({ total, fix }); }} className="p-1 text-slate-400 hover:text-blue-500"><Pencil className="w-4 h-4" /></button>
               )}
             </div>
-            <div className="grid grid-cols-3 text-center">
-              {[['Total', total, ''], ['Allocated', out, 'text-blue-500'], ['Available', free, 'text-emerald-500']].map(([l, v, c]) => (
-                <div key={l}><div className={`text-3xl font-bold ${c}`}>{v}</div><div className={`text-xs mt-1 ${sub}`}>{l}</div></div>
-              ))}
-            </div>
+            <StockBreakdownChart title={title} total={total} out={out} free={free} fix={fix} dark={dark} />
             <div className={`mt-4 pt-3 border-t flex items-center gap-2 text-xs ${dark ? 'border-slate-800' : 'border-slate-100'} ${fix ? 'text-amber-500' : sub}`}>
               <Wrench className="w-3.5 h-3.5" />{fix} under maintenance
             </div>
@@ -61,7 +101,13 @@ export default function DashboardView() {
 
       <div className="grid lg:grid-cols-2 gap-4">
         <section className={`${box} p-5 flex flex-col h-96`}>
-          <h2 className="font-semibold text-sm mb-3">Department allocations</h2>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h2 className="font-semibold text-sm">Department allocations</h2>
+            <button type="button" onClick={downloadDepartmentAllocations} title="Download Excel workbook" aria-label="Download department allocations as Excel"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-ink-soft transition-[background-color,transform,opacity] duration-200 ease-out hover:bg-raised hover:-translate-y-px active:scale-[0.98]">
+              <span aria-hidden="true">📥</span><span>Excel</span>
+            </button>
+          </div>
           <div className={`grid grid-cols-4 text-xs pb-2 border-b ${sub} ${dark ? 'border-slate-800' : 'border-slate-100'}`}><span>Department</span><span className="text-center">Walkies</span><span className="text-center">Chargers</span><span className="text-center">Earphones</span></div>
           <div className="flex-1 overflow-y-auto">
             {rows.map(r => (

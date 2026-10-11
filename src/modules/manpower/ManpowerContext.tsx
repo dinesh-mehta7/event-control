@@ -11,7 +11,7 @@ const mapSewadar = (r: any): Sewadar => ({
   relation: r.relation || '', relationName: r.relation_name || '', villageCity: r.village_city || '', branch: r.branch || '',
   occupation: r.occupation || '', remarks: r.remarks || '', joiningDate: r.joining_date || '', employeeCode: r.employee_code || '',
   employeeId: r.employee_id || '', address: r.address || '', address2: r.address2 || '', expectedArrival: r.expected_arrival || '',
-  teamName: r.team_name || '', teamLead: r.team_lead || '', shift: r.shift || '',
+  teamName: r.team_name || '', teamLead: r.team_lead || '', teams: Array.isArray(r.team_names) && r.team_names.length ? r.team_names : (r.team_name ? [r.team_name] : []), shift: r.shift || '',
   deviceType: r.device_type || 'none', deviceRef: r.device_ref || '',
   arrival: r.arrival_status || r.arrival || 'pending', arrivedAt: r.arrived_at || null,
   badgeIssued: !!r.badge_issued, badgeAt: r.badge_at || null,
@@ -28,12 +28,12 @@ const chunk = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length
 const friendlyError = (error: any): string => {
   const msg: string = error?.message || 'Unknown error';
   if (/row-level security|permission denied/i.test(msg)) return "You don't have permission to do that.";
-  if (error?.code === '23505' || /duplicate key/i.test(msg)) return 'That phone number is already in the list.';
+  if (error?.code === '23505' || /duplicate key/i.test(msg)) return 'A record with those details already exists.';
   if (/schema cache|does not exist|could not find/i.test(msg)) return `${msg} — run supabase/migration_v26_shared_member_roster.sql in the Supabase SQL Editor, then reload.`;
   return msg;
 };
 
-export interface SewadarInput extends Pick<Sewadar, 'name' | 'memberType' | 'serialNo' | 'batchNo' | 'phone' | 'department' | 'relation' | 'relationName' | 'villageCity' | 'branch' | 'occupation' | 'remarks' | 'joiningDate' | 'employeeCode' | 'employeeId' | 'address' | 'address2' | 'expectedArrival' | 'teamName' | 'teamLead' | 'shift' | 'deviceType' | 'deviceRef'> {}
+export interface SewadarInput extends Pick<Sewadar, 'name' | 'memberType' | 'serialNo' | 'batchNo' | 'phone' | 'department' | 'relation' | 'relationName' | 'villageCity' | 'branch' | 'occupation' | 'remarks' | 'joiningDate' | 'employeeCode' | 'employeeId' | 'address' | 'address2' | 'expectedArrival' | 'teamName' | 'teamLead' | 'teams' | 'shift' | 'deviceType' | 'deviceRef'> {}
 export interface Stats { total: number; toCall: number; awaiting: number; arrived: number; notComing: number; badgePending: number; badgeIssued: number; withDevice: number }
 
 interface Ctx {
@@ -46,6 +46,9 @@ interface Ctx {
   setBadge: (ids: string[], issued: boolean) => Promise<boolean>;
   setDepartment: (ids: string[], department: string) => Promise<boolean>;
   setTeam: (ids: string[], teamName: string, teamLead: string) => Promise<boolean>;
+  removeFromTeam: (id: string, teamName: string) => Promise<boolean>;
+  teams: { id: string; name: string; lead: string }[];
+  createTeam: (name: string, lead: string) => Promise<boolean>;
   logCall: (id: string, outcome: CallOutcome, note: string) => Promise<boolean>;
   fetchCalls: (id: string) => Promise<CallLog[]>;
 }
@@ -60,6 +63,7 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const canManage = ready && (user.level === 'owner' || user.level === 'dept_head' || ['sewadars','accommodation'].includes(user.subDepartment));
 
   const [sewadars, setSewadars] = useState<Sewadar[]>([]);
+  const [teams, setTeams] = useState<{ id: string; name: string; lead: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const ref = useRef(sewadars); ref.current = sewadars;
@@ -78,11 +82,16 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       out.push(...(r.data || []));
       if (!r.data || r.data.length < 1000) break;
     }
-    if (error) setLoadError(friendlyError(error)); else { setLoadError(''); setSewadars(out.map(mapSewadar).sort(sortSewadars)); }
+    if (error) setLoadError(friendlyError(error)); else {
+      const teamRows = await supabase.from('manpower_teams').select('*').order('name');
+      if (teamRows.error) setLoadError(`${friendlyError(teamRows.error)} — run supabase/migration_v35_sewadar_teams_and_task_members.sql.`);
+      else { setLoadError(''); setTeams((teamRows.data || []).map((t: any) => ({ id: t.id, name: t.name, lead: t.lead || '' }))); }
+      setSewadars(out.map(mapSewadar).sort(sortSewadars));
+    }
     setLoading(false);
   }, [ready]);
 
-  useEffect(() => { if (!ready) { setSewadars([]); setLoadError(''); return; } load(); }, [ready, orgId]); // eslint-disable-line
+  useEffect(() => { if (!ready) { setSewadars([]); setTeams([]); setLoadError(''); return; } load(); }, [ready, orgId]); // eslint-disable-line
 
   const upsert = (list: Sewadar[], item: Sewadar) => [...list.filter(x => x.id !== item.id), item].sort(sortSewadars);
 
@@ -92,7 +101,9 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .on('postgres_changes', { event: '*', schema: 'public', table: 'accommodation_members', filter: `organization_id=eq.${orgId}` }, (p: any) => {
         if (p.eventType === 'DELETE') setSewadars(prev => prev.filter(x => x.id !== p.old.id));
         else setSewadars(prev => upsert(prev, mapSewadar(p.new)));
-      }).subscribe();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'manpower_teams', filter: `organization_id=eq.${orgId}` }, load)
+      .subscribe();
     const t = setInterval(load, 120000); // safety net if realtime drops
     return () => { supabase.removeChannel(ch); clearInterval(t); };
   }, [ready, orgId]); // eslint-disable-line
@@ -104,7 +115,7 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     relation_name: i.relationName.trim(), village_city: i.villageCity.trim(), branch: i.branch.trim(), occupation: i.occupation.trim(),
     remarks: i.remarks.trim(), joining_date: i.joiningDate || null, employee_code: i.employeeCode.trim(), employee_id: i.employeeId.trim(),
     address: i.address.trim(), address2: i.address2.trim(), expected_arrival: i.expectedArrival || null,
-    team_name: i.teamName.trim(), team_lead: i.teamLead.trim(), shift: i.shift || '',
+    team_name: i.teamName.trim(), team_lead: i.teamLead.trim(), team_names: (i.teams?.length ? i.teams : (i.teamName ? [i.teamName] : [])).map(t => t.trim()).filter(Boolean), shift: i.shift || '',
     device_type: i.deviceType, device_ref: i.deviceType === 'none' ? '' : i.deviceRef.trim(),
   });
 
@@ -187,8 +198,46 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     patch(ids, s => ({ ...s, badgeIssued: issued, badgeAt: issued ? new Date().toISOString() : null }), { badge_issued: issued, badge_at: issued ? new Date().toISOString() : null }, ids.length > 1 ? `${ids.length} updated.` : undefined);
   const setDepartment: Ctx['setDepartment'] = (ids, department) =>
     patch(ids, s => ({ ...s, department }), { department: department || null }, `${ids.length} moved to ${DEPT_OPTIONS.find(d => d[0] === department)?.[1] || 'no department'}.`);
-  const setTeam: Ctx['setTeam'] = (ids, teamName, teamLead) =>
-    patch(ids, s => ({ ...s, teamName, teamLead }), { team_name: teamName.trim(), team_lead: teamLead.trim() }, `${ids.length} member(s) assigned to ${teamName}.`);
+  const setTeam: Ctx['setTeam'] = async (ids, teamName, teamLead) => {
+    if (!canManage) return deny();
+    let changed = 0;
+    for (const id of ids) {
+      const member = ref.current.find(s => s.id === id); if (!member) continue;
+      const memberships = Array.from(new Set([...(member.teams || []), teamName.trim()]));
+      const primaryTeam = memberships[0] || '';
+      const primaryLead = primaryTeam.toLocaleLowerCase() === teamName.trim().toLocaleLowerCase() ? teamLead.trim() : member.teamLead;
+      const { data, error } = await supabase.from('accommodation_members').update({ team_names: memberships, team_name: primaryTeam, team_lead: primaryLead }).eq('id', id).select().single();
+      if (error) { toast(`Could not link Sewadar to team: ${friendlyError(error)}`, 'error'); return false; }
+      setSewadars(p => upsert(p, mapSewadar(data))); changed++;
+    }
+    if (changed) toast(`${changed} Sewadar(s) linked to ${teamName}.`);
+    return true;
+  };
+
+  const removeFromTeam: Ctx['removeFromTeam'] = async (id, teamName) => {
+    if (!canManage) return deny();
+    const member = ref.current.find(s => s.id === id);
+    if (!member) return false;
+    const teams = (member.teams || []).filter(name => name.toLocaleLowerCase() !== teamName.toLocaleLowerCase());
+    const primary = teams[0] || '';
+    const { data, error } = await supabase.from('accommodation_members')
+      .update({ team_names: teams, team_name: primary, team_lead: primary ? (teams.find(n => n === member.teamName) ? member.teamLead : '') : '' })
+      .eq('id', id).select().single();
+    if (error) { toast(`Could not remove Sewadar from team: ${friendlyError(error)}`, 'error'); return false; }
+    setSewadars(p => upsert(p, mapSewadar(data)));
+    toast(`${member.name} removed from ${teamName}.`);
+    return true;
+  };
+
+  const createTeam: Ctx['createTeam'] = async (name, lead) => {
+    if (!canManage) return deny();
+    const trimmed = name.trim(); if (!trimmed) { toast('Team name is required.', 'error'); return false; }
+    const row = { id: uid('team'), organization_id: orgId, name: trimmed, lead: lead.trim() };
+    const { data, error } = await supabase.from('manpower_teams').insert(row).select().single();
+    if (error) { toast(`Could not create team: ${friendlyError(error)}`, 'error'); return false; }
+    setTeams(p => [...p.filter(t => t.id !== data.id), { id: data.id, name: data.name, lead: data.lead || '' }].sort((a,b) => a.name.localeCompare(b.name)));
+    toast(`${trimmed} team created.`); return true;
+  };
 
   const logCall: Ctx['logCall'] = async (id, outcome, note) => {
     if (!canManage) return deny();
@@ -220,6 +269,6 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return s;
   }, [sewadars]);
 
-  const value: Ctx = { sewadars, loading, loadError, canManage, stats, add, addMany, update, remove, setArrival, setBadge, setDepartment, setTeam, logCall, fetchCalls };
+  const value: Ctx = { sewadars, loading, loadError, canManage, stats, teams, createTeam, add, addMany, update, remove, setArrival, setBadge, setDepartment, setTeam, removeFromTeam, logCall, fetchCalls };
   return <C.Provider value={value}>{children}</C.Provider>;
 };
