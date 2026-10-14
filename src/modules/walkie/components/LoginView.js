@@ -3,10 +3,10 @@ import { useApp } from '../context/AppContext';
 import { Radio, KeyRound, User, ChevronRight, AlertCircle, Info } from 'lucide-react';
 
 const DEMO_ACCOUNTS = [
-  { label: 'Super Admin', email: process.env.REACT_APP_DEMO_SUPER_ADMIN_EMAIL, password: process.env.REACT_APP_DEMO_SUPER_ADMIN_PASSWORD },
-  { label: 'IT Admin', email: process.env.REACT_APP_DEMO_IT_ADMIN_EMAIL, password: process.env.REACT_APP_DEMO_IT_ADMIN_PASSWORD },
-  { label: 'Department Admin 1', email: process.env.REACT_APP_DEMO_DEPT_ADMIN_1_EMAIL, password: process.env.REACT_APP_DEMO_DEPT_ADMIN_1_PASSWORD },
-  { label: 'Department Admin 2', email: process.env.REACT_APP_DEMO_DEPT_ADMIN_2_EMAIL, password: process.env.REACT_APP_DEMO_DEPT_ADMIN_2_PASSWORD },
+  { label: 'Super Admin', email: process.env.NEXT_PUBLIC_DEMO_SUPER_ADMIN_EMAIL, password: process.env.NEXT_PUBLIC_DEMO_SUPER_ADMIN_PASSWORD },
+  { label: 'IT Admin', email: process.env.NEXT_PUBLIC_DEMO_IT_ADMIN_EMAIL, password: process.env.NEXT_PUBLIC_DEMO_IT_ADMIN_PASSWORD },
+  { label: 'Department Admin 1', email: process.env.NEXT_PUBLIC_DEMO_DEPT_ADMIN_1_EMAIL, password: process.env.NEXT_PUBLIC_DEMO_DEPT_ADMIN_1_PASSWORD },
+  { label: 'Department Admin 2', email: process.env.NEXT_PUBLIC_DEMO_DEPT_ADMIN_2_EMAIL, password: process.env.NEXT_PUBLIC_DEMO_DEPT_ADMIN_2_PASSWORD },
 ].filter(account => account.email && account.password);
 
 export default function LoginView() {

@@ -64,7 +64,7 @@ export const WiFiApp: React.FC = () => {
           </tbody></table></div>
       </div>
     </div>}
-    {currentTab === 'Access Accounts' && <WiFiAccessRegister organizationId={auth.currentUser?.organizationId} canManage={canManage} />}
+    {currentTab === 'Access Accounts' && <WiFiAccessRegister organizationId={auth.currentUser?.organizationId} canManage={canManage} departments={auth.departments || []} />}
 
     {formOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"><form onSubmit={save} className="w-full max-w-lg space-y-4 rounded-lg border border-line bg-surface p-5">
       <div><h3 className="text-lg font-semibold text-ink">{editingId ? 'Edit access point' : 'Add access point'}</h3><p className="text-sm text-mute">Record the access point and where it is installed.</p></div>

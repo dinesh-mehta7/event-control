@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { useModuleEventScope } from '../../../context/EventScopeContext';
 
 const AppContext = createContext();
 
@@ -122,6 +123,7 @@ const describeDbError = (error) => {
 };
 
 export function AppProvider({ children }) {
+  const eventId = useModuleEventScope('walkie') || null;
   const [currentUser, setCurrentUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
@@ -776,11 +778,11 @@ export function AppProvider({ children }) {
         const [w, d, a, m, h, dh, dl, inv] = await Promise.all([
           supabase.from('walkies').select('*').order('created_at', { ascending: true }),
           supabase.from('departments').select('*').order('created_at', { ascending: true }),
-          supabase.from('allocations').select('*').order('created_at', { ascending: false }),
+          (eventId ? supabase.from('allocations').select('*').eq('event_id', eventId) : supabase.from('allocations').select('*').is('event_id', null)).order('created_at', { ascending: false }),
           supabase.from('maintenance').select('*').order('created_at', { ascending: false }),
           supabase.from('history').select('*').order('created_at', { ascending: false }).limit(300),
           supabase.from('department_heads').select('*').order('created_at', { ascending: true }),
-          supabase.from('deliveries').select('*').order('created_at', { ascending: false }),
+          (eventId ? supabase.from('deliveries').select('*').eq('event_id', eventId) : supabase.from('deliveries').select('*').is('event_id', null)).order('created_at', { ascending: false }),
           supabase.from('inventory_settings').select('*').eq('organization_id', currentUser.organizationId).maybeSingle()
         ]);
 
@@ -823,7 +825,9 @@ export function AppProvider({ children }) {
 
     // Generic realtime handler factory: applies INSERT/UPDATE/DELETE payloads
     // to a piece of local state using the matching row-mapper.
-    const makeHandler = (setState, mapRow, prepend = false) => (payload) => {
+    const makeHandler = (setState, mapRow, prepend = false, eventScoped = false) => (payload) => {
+      const row = payload.eventType === 'DELETE' ? payload.old : payload.new;
+      if (eventScoped && row?.event_id !== undefined && (row?.event_id || null) !== eventId) return;
       setState(prev => {
         if (payload.eventType === 'INSERT') {
           if (prev.some(r => r.id === payload.new.id)) return prev;
@@ -843,11 +847,11 @@ export function AppProvider({ children }) {
       .channel('radiogate-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'walkies' }, makeHandler(setWalkies, mapWalkie))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'departments' }, makeHandler(setDepartments, mapDepartment))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'allocations' }, makeHandler(setAllocations, mapAllocation, true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'allocations' }, makeHandler(setAllocations, mapAllocation, true, true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance' }, makeHandler(setMaintenance, mapMaintenance, true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'history' }, makeHandler(setHistory, mapHistory, true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'department_heads' }, makeHandler(setDepartmentHeads, mapDepartmentHead))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'deliveries' }, makeHandler(setDeliveries, mapDelivery, true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deliveries' }, makeHandler(setDeliveries, mapDelivery, true, true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_settings' }, (payload) => {
         if (payload.eventType === 'DELETE') return;
         setInventorySettings(mapInventorySettings(payload.new));
@@ -858,7 +862,7 @@ export function AppProvider({ children }) {
       isMounted = false;
       supabase.removeChannel(channel);
     };
-  }, [currentUser, addToast]);
+  }, [currentUser, addToast, eventId]);
 
   // --------------------------------------------------------------------------
   // WALKIE TALKIE ACTIONS
@@ -1213,6 +1217,7 @@ export function AppProvider({ children }) {
       status: 'Active',
       charger_count: cN,
       earphone_count: eN,
+      event_id: eventId,
       organization_id: currentUser.organizationId
     };
 
@@ -1711,7 +1716,8 @@ export function AppProvider({ children }) {
       status: 'Pending',
       delivered_by: deliveredBy || currentUser.name,
       remarks: remarks || '',
-      organization_id: currentUser.organizationId
+      organization_id: currentUser.organizationId,
+      event_id: eventId
     };
 
     setDeliveries(prev => [mapDelivery(newDeliveryRow), ...prev]);

@@ -6,6 +6,7 @@ import type { MealRow } from './types';
 import { fmtTime, minutesOf, nowMinutes, prettyDate, shiftDate, timeAgo, todayStr } from './dates';
 import { pickLive, statusTone } from './live';
 import { Modal, ConfirmModal, btnGhost, btnPrimary, card, cx, inputCls, labelCls } from './ui';
+import { ClockTimePicker } from '../../components/ClockTimePicker';
 
 const dishes = (items: string) => items.split('\n').map(s => s.trim()).filter(Boolean);
 
@@ -83,7 +84,7 @@ export const MenuView: React.FC = () => {
               <StatusBadge s={focus.status} dark={dark} />
             </div>
             <p className={cx('mt-2 truncate text-xs', muted)}>{dishes(focus.items).join(' · ') || 'Dishes not added yet.'}</p>
-            <ol className="mt-auto grid grid-cols-3 gap-1.5 pt-4" aria-label="Meal progress">
+            <ol className="mt-auto grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-4" aria-label="Meal progress">
               {STATUS_STEPS.slice(1).map((step, i) => {
                 const cur = STATUS_STEPS.findIndex(s => s.key === focus.status);
                 const reached = cur >= i + 1;
@@ -262,8 +263,8 @@ const MealForm: React.FC<{ dark: boolean; meal: MealRow; onClose: () => void; on
     <Modal title={`${meal.label} · ${prettyDate(meal.date)}`} dark={dark} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          <div><label className={labelCls(dark)} htmlFor="ms">Starts</label><input id="ms" type="time" required value={start} onChange={e => setStart(e.target.value)} className={inputCls(dark)} /></div>
-          <div><label className={labelCls(dark)} htmlFor="me">Ends</label><input id="me" type="time" required value={end} onChange={e => setEnd(e.target.value)} className={inputCls(dark)} /></div>
+          <div><label className={labelCls(dark)}>Starts</label><ClockTimePicker label="Meal start time" value={start} onChange={setStart} className="mt-1" /></div>
+          <div><label className={labelCls(dark)}>Ends</label><ClockTimePicker label="Meal end time" value={end} onChange={setEnd} className="mt-1" /></div>
         </div>
         <div>
           <label className={labelCls(dark)} htmlFor="mi">Dishes</label>
@@ -306,8 +307,8 @@ const AddMealForm: React.FC<{ dark: boolean; date: string; onClose: () => void; 
       <form onSubmit={submit} className="space-y-4">
         <div><label className={labelCls(dark)} htmlFor="cm-n">Meal name</label><input id="cm-n" autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Late-night snack" className={inputCls(dark)} /></div>
         <div className="grid grid-cols-2 gap-3">
-          <div><label className={labelCls(dark)} htmlFor="cm-s">Starts</label><input id="cm-s" type="time" required value={start} onChange={e => setStart(e.target.value)} className={inputCls(dark)} /></div>
-          <div><label className={labelCls(dark)} htmlFor="cm-e">Ends</label><input id="cm-e" type="time" required value={end} onChange={e => setEnd(e.target.value)} className={inputCls(dark)} /></div>
+          <div><label className={labelCls(dark)}>Starts</label><ClockTimePicker label="Meal start time" value={start} onChange={setStart} className="mt-1" /></div>
+          <div><label className={labelCls(dark)}>Ends</label><ClockTimePicker label="Meal end time" value={end} onChange={setEnd} className="mt-1" /></div>
         </div>
         <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className={btnGhost(dark)}>Cancel</button><button type="submit" disabled={busy} className={btnPrimary}>{busy ? 'Adding…' : 'Add meal'}</button></div>
       </form>

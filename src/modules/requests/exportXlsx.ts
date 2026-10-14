@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { DEPTS } from '../../pages/orgData';
+import { DEPTS } from '../../views/orgData';
 import { STATUS_LABEL } from './types';
 import type { Availability } from './RequestsContext';
 import type { OrderInfo, Req } from './types';

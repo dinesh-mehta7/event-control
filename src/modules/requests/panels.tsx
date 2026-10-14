@@ -335,7 +335,7 @@ export const FulfilmentPanel: React.FC<{ r: Req }> = ({ r }) => {
     if (x.error) { setBusy(false); setErr(x.error); return; }
     await purchase.refresh();
     setBusy(false);
-    location.hash = '#/purchase/orders';
+    location.hash = '#/purchase/buy';
   };
   const confirm = async () => { setConfirmError(''); setConfirmBusy(true); const error = await confirmReceipt(r.id); setConfirmBusy(false); if (error) setConfirmError(error); };
   const canRecordReturn = r.requesterId === me.id || me.isExec || me.team === 'inventory' || me.level === 'dept_head';
@@ -365,6 +365,7 @@ export const FulfilmentPanel: React.FC<{ r: Req }> = ({ r }) => {
                         <Pill c={p.status === 'done' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-raised text-ink-soft'}>{p.status === 'done' ? 'Delivered' : SOURCE_LABEL[p.source]}</Pill>
                         <span className="text-ink tabular-nums">{p.qty} {i.unit}</span>
                         {p.purchaseItemId && orders[p.purchaseItemId]?.poNumber && <span className="font-mono text-xs text-blue-300">{orders[p.purchaseItemId].poNumber}{orders[p.purchaseItemId].poStatus ? ` · ${orders[p.purchaseItemId].poStatus}` : ''}</span>}
+                        {p.purchaseItemId && orders[p.purchaseItemId] && <span className="text-xs text-mute">Vendor: {orders[p.purchaseItemId].vendor || '—'} · Rate: {orders[p.purchaseItemId].rate == null ? '—' : `₹${orders[p.purchaseItemId].rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}</span>}
                         {p.status === 'done' && <span className="text-xs text-mute">to {p.receivedBy || p.location}{p.location && p.receivedBy ? ` at ${p.location}` : ''} · by {p.doneBy}</span>}
                       </div>
                       {p.status === 'planned' && mine && <HandOver r={r} item={i} part={p} />}

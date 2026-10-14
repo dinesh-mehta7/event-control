@@ -6,6 +6,9 @@ import type { Loc, ItemInput } from './InventoryContext';
 import { MOVE, MOVES, UNITS } from './types';
 import type { Item, MoveType, Movement } from './types';
 import { ServiceInbox } from '../requests/ServiceInbox';
+import { supabase } from '../walkie/lib/supabaseClient';
+import { useWalkie } from '../walkie';
+import { useEventScope } from '../../context/EventScopeContext';
 
 // The command-center shell is always dark, so this module is dark-only.
 const D = true;
@@ -28,6 +31,7 @@ const SUB: Record<string, string> = {
   maintenance: 'Damaged items: mark, repair or write off.',
   history: 'Every stock movement, newest first.',
   requests: 'Department requests for items and equipment assigned to the Inventory team.',
+  'event-requirements': 'Event teams publish required inventory here; updates stay linked to Event Planning.',
 };
 type Stage = 'all' | 'low' | 'out' | 'issued' | 'damaged';
 const inStage = (i: Item, s: Stage) =>
@@ -36,7 +40,7 @@ const inStage = (i: Item, s: Stage) =>
   : s === 'issued' ? i.issued > 0
   : s === 'damaged' ? i.damaged > 0 : true;
 
-type Tab = 'dashboard' | 'items' | 'locations' | 'allocations' | 'returns' | 'maintenance' | 'history' | 'requests';
+type Tab = 'dashboard' | 'items' | 'locations' | 'allocations' | 'returns' | 'maintenance' | 'history' | 'requests' | 'event-requirements';
 const NAV: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'items', label: 'Items', icon: Package },
@@ -46,6 +50,7 @@ const NAV: { id: Tab; label: string; icon: React.ComponentType<{ className?: str
   { id: 'maintenance', label: 'Maintenance', icon: Wrench },
   { id: 'history', label: 'Activity History', icon: History },
   { id: 'requests', label: 'Department Requests', icon: ClipboardList },
+  { id: 'event-requirements', label: 'Event Requirements', icon: ClipboardList },
 ];
 type OpenMove = (type: MoveType, itemId?: string) => void;
 const when = (s: string) => new Date(s).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -521,6 +526,7 @@ export const InventoryApp: React.FC = () => {
           {tab === 'maintenance' && <MaintenanceView openMove={openMove} />}
           {tab === 'history' && <HistoryView />}
           {tab === 'requests' && <ServiceInbox kind="item" title="Inventory" />}
+          {tab === 'event-requirements' && <EventRequirementsView />}
       
 
       {editing && <ItemForm initial={editing === 'new' ? null : editing} onClose={() => setEditing(null)}
@@ -533,6 +539,38 @@ export const InventoryApp: React.FC = () => {
       {deleting && <ConfirmModal dark={D} title={`Delete ${deleting.name}?`} body="The item, its location holdings and its whole history will be removed." confirmLabel="Delete" onConfirm={() => { inv.deleteItem(deleting.id); }} onClose={() => setDeleting(null)} />}
     </div>
   );
+};
+
+const EventRequirementsView: React.FC = () => {
+  const { currentUser } = useWalkie() as any;
+  const eventScope = useEventScope();
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState('');
+  const [eventFilter, setEventFilter] = useState('all');
+  const orgId = currentUser?.organizationId;
+  const events = eventScope.events || [];
+  const reload = async () => {
+    if (!orgId) return;
+    setLoading(true);
+    const { data, error: queryError } = await supabase.from('event_requirements').select('*').eq('organization_id', orgId).eq('category', 'inventory').order('created_at', { ascending: false });
+    if (queryError) setError(queryError.message); else { setRows(data || []); setError(''); }
+    setLoading(false);
+  };
+  useEffect(() => { void reload(); }, [orgId]);
+  const updateStatus = async (row: any, status: string) => {
+    setBusyId(row.id); setError('');
+    const { error: updateError } = await supabase.from('event_requirements').update({ status }).eq('id', row.id).eq('organization_id', orgId);
+    if (updateError) setError(updateError.message); else setRows(old => old.map(item => item.id === row.id ? { ...item, status } : item));
+    setBusyId('');
+  };
+  const visible = rows.filter(row => eventFilter === 'all' || row.event_id === eventFilter);
+  return <section className="space-y-4">
+    <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-base font-semibold text-ink">Published event inventory requirements</h2><p className="mt-1 text-xs text-mute">A shared list from Event Planning. Status changes here appear on the event requirement record.</p></div><label className="text-xs text-mute">Event<select className="mt-1 rounded-md border border-line bg-field px-3 py-2 text-sm text-ink" value={eventFilter} onChange={e => setEventFilter(e.target.value)}><option value="all">All events</option>{events.map((event: any) => <option key={event.id} value={event.id}>{event.name}</option>)}</select></label></div>
+    {error && <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-300">{error}</div>}
+    {loading ? <div className={`${panel} p-6 text-sm text-mute`}>Loading event requirements…</div> : !visible.length ? <div className={`${panel} p-6 text-center text-sm text-mute`}>No inventory requirements have been published for this event.</div> : <div className={`${panel} divide-y divide-line`}>{visible.map(row => { const event = events.find((item: any) => item.id === row.event_id); return <article key={row.id} className="flex flex-wrap items-center gap-3 p-4"><div className="min-w-52 flex-1"><h3 className="text-sm font-medium text-ink">{row.title}</h3><p className="mt-1 text-xs text-mute">{event?.name || 'Event'} · {row.department_name || 'Unassigned'} · {row.quantity} {row.unit}{row.notes ? ` · ${row.notes}` : ''}</p></div><select aria-label={`Inventory requirement status for ${row.title}`} className="rounded-md border border-line bg-field px-3 py-2 text-xs text-ink" disabled={busyId === row.id} value={row.status} onChange={e => void updateStatus(row, e.target.value)}>{['requested','in_progress','ready','not_needed'].map(status => <option key={status} value={status}>{status.replace('_', ' ')}</option>)}</select></article>; })}</div>}
+  </section>;
 };
 
 // ---------------------------------------------------------------------------

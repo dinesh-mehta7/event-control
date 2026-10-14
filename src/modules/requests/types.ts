@@ -27,11 +27,10 @@ export interface Req {
   deliveryTeam: string; deliveryMemberId: string | null;
   title: string; purpose: string; deliverTo: string; neededBy: string; priority: 'normal' | 'urgent'; miscItems: string; miscBudget: number;
   status: ReqStatus; subNote: string; itNote: string; ownerNote: string; createdAt: string; updatedAt: string;
-  showVendor: boolean; showRate: boolean;            // the owner decides whether the requester sees these
   confirmedAt: string | null; confirmedBy: string;   // the requester confirmed receipt: the ticket is closed
   items: ReqItem[]; parts: ReqPart[]; events: ReqEvent[];
 }
-// Progress of a part that is being bought. vendor / rate / poNumber are null when this person may not see them.
+// Progress of a part that is being bought. The PO number is role-limited; vendor and rate are visible to request viewers.
 export interface OrderInfo {
   purchaseItemId: string; requestId: string; itemId: string; received: number; ordered: number;
   poNumber: string | null; poStatus: string; expectedDate: string | null; vendor: string | null; rate: number | null;
@@ -55,20 +54,11 @@ export const STATUS_TONE: Record<ReqStatus, string> = {
 export const SOURCE_LABEL: Record<PartSource, string> = { inventory: 'From stock', purchase: 'To be purchased', walkie: 'Radio pool' };
 
 // IT Department Head saves the arrangement as part of their decision, so it is not a separate stage.
-export const STEPS = ['Requested', 'IT Department Head', 'Super Admin', 'Delivered', 'Received'];
 export const linePlannedQty = (r: Req, item: ReqItem): number => r.parts.filter(p => p.itemId === item.id).reduce((total, part) => total + part.qty, 0);
 export const lineRemainingToAllocate = (r: Req, item: ReqItem): number => Math.max(0, (item.approved ?? 0) - linePlannedQty(r, item));
 export const unlinkedPurchaseParts = (r: Req): ReqPart[] => r.status === 'approved'
   ? r.parts.filter(part => part.source === 'purchase' && part.status === 'planned' && !part.purchaseItemId)
   : [];
-export const stepOf = (r: Req): number => {
-  if (r.status === 'pending_sub' || r.status === 'pending_it') return 1;
-  if (r.status === 'pending_owner') return 2;
-  if (r.status === 'approved') return 3;
-  if (r.status === 'fulfilled') return r.confirmedAt ? 4 : 3;
-  return 0;
-};
-
 // Plain-language status of one approved line, for the ticket. No vendor, no price, no stock.
 export const lineStatus = (r: Req, i: ReqItem, orders: Record<string, OrderInfo>): { text: string; tone: 'ok' | 'warn' | 'mute' | 'bad' } => {
   if (r.status === 'rejected' || (r.status === 'cancelled')) return { text: r.status === 'rejected' ? 'Rejected' : 'Cancelled', tone: 'bad' };

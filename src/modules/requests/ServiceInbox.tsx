@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronRight, ClipboardList, Search } from 'lucide-react';
-import { DEPTS } from '../../pages/orgData';
+import { DEPTS } from '../../views/orgData';
 import { RequestDetail } from './RequestDetail';
 import { useRequests } from './RequestsContext';
 import { StatusBadge, UrgentBadge } from './parts';

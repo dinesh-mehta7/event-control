@@ -3,13 +3,19 @@ import { supabase } from '../walkie/lib/supabaseClient';
 import { useWalkie } from '../walkie';
 import { MEALS, MEAL_PRESETS, mealSlug } from './types';
 import { minutesOf } from './dates';
-import type { MealKey, MealRow, MealStatus, Member, MemberImportRow, Room } from './types';
+import type { MealKey, MealRow, MealStatus, Member, MemberImportRow, Room, RoomRequirement } from './types';
+import { useEventScope } from '../../context/EventScopeContext';
 
 // ---------------------------------------------------------------------------
 // Row mappers (database snake_case  ->  UI camelCase)
 // ---------------------------------------------------------------------------
-const mapRoom = (r: any): Room => ({
-  id: r.id, name: r.name, block: r.block || '', capacity: r.capacity, notes: r.notes || '',
+const mapRoom = (r: any, scopeKey = 'normal'): Room => ({
+  id: r.id, name: r.name, category: r.category === 'control_room' ? 'control_room' : 'rest_room', block: r.block || '', capacity: r.capacity, notes: r.notes || '', responsibleTeam: r.responsible_team || '',
+  requirements: (() => { const source = r.requirements_by_scope?.[scopeKey] ?? (scopeKey === 'normal' ? r.requirements : []); return Array.isArray(source) ? source.map((x: any) => ({
+    name: String(x.name || ''), quantity: Math.max(0, Number(x.quantity) || 0), readyQuantity: Math.max(0, Number(x.readyQuantity) || 0), collectFrom: String(x.collectFrom || ''), returned: !!x.returned,
+  })).filter((x: RoomRequirement) => x.name) : []; })(),
+  readyAt: r.readiness_by_scope?.[scopeKey]?.readyAt || '', returnedAt: r.readiness_by_scope?.[scopeKey]?.returnedAt || '',
+  requirementsByScope: r.requirements_by_scope || {}, readinessByScope: r.readiness_by_scope || {},
 });
 const mapMember = (r: any): Member => ({
   id: r.id, name: r.name, department: r.department || '', roomId: r.room_id || null,
@@ -32,6 +38,7 @@ const mapMeal = (r: any): MealRow => ({
   status: r.status,
   changedAt: r.status_changed_at || null,
   changedBy: r.status_changed_by || '',
+  readyAt: r.ready_at || '',
 });
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -48,20 +55,24 @@ export const friendlyError = (error: any): string => {
   if (/row-level security|permission denied/i.test(msg)) return "You don't have permission to do that.";
   if (error?.code === '23505' || /duplicate key|already exists/i.test(msg)) return 'That name already exists — pick a different one.';
   if (/meal_label/i.test(msg)) return 'The database is missing meal_menu.meal_label. Run supabase/migration_v23_meal_label_repair.sql in the Supabase SQL Editor, then reload the app.';
+  if (/accommodation_rooms.*(category|responsible_team)|(category|responsible_team).*accommodation_rooms|accommodation_update_room_requirements/i.test(msg)) return 'Room categories and team-based requirements need migration v69. Run supabase/migration_v69_accommodation_room_categories.sql in the Supabase SQL Editor, then reload.';
+  if (/scope_key|readiness_by_scope|requirements_by_scope/i.test(msg)) return 'The database is missing event-scoped accommodation fields. Run supabase/migration_v63_accommodation_event_readiness.sql in the Supabase SQL Editor, then reload the app.';
   if (/member_type/i.test(msg)) return 'The database still has the old member types. Run supabase/migration_v25_member_types.sql in the Supabase SQL Editor, then reload the app.';
   if (/call_count|last_call_outcome|expected_arrival|arrival_status|accommodation_member_tasks/i.test(msg)) return 'The database is missing member operations fields. Run supabase/migration_v24_member_operations.sql in the Supabase SQL Editor, then reload the app.';
   if (/schema cache|does not exist|could not find/i.test(msg)) {
-    return `${msg} — check that accommodation migrations v7, v8, v9, v22, and v24 have been run in Supabase, then reload the app.`;
+    return `${msg} — check that accommodation migrations v7, v8, v9, v22, v24, and v63 have been run in Supabase, then reload the app.`;
   }
   return msg;
 };
 
 // Supabase returns at most 1000 rows per request; page through so a big camp
 // (hundreds of members) is never silently cut off.
-async function fetchAll(table: string, order: string): Promise<{ data: any[]; error: any }> {
+async function fetchAll(table: string, order: string, scopeKey?: string): Promise<{ data: any[]; error: any }> {
   const out: any[] = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from(table).select('*').order(order, { ascending: true }).range(from, from + 999);
+    let query: any = supabase.from(table).select('*');
+    if (scopeKey) query = query.eq('scope_key', scopeKey);
+    const { data, error } = await query.order(order, { ascending: true }).range(from, from + 999);
     if (error) return { data: [], error };
     out.push(...(data || []));
     if (!data || data.length < 1000) break;
@@ -69,7 +80,7 @@ async function fetchAll(table: string, order: string): Promise<{ data: any[]; er
   return { data: out, error: null };
 }
 
-export interface RoomInput { name: string; block: string; capacity: number; notes: string }
+export interface RoomInput { name: string; category: Room['category']; block: string; capacity: number; notes: string; responsibleTeam: string; requirements: RoomRequirement[] }
 
 interface AccommodationCtx {
   rooms: Room[];
@@ -78,6 +89,7 @@ interface AccommodationCtx {
   loading: boolean;
   loadError: string;
   canManageRooms: boolean; // organization owner
+  canDefineRoomRequirements: boolean;
   canManageMenu: boolean; // accommodation head or organization owner
   isDark: boolean;
   toggleTheme: () => void;
@@ -85,6 +97,7 @@ interface AccommodationCtx {
 
   addRoom: (input: RoomInput) => Promise<boolean>;
   updateRoom: (id: string, input: RoomInput) => Promise<boolean>;
+  updateRoomSetup: (id: string, requirements: RoomRequirement[]) => Promise<boolean>;
   deleteRoom: (id: string) => Promise<boolean>;
 
   addMembers: (names: string[], department: string, roomId: string | null, details?: Partial<Member>) => Promise<boolean>;
@@ -114,6 +127,9 @@ export const useAccommodation = (): AccommodationCtx => {
 export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const w: any = useWalkie();
   const user = w.currentUser;
+  const eventScope = useEventScope();
+  const eventId = eventScope.scopeFor('accommodation') || null;
+  const scopeKey = eventId || 'normal';
   const orgId: string | null = user?.organizationId || null;
   const ready = !!user && user.approved !== false && user.isActive !== false && !!orgId;
 
@@ -126,6 +142,7 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
   // The database enforces these too (row-level security); the UI just mirrors
   // them so people don't see buttons that would be refused.
   const canManageRooms = ready && (user.level === 'owner' || user.level === 'dept_head' || (user.level === 'sub_dept_head' && user.subDepartment === 'accommodation'));
+  const canDefineRoomRequirements = ready && (user.level === 'owner' || (user.level === 'dept_head' && (!user.subDepartment || user.subDepartment === 'it')));
   const canManageMenu = ready && (user.level === 'owner' || (user.level === 'sub_dept_head' && user.subDepartment === 'accommodation'));
 
   const toast = useCallback((msg: string, type: 'success' | 'error' | 'warning' = 'success') => w.addToast?.(msg, type), [w.addToast]);
@@ -138,32 +155,32 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
     const [r, m, mm] = await Promise.all([
       fetchAll('accommodation_rooms', 'created_at'),
       fetchAll('accommodation_members', 'created_at'),
-      fetchAll('meal_menu', 'menu_date'),
+      fetchAll('meal_menu', 'menu_date', scopeKey),
     ]);
     const err = r.error || m.error || mm.error;
     if (err) {
       setLoadError(friendlyError(err));
     } else {
       setLoadError('');
-      setRooms(r.data.map(mapRoom).sort(sortRooms));
+      setRooms(r.data.map((row: any) => mapRoom(row, scopeKey)).sort(sortRooms));
       setMembers(m.data.map(mapMember).sort(sortMembers));
       setMeals(mm.data.map(mapMeal).sort(sortMeals));
     }
     setLoading(false);
-  }, [ready]);
+  }, [ready, scopeKey]);
 
   useEffect(() => {
     if (!ready) { setRooms([]); setMembers([]); setMeals([]); setLoadError(''); return; }
     loadAll();
-  }, [ready, orgId]);
+  }, [ready, orgId, scopeKey]);
 
   // Just the menu — cheap, used as a safety net so the "live" card never goes
   // stale even if the realtime connection silently drops.
   const refreshMenu = useCallback(async () => {
     if (!ready) return;
-    const { data, error } = await fetchAll('meal_menu', 'menu_date');
+    const { data, error } = await fetchAll('meal_menu', 'menu_date', scopeKey);
     if (!error) setMeals(data.map(mapMeal).sort(sortMeals));
-  }, [ready]);
+  }, [ready, scopeKey]);
 
   useEffect(() => {
     if (!ready) return;
@@ -184,7 +201,7 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
       .channel(`accommodation-${orgId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'accommodation_rooms', filter }, (p: any) => {
         if (p.eventType === 'DELETE') setRooms(prev => prev.filter(x => x.id !== p.old.id));
-        else setRooms(prev => upsert(prev, mapRoom(p.new), sortRooms));
+        else setRooms(prev => upsert(prev, mapRoom(p.new, scopeKey), sortRooms));
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'accommodation_members', filter }, (p: any) => {
         if (p.eventType === 'DELETE') setMembers(prev => prev.filter(x => x.id !== p.old.id));
@@ -192,11 +209,11 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'meal_menu', filter }, (p: any) => {
         if (p.eventType === 'DELETE') setMeals(prev => prev.filter(x => x.id !== p.old.id));
-        else setMeals(prev => upsert(prev, mapMeal(p.new), sortMeals));
+        else if ((p.new?.scope_key || 'normal') === scopeKey) setMeals(prev => upsert(prev, mapMeal(p.new), sortMeals));
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [ready, orgId]);
+  }, [ready, orgId, scopeKey]);
 
   // Deleting a room un-assigns its people in the database (on delete set null)
   // — mirror that locally instantly.
@@ -213,10 +230,11 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
   const addRoom: AccommodationCtx['addRoom'] = async (i) => {
     if (!canManageRooms) { toast('Only the department owner can add rooms.', 'error'); return false; }
     if (!validRoom(i)) return false;
-    const row = { id: uid('room'), organization_id: orgId, name: i.name.trim(), block: i.block.trim(), capacity: i.capacity, notes: i.notes.trim() };
+    const requirements = canDefineRoomRequirements ? i.requirements : [];
+    const row = { id: uid('room'), organization_id: orgId, name: i.name.trim(), category: i.category, responsible_team: i.category === 'control_room' ? i.responsibleTeam.trim() : '', block: i.block.trim(), capacity: i.capacity, notes: i.notes.trim(), requirements: scopeKey === 'normal' ? requirements : [], requirements_by_scope: { [scopeKey]: requirements }, readiness_by_scope: { [scopeKey]: { readyAt: '', returnedAt: '' } } };
     const { data, error } = await supabase.from('accommodation_rooms').insert(row).select().single();
     if (error) { toast(`Could not add room: ${friendlyError(error)}`, 'error'); return false; }
-    setRooms(prev => upsert(prev, mapRoom(data), sortRooms));
+    setRooms(prev => upsert(prev, mapRoom(data, scopeKey), sortRooms));
     log('Room Added', `${user.name} added room ${row.name} (${row.capacity} beds)`, 'success');
     toast(`Room ${row.name} added.`);
     return true;
@@ -225,13 +243,28 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
   const updateRoom: AccommodationCtx['updateRoom'] = async (id, i) => {
     if (!canManageRooms) { toast('Only the department owner can edit rooms.', 'error'); return false; }
     if (!validRoom(i)) return false;
+    const existing = roomsRef.current.find(room => room.id === id);
+    const requirements = canDefineRoomRequirements ? i.requirements : existing?.requirements || [];
+    const requirementsByScope = { ...(existing?.requirementsByScope || {}), [scopeKey]: requirements };
     const { data, error } = await supabase.from('accommodation_rooms')
-      .update({ name: i.name.trim(), block: i.block.trim(), capacity: i.capacity, notes: i.notes.trim() })
+      .update({ name: i.name.trim(), category: i.category, responsible_team: i.category === 'control_room' ? i.responsibleTeam.trim() : '', block: i.block.trim(), capacity: i.capacity, notes: i.notes.trim(), requirements_by_scope: requirementsByScope, ...(scopeKey === 'normal' ? { requirements } : {}) })
       .eq('id', id).select().single();
     if (error) { toast(`Could not update room: ${friendlyError(error)}`, 'error'); return false; }
-    setRooms(prev => upsert(prev, mapRoom(data), sortRooms));
+    setRooms(prev => upsert(prev, mapRoom(data, scopeKey), sortRooms));
     log('Room Updated', `${user.name} updated room ${i.name.trim()}`, 'info');
     toast('Room updated.');
+    return true;
+  };
+
+  const updateRoomSetup: AccommodationCtx['updateRoomSetup'] = async (id, nextRequirements) => {
+    const room = roomsRef.current.find(item => item.id === id);
+    if (!room) return false;
+    const requirements = nextRequirements.map(item => ({ ...item, name: item.name.trim(), quantity: Math.max(0, Number(item.quantity) || 0), readyQuantity: Math.max(0, Number(item.readyQuantity) || 0), collectFrom: String(item.collectFrom || '').trim(), returned: !!item.returned })).filter(item => item.name);
+    const { error } = await supabase.rpc('accommodation_update_room_requirements', { p_room_id: id, p_scope_key: scopeKey, p_requirements: requirements });
+    if (error) { toast(`Could not update room checklist: ${friendlyError(error)}`, 'error'); return false; }
+    const { data, error: readError } = await supabase.from('accommodation_rooms').select('*').eq('id', id).single();
+    if (readError) { toast(`Checklist saved, but refresh failed: ${friendlyError(readError)}`, 'warning'); return false; }
+    setRooms(prev => upsert(prev, mapRoom(data, scopeKey), sortRooms));
     return true;
   };
 
@@ -249,7 +282,7 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // ---- Members ---------------------------------------------------------------
   const addMembers: AccommodationCtx['addMembers'] = async (names, department, roomId, details = {}) => {
-    if (!canManageRooms) { toast('Only the department owner can add members.', 'error'); return false; }
+    if (!ready || !['owner', 'dept_head'].includes(user.level)) { toast('Only an owner or department head can add members.', 'error'); return false; }
     const clean = Array.from(new Set(names.map(n => n.trim()).filter(Boolean)));
     if (!clean.length) { toast('Enter at least one name.', 'error'); return false; }
     if (roomId) {
@@ -277,7 +310,7 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const importMembers: AccommodationCtx['importMembers'] = async (items) => {
-    if (!canManageRooms) { toast('Only the department owner can import members.', 'error'); return false; }
+    if (!ready || !['owner', 'dept_head'].includes(user.level)) { toast('Only an owner or department head can import members.', 'error'); return false; }
     const clean = items.filter(x => x.name?.trim()).map(x => ({
       id: uid('mem'), organization_id: orgId, name: x.name!.trim(), department: x.department || null, room_id: x.roomId || null,
       member_type: x.memberType || 'salary_based', serial_no: x.serialNo || '', batch_no: x.batchNo || '', relation: x.relation || '',
@@ -307,6 +340,7 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const updateMember: AccommodationCtx['updateMember'] = async (id, patch) => {
     if (!canManageRooms) { toast('Only the department owner can change members and rooms.', 'error'); return false; }
+    if (patch.roomId !== undefined && !['owner', 'dept_head'].includes(user.level)) { toast('Only an owner or department head can assign members to rooms.', 'error'); return false; }
     const body: any = {};
     if (patch.name !== undefined) {
       if (!patch.name.trim()) { toast('Name cannot be empty.', 'error'); return false; }
@@ -364,7 +398,7 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
       : MEALS.map(m => ({ key: m.key, label: m.label, start: m.start, end: m.end, items: '' }));
     const rows = base.filter(b => !existing.has(b.key)).map(b => ({
       id: uid('meal'), organization_id: orgId, menu_date: date, meal: b.key, meal_label: b.label,
-      start_time: b.start, end_time: b.end, items: b.items, status: 'scheduled',
+      start_time: b.start, end_time: b.end, items: b.items, status: 'scheduled', scope_key: scopeKey, event_id: eventId, ready_at: null,
     }));
     if (!rows.length) { toast('This day already has these meals.', 'warning'); return false; }
     const { data, error } = await supabase.from('meal_menu').insert(rows).select();
@@ -383,7 +417,7 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!canManageMenu) { toast('Only the Accommodation head or owner can edit the menu.', 'error'); return false; }
     if (patch.end <= patch.start) { toast('End time must be after the start time.', 'error'); return false; }
     const { data, error } = await supabase.from('meal_menu')
-      .update({ start_time: patch.start, end_time: patch.end, items: patch.items.trim() }).eq('id', id).select().single();
+      .update({ start_time: patch.start, end_time: patch.end, items: patch.items.trim() }).eq('id', id).eq('scope_key', scopeKey).select().single();
     if (error) { toast(`Could not save: ${friendlyError(error)}`, 'error'); return false; }
     setMeals(prev => upsert(prev, mapMeal(data), sortMeals));
     toast('Menu saved.');
@@ -397,7 +431,8 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
     // Update on screen immediately so the head sees it instantly; the server
     // then stamps who/when and we replace with its version.
     setMeals(p => p.map(m => (m.id === id ? { ...m, status } : m)));
-    const { data, error } = await supabase.from('meal_menu').update({ status }).eq('id', id).select().single();
+    setMeals(p => p.map(m => (m.id === id ? { ...m, status } : m)));
+    const { data, error } = await supabase.from('meal_menu').update({ status }).eq('id', id).eq('scope_key', scopeKey).select().single();
     if (error) {
       setMeals(p => p.map(m => (m.id === id ? prev : m)));
       toast(`Could not change status: ${friendlyError(error)}`, 'error');
@@ -410,7 +445,7 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const deleteDay: AccommodationCtx['deleteDay'] = async (date) => {
     if (!canManageMenu) { toast('Only the Accommodation head or owner can edit the menu.', 'error'); return false; }
-    const { error } = await supabase.from('meal_menu').delete().eq('organization_id', orgId).eq('menu_date', date);
+    const { error } = await supabase.from('meal_menu').delete().eq('organization_id', orgId).eq('menu_date', date).eq('scope_key', scopeKey);
     if (error) { toast(`Could not delete: ${friendlyError(error)}`, 'error'); return false; }
     setMeals(prev => prev.filter(m => m.date !== date));
     log('Menu Deleted', `${user.name} deleted the menu for ${date}`, 'warning');
@@ -428,7 +463,7 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
     const st = start || preset?.start || '12:00';
     const en = end || preset?.end || '13:00';
     if (en <= st) { toast('End time must be after the start time.', 'error'); return false; }
-    const row = { id: uid('meal'), organization_id: orgId, menu_date: date, meal: key, meal_label: preset?.label || name, start_time: st, end_time: en, items: '', status: 'scheduled' };
+    const row = { id: uid('meal'), organization_id: orgId, menu_date: date, meal: key, meal_label: preset?.label || name, start_time: st, end_time: en, items: '', status: 'scheduled', scope_key: scopeKey, event_id: eventId, ready_at: null };
     const { data, error } = await supabase.from('meal_menu').insert(row).select().single();
     if (error) { toast(`Could not add ${name}: ${friendlyError(error)}`, 'error'); return false; }
     setMeals(prev => upsert(prev, mapMeal(data), sortMeals));
@@ -440,7 +475,7 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
   const deleteMeal: AccommodationCtx['deleteMeal'] = async (id) => {
     if (!canManageMenu) { toast('Only the Accommodation head or owner can edit the menu.', 'error'); return false; }
     const m = meals.find(x => x.id === id);
-    const { error } = await supabase.from('meal_menu').delete().eq('id', id);
+    const { error } = await supabase.from('meal_menu').delete().eq('id', id).eq('scope_key', scopeKey);
     if (error) { toast(`Could not remove meal: ${friendlyError(error)}`, 'error'); return false; }
     setMeals(prev => prev.filter(x => x.id !== id));
     log('Meal Removed', `${user.name} removed ${m?.label} on ${m?.date}`, 'warning');
@@ -457,8 +492,8 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
   // Built on every render on purpose: the actions close over the latest
   // members/meals/user, and memoizing would risk stale data.
   const value: AccommodationCtx = {
-    rooms, members, meals, loading, loadError, canManageRooms, canManageMenu, isDark, toggleTheme, membersInRoom,
-    addRoom, updateRoom, deleteRoom, addMembers, importMembers, updateMember, deleteMember, logMemberCall,
+    rooms, members, meals, loading, loadError, canManageRooms, canDefineRoomRequirements, canManageMenu, isDark, toggleTheme, membersInRoom,
+    addRoom, updateRoom, updateRoomSetup, deleteRoom, addMembers, importMembers, updateMember, deleteMember, logMemberCall,
     mealsOn, createDay, saveMeal, setMealStatus, deleteDay, addMeal, deleteMeal, refreshMenu,
   };
 

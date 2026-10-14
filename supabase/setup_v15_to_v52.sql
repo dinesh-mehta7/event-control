@@ -1105,8 +1105,7 @@ notify pgrst, 'reload schema';
 --   * The approval notification now carries the approved quantities and the reasons.
 --   * New notifications: item arrived in store, every delivery (also partial).
 --   * The requester confirms receipt (requests.confirmed_at) - that closes the ticket.
---   * Order progress per line for the ticket (request_order_info). The vendor name and the rate are
---     shown to the requester ONLY when the owner switches them on for that ticket.
+--   * Order progress per line for the ticket (request_order_info), including vendor and rate for request viewers.
 --   * The public read-only share link is removed.
 -- ============================================================================
 
@@ -1345,22 +1344,9 @@ end $$;
 revoke all on function public.request_confirm_receipt(text) from public, anon;
 grant execute on function public.request_confirm_receipt(text) to authenticated;
 
--- 8. The owner decides whether the vendor name / the rate are visible on a ticket ------------------
-create or replace function public.request_set_visibility(p_id text, p_vendor boolean, p_rate boolean)
-returns void language plpgsql security definer set search_path = public as $$
-begin
-  if not public.is_org_owner() then raise exception 'Only the Organization Head can change this.'; end if;
-  update public.requests set show_vendor = coalesce(p_vendor, false), show_rate = coalesce(p_rate, false)
-  where id = p_id and organization_id = public.current_organization_id();
-  if not found then raise exception 'Request not found.'; end if;
-  perform public._req_event(p_id, 'visibility', 'Vendor name ' || case when p_vendor then 'shown' else 'hidden' end || ', rate ' || case when p_rate then 'shown' else 'hidden' end || ' on this ticket');
-end $$;
-revoke all on function public.request_set_visibility(text, boolean, boolean) from public, anon;
-grant execute on function public.request_set_visibility(text, boolean, boolean) to authenticated;
-
--- 9. Order progress per purchased line --------------------------------------------------------------
--- Owner, IT head and the Purchase team always get vendor + rate. Everyone else only when the owner switched
--- them on for that ticket. The PO number is for the owner, IT head, Purchase and Inventory teams.
+-- 8. Order progress per purchased line --------------------------------------------------------------
+drop function if exists public.request_set_visibility(text, boolean, boolean);
+-- Everyone who can see a request also sees its vendor and rate. The PO number remains role-limited.
 create or replace function public.request_order_info()
 returns table (purchase_item_id text, request_id text, item_id text, ordered integer, received integer,
                po_number text, po_status text, expected_date date, vendor text, rate numeric)
@@ -1368,8 +1354,8 @@ language sql stable security definer set search_path = public as $$
   select f.purchase_item_id, f.request_id, f.item_id, pi.qty_ordered, pi.qty_received,
          case when me.level in ('owner','dept_head') or me.sub_department in ('purchase','inventory') then po.po_number end,
          po.status, po.expected_date,
-         case when me.level in ('owner','dept_head') or me.sub_department = 'purchase' or r.show_vendor then v.name end,
-         case when me.level in ('owner','dept_head') or me.sub_department = 'purchase' or r.show_rate then pi.rate end
+         v.name,
+         pi.rate
   from (select p.id, p.organization_id, p.level, p.sub_department from public.profiles p
         where p.id = auth.uid() and p.approved and p.is_active) me
   join public.requests r on r.organization_id = me.organization_id and public.can_see_request(r)

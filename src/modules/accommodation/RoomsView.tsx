@@ -2,10 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BedDouble, Building2, CircleCheck, Edit3, ListTodo, Lock, Play, Plus, Search, Trash2, Upload, UserPlus, Users } from 'lucide-react';
 import { useAccommodation } from './AccommodationContext';
 import { DEPT_LABEL, DEPT_OPTIONS } from './types';
-import type { Member, MemberImportRow, Room } from './types';
+import type { Member, MemberImportRow, Room, RoomRequirement } from './types';
 import { Modal, ConfirmModal, btnGhost, btnPrimary, card, cx, inputCls, labelCls } from './ui';
 import { supabase } from '../walkie/lib/supabaseClient';
 import { useWalkie } from '../walkie';
+import { useEventScope } from '../../context/EventScopeContext';
+import { useManpower } from '../manpower';
 
 type Mode = 'rooms' | 'members';
 
@@ -27,10 +29,44 @@ const parseCsv = (input: string): string[][] => {
 };
 
 export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
-  const { rooms, members, canManageRooms, isDark: dark, loading, membersInRoom,
-    addRoom, updateRoom, deleteRoom, addMembers, importMembers, updateMember, deleteMember } = useAccommodation();
+  const { rooms, members, canManageRooms, canDefineRoomRequirements, isDark: dark, loading, membersInRoom,
+    addRoom, updateRoom, updateRoomSetup, deleteRoom, addMembers, importMembers, updateMember, deleteMember } = useAccommodation();
+  const eventScope = useEventScope();
+  const roomEventId = eventScope.scopeFor('accommodation');
+  const roomEventName = eventScope.events.find(event => event.id === roomEventId)?.name || 'Normal';
   const auth: any = useWalkie();
+  const canAdminAssignRoomMembers = ['owner', 'dept_head'].includes(auth.currentUser?.level);
+  const manpower = useManpower();
   const orgId = auth.currentUser?.organizationId;
+  const [eventHeadcount, setEventHeadcount] = useState<{ hereNow: number; returned: number; memberStatuses: Record<string, string> }>({ hereNow: 0, returned: 0, memberStatuses: {} });
+  const [linkedControlRooms, setLinkedControlRooms] = useState<Record<string, { name: string; location: string; pc_count: number }>>({});
+  useEffect(() => {
+    if (!orgId) { setLinkedControlRooms({}); return; }
+    let live = true;
+    const refresh = async () => {
+      const { data, error } = await supabase.from('cctv_control_rooms').select('accommodation_room_id,name,location,pc_count').eq('organization_id', orgId).eq('event_scope_key', roomEventId || 'normal').not('accommodation_room_id', 'is', null);
+      if (!live) return;
+      if (!error) setLinkedControlRooms(Object.fromEntries((data || []).filter(row => row.accommodation_room_id).map(row => [row.accommodation_room_id, row])));
+    };
+    void refresh();
+    const channel = supabase.channel(`accommodation-control-room-links-${orgId}-${roomEventId || 'normal'}`).on('postgres_changes', { event: '*', schema: 'public', table: 'cctv_control_rooms', filter: `organization_id=eq.${orgId}` }, () => void refresh()).subscribe();
+    return () => { live = false; void supabase.removeChannel(channel); };
+  }, [orgId, roomEventId]);
+  useEffect(() => {
+    if (!orgId || !roomEventId) { setEventHeadcount({ hereNow: 0, returned: 0, memberStatuses: {} }); return; }
+    let live = true;
+    const refreshHeadcount = async () => {
+      const { data, error } = await supabase.from('event_attendance').select('member_id,status').eq('organization_id', orgId).eq('event_id', roomEventId);
+      if (!live || error) return;
+      const rows = data || [];
+      setEventHeadcount({ hereNow: rows.filter(row => row.status === 'present').length, returned: rows.filter(row => row.status === 'checked_out').length, memberStatuses: Object.fromEntries(rows.filter(row => row.member_id).map(row => [row.member_id, row.status])) });
+    };
+    void refreshHeadcount();
+    const channel = supabase.channel(`accommodation-attendance-${orgId}-${roomEventId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_attendance', filter: `organization_id=eq.${orgId}` }, () => void refreshHeadcount())
+      .subscribe();
+    return () => { live = false; void supabase.removeChannel(channel); };
+  }, [orgId, roomEventId]);
   const canManageTasks = canManageRooms;
   const [tasks, setTasks] = useState<any[]>([]);
   const [taskTitle, setTaskTitle] = useState('');
@@ -64,29 +100,30 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
     if (error) auth.addToast?.(`Could not update task: ${error.message}`, 'error'); else await loadTasks();
   };
 
-  const [mode, setMode] = useState<Mode>('rooms');
+  const [mode] = useState<Mode>('rooms');
   const [search, setSearch] = useState('');
   const [roomFilter, setRoomFilter] = useState<string>('all'); // all | none | roomId
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [roomModal, setRoomModal] = useState<null | 'new' | Room>(null);
+  const [roomAssignmentModal, setRoomAssignmentModal] = useState<Room | null>(null);
+  const [requirementsRoom, setRequirementsRoom] = useState<Room | null>(null);
   const [memberModal, setMemberModal] = useState<null | { room?: string } | Member>(null);
   const [confirm, setConfirm] = useState<null | { title: string; body: string; label: string; run: () => void }>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [importMessage, setImportMessage] = useState('');
   const [importBusy, setImportBusy] = useState(false);
 
-  const totalBeds = rooms.reduce((t, r) => t + r.capacity, 0);
+  const restRooms = rooms.filter(room => room.category === 'rest_room');
+  const totalBeds = restRooms.reduce((t, r) => t + r.capacity, 0);
   const placed = members.filter(m => m.roomId && rooms.some(r => r.id === m.roomId)).length;
+  const placedInRestRooms = members.filter(m => m.roomId && restRooms.some(r => r.id === m.roomId)).length;
   const unassigned = members.length - placed;
   const roomById = useMemo(() => new Map(rooms.map(r => [r.id, r])), [rooms]);
-
-  const stats = [
-    { label: 'Total rooms', value: rooms.length, icon: Building2, tone: 'text-blue-500' },
-    { label: 'Total beds', value: totalBeds, icon: BedDouble, tone: 'text-blue-500' },
-    { label: 'Total members', value: members.length, icon: Users, tone: 'text-emerald-500' },
-    { label: 'Beds free', value: Math.max(0, totalBeds - placed), icon: BedDouble, tone: 'text-amber-500' },
-    { label: 'Not in a room', value: unassigned, icon: Users, tone: unassigned ? 'text-rose-500' : 'text-faint' },
-  ];
+  const roomsReady = rooms.filter(room => room.requirements.length > 0 && room.requirements.every(item => item.quantity > 0 && item.readyQuantity >= item.quantity)).length;
+  const roomsReadyPercent = rooms.length ? Math.round((roomsReady / rooms.length) * 100) : 0;
+  const bedsFree = Math.max(0, totalBeds - placedInRestRooms);
+  const bedsFreePercent = totalBeds ? Math.round((bedsFree / totalBeds) * 100) : null;
+  const membersPlacedPercent = members.length ? Math.round((placed / members.length) * 100) : null;
 
   // rooms grouped by block
   const grouped = useMemo(() => {
@@ -96,6 +133,36 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
   }, [rooms]);
 
   const q = search.trim().toLowerCase();
+  const canFulfillRoomRequirements = (room: Room) => {
+    if (canManageRooms) return true;
+    const currentName = String(auth.currentUser?.name || '').trim().toLocaleLowerCase();
+    if (!currentName) return false;
+    if (room.category === 'rest_room') return auth.currentUser?.subDepartment === 'accommodation';
+    const leadsTeam = manpower.teams.some(team => team.name === room.responsibleTeam && team.lead.trim().toLocaleLowerCase() === currentName);
+    const belongsToTeam = manpower.sewadars.some(person => person.name.trim().toLocaleLowerCase() === currentName && person.teams.includes(room.responsibleTeam));
+    return leadsTeam || belongsToTeam;
+  };
+  const presentRoomCandidates = manpower.sewadars
+    .filter(sewadar => eventHeadcount.memberStatuses[sewadar.id] === 'present')
+    .map(sewadar => members.find(member => member.id === sewadar.id))
+    .filter((member): member is Member => !!member);
+  const saveRoomAssignment = async (room: Room, selectedIds: string[]) => {
+    const selected = new Set(selectedIds);
+    const presentIds = new Set(presentRoomCandidates.map(member => member.id));
+    const currentlyPresentInRoom = members.filter(member => member.roomId === room.id && presentIds.has(member.id));
+    const stayingInRoom = members.filter(member => member.roomId === room.id && !presentIds.has(member.id)).length;
+    if (stayingInRoom + selected.size > room.capacity) {
+      auth.addToast?.(`Only ${Math.max(0, room.capacity - stayingInRoom)} bed(s) are available for present Sewadars.`, 'error');
+      return false;
+    }
+    const toUnassign = currentlyPresentInRoom.filter(member => !selected.has(member.id));
+    const toAssign = presentRoomCandidates.filter(member => selected.has(member.id) && member.roomId !== room.id);
+    for (const member of [...toUnassign, ...toAssign]) {
+      const ok = await updateMember(member.id, { roomId: selected.has(member.id) ? room.id : null });
+      if (!ok) return false;
+    }
+    return true;
+  };
   const visibleMembers = members.filter(m => {
     if (typeFilter !== 'all' && m.memberType !== typeFilter) return false;
     if (roomFilter === 'none' && m.roomId) return false;
@@ -144,39 +211,29 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
     <div className={cx(embedded ? 'space-y-3 text-[13px]' : 'space-y-5', embedded && 'text-ink')}>
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
-          {!embedded && <><h1 className="text-2xl font-bold tracking-tight">Rooms &amp; Members</h1><p className={cx('text-sm', muted)}>Every room, and who is staying in which one.</p></>}
+          {!embedded && <><h1 className="text-2xl font-bold tracking-tight">Rooms</h1><p className={cx('text-sm', muted)}>Room capacity and readiness for this event.</p></>}
         </div>
-        {canManageRooms ? (
-          <div className="flex gap-2">
-            <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" aria-label="Import members from CSV" onChange={e => importCsv(e.target.files?.[0])} />
-            <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-2')} disabled={importBusy} onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4" />{importBusy ? 'Importing…' : 'Import CSV'}</button>
-            <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-2')} onClick={() => setMemberModal({})}><UserPlus className="w-4 h-4" />Add members</button>
-            <button className={cx(btnPrimary, 'rounded-lg px-3 py-2 text-xs')} onClick={() => setRoomModal('new')}><Plus className="w-4 h-4" />Add room</button>
-          </div>
-        ) : (
+        {!canManageRooms && (
           <p className={cx('flex items-center gap-1.5 text-xs', muted)}><Lock className="w-3.5 h-3.5" />View only — room and member edits are limited to accommodation leads and IT owners.</p>
         )}
       </div>
       {importMessage && <div role="status" className={cx('rounded-lg border px-3 py-2 text-xs', importMessage.includes('imported.') ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-amber-500/30 bg-amber-500/10 text-amber-300')}>{importMessage} CSV headers can match Sr. No., B. No., Name, Rel, Relation Name, Mobile, Village/City, Branch, Occupation, Remarks, SEWA JOINING DATE, EMP CODE, Employee ID, Address, Address 2, Department, Member Type, and Room.</div>}
+      <p className={cx('text-[11px]', muted)}>{roomEventId ? `Here now and returned-back totals stay synced with ${roomEventName} attendance.` : 'Select an event in the header to see live here-now and returned-back totals.'}</p>
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-        {stats.map(s => (
-          <div key={s.label} className={cx('rounded-lg border p-3', card(dark))}>
-            <div className={cx('flex items-center gap-1.5 text-[11px] font-semibold', muted)}><s.icon className={cx('w-3.5 h-3.5', s.tone)} />{s.label}</div>
-            <div className="text-lg font-bold mt-0.5 tabular-nums">{s.value}</div>
-          </div>
-        ))}
+      <div className="grid gap-3 md:grid-cols-3">
+        <SummaryCard dark={dark} icon={Building2} title="Rooms" value={rooms.length} metricLabel="Ready rooms" metricValue={roomsReady} detail={`${roomsReady} of ${rooms.length} fully ready`} percent={rooms.length ? roomsReadyPercent : null} color="#10b981" />
+        <SummaryCard dark={dark} icon={BedDouble} title="Beds" value={totalBeds} metricLabel="Beds free" metricValue={bedsFree} detail={`${bedsFree} of ${totalBeds} available`} percent={bedsFreePercent} color="#f59e0b" />
+        <SummaryCard dark={dark} icon={Users} title="Members" value={members.length} metricLabel="In rooms" metricValue={placed} detail={`${placed} assigned · ${unassigned} not in a room`} percent={membersPlacedPercent} color="#3b82f6" />
       </div>
 
-      <div role="tablist" aria-label="Rooms or members" className="inline-flex p-1 rounded-lg bg-raised">
-        {(['rooms', 'members'] as Mode[]).map(m => (
-          <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
-            className={cx('px-3 py-1.5 rounded-md text-[11px] font-semibold capitalize transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
-              mode === m ? 'bg-blue-600 text-white shadow' : muted)}>
-            {m === 'rooms' ? `Rooms (${rooms.length})` : `Members (${members.length})`}
-          </button>
-        ))}
-      </div>
+      {canManageRooms && <div className="flex flex-wrap items-center justify-end gap-2">
+        <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" aria-label="Import members from CSV" onChange={e => importCsv(e.target.files?.[0])} />
+        {canAdminAssignRoomMembers && <>
+          <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-2')} disabled={importBusy} onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4" />{importBusy ? 'Importing…' : 'Import CSV'}</button>
+          <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-2')} onClick={() => setMemberModal({})}><UserPlus className="w-4 h-4" />Add members</button>
+        </>}
+        <button className={cx(btnPrimary, 'rounded-lg px-3 py-2 text-xs')} onClick={() => setRoomModal('new')}><Plus className="w-4 h-4" />Add room</button>
+      </div>}
 
       {loading && !rooms.length && !members.length && <p className={cx('text-sm', muted)}>Loading…</p>}
 
@@ -195,13 +252,20 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
               <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 {list.map(r => {
                   const inside = membersInRoom(r.id);
+                  const membersHereNow = roomEventId ? inside.filter(member => eventHeadcount.memberStatuses[member.id] === 'present').length : inside.length;
                   const pct = Math.min(100, Math.round((inside.length / r.capacity) * 100));
                   const full = inside.length >= r.capacity;
+                  const roomReady = r.requirements.length > 0 && r.requirements.every(x => x.quantity > 0 && x.readyQuantity >= x.quantity);
+                  const roomReturned = r.requirements.length > 0 && r.requirements.every(x => x.returned);
+                  const neededTotal = r.requirements.reduce((sum, item) => sum + Math.max(0, item.quantity), 0);
+                  const readyTotal = r.requirements.reduce((sum, item) => sum + Math.min(Math.max(0, item.readyQuantity), Math.max(0, item.quantity)), 0);
+                  const readinessPercent = neededTotal ? Math.round((readyTotal / neededTotal) * 100) : 0;
                   return (
                     <article key={r.id} className={cx('flex flex-col rounded-lg border p-3', card(dark))}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <h3 className="font-bold text-sm truncate" title={r.name}>{r.name}</h3>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5"><span className={cx('inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold', r.category === 'control_room' ? 'bg-blue-500/10 text-blue-300' : 'bg-emerald-500/10 text-emerald-300')}>{r.category === 'control_room' ? 'Control room' : 'Rest room'}</span><span className="inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">Here now · {membersHereNow}</span></div>
                           {r.notes && <p className={cx('text-[11px] truncate', muted)} title={r.notes}>{r.notes}</p>}
                         </div>
                         <span className={cx('shrink-0 text-xs font-bold px-2 py-1 rounded-lg tabular-nums',
@@ -209,21 +273,27 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                           {inside.length}/{r.capacity}{full ? ' · Full' : ''}
                         </span>
                       </div>
-                      <div className="h-1.5 rounded-full mt-3 overflow-hidden bg-raised" aria-hidden>
+                      <div className="h-1.5 rounded-full mt-2.5 overflow-hidden bg-raised" aria-hidden>
                         <div className={cx('h-full rounded-full', full ? 'bg-rose-500' : pct >= 75 ? 'bg-amber-500' : 'bg-emerald-500')} style={{ width: `${pct}%` }} />
                       </div>
-                          <ul className="mt-3 space-y-1 text-[13px] flex-1 max-h-40 overflow-y-auto">
-                        {inside.map(m => (
-                          <li key={m.id} className="flex items-center justify-between gap-2">
-                            <span className="truncate">{m.name}</span>
-                            {m.department && <span className={cx('text-xs shrink-0', muted)}>{DEPT_LABEL[m.department]}</span>}
-                          </li>
-                        ))}
-                        {!inside.length && <li className={cx('text-xs italic', muted)}>Empty</li>}
-                      </ul>
-                      {canManageRooms && (
-                        <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-line">
-                          <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5')} disabled={full} onClick={() => setMemberModal({ room: r.id })}><UserPlus className="w-3.5 h-3.5" />Add people</button>
+                      <div className="mt-2.5 flex items-center justify-between gap-2">
+                        <span className={cx('rounded-md px-2 py-1 text-[10px] font-semibold', r.requirements.length === 0 ? 'bg-raised text-mute' : roomReady ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-300')}>{r.requirements.length === 0 ? 'Not set up' : roomReady ? 'Ready' : 'In progress'}</span>
+                        {roomReturned && <span className="rounded-md bg-blue-500/15 px-2 py-1 text-[10px] font-semibold text-blue-300">Returned</span>}
+                        <div className="ml-auto flex items-center gap-2">
+                          <span className={cx('text-right text-[10px]', muted)}>Necessities ready</span>
+                          <div className="h-9 w-9 shrink-0 rounded-full p-[3px]" role="progressbar" aria-label={`${r.name} necessities readiness`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={readinessPercent} style={{ background: `conic-gradient(#10b981 ${readinessPercent}%, rgba(148,163,184,.2) 0)` }}>
+                            <div className="flex h-full w-full items-center justify-center rounded-full bg-surface text-[9px] font-bold tabular-nums">{readinessPercent}%</div>
+                          </div>
+                        </div>
+                      </div>
+                      {r.category === 'control_room' && <div className={cx('mt-2 rounded-md bg-raised px-2 py-1.5 text-[10px]', muted)}>Requirements team: <span className="font-semibold text-ink">{r.responsibleTeam || 'No team assigned'}</span></div>}
+                      {r.category === 'control_room' && <div className={cx('mt-2 rounded-md border border-blue-500/20 bg-blue-500/5 px-2.5 py-2 text-[10px]', muted)}>{linkedControlRooms[r.id] ? <><span className="font-semibold text-blue-300">Control Rooms · {roomEventName}:</span> {linkedControlRooms[r.id].name} · {linkedControlRooms[r.id].location} · {linkedControlRooms[r.id].pc_count} PCs</> : <>No CCTV Control Room linked for {roomEventName}. Link it from Control Rooms → Edit room.</>}</div>}
+                      {roomReady && r.readyAt && <p className={cx('mt-1 text-[10px]', muted)}>Ready at {new Date(r.readyAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>}
+                      {roomReturned && r.returnedAt && <p className={cx('mt-1 text-[10px]', muted)}>Returned at {new Date(r.returnedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>}
+                      <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-line">
+                        <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5')} onClick={() => setRequirementsRoom(r)}><ListTodo className="w-3.5 h-3.5" />Necessities</button>
+                        {canManageRooms && <>
+                          {canAdminAssignRoomMembers && <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5')} disabled={full} onClick={() => setRoomAssignmentModal(r)}><UserPlus className="w-3.5 h-3.5" />Add people</button>}
                           <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5')} onClick={() => setRoomModal(r)} aria-label={`Edit room ${r.name}`}><Edit3 className="w-3.5 h-3.5" /></button>
                           <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5 text-rose-500')} aria-label={`Delete room ${r.name}`}
                             onClick={() => setConfirm({
@@ -231,8 +301,8 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                               body: inside.length ? `${inside.length} member(s) will be left without a room. They are not deleted.` : 'This room is empty.',
                               label: 'Delete room', run: () => deleteRoom(r.id),
                             })}><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      )}
+                        </>}
+                      </div>
                     </article>
                   );
                 })}
@@ -297,12 +367,12 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                       <td className="px-4 py-2.5">{canManageRooms ? <><select aria-label={`Arrival for ${m.name}`} value={m.arrivalStatus} onChange={e => updateMember(m.id, { arrivalStatus: e.target.value as Member['arrivalStatus'], arrivedAt: e.target.value === 'arrived' ? new Date().toISOString() : '' })} className={cx(inputCls(dark), 'py-1.5 text-xs')}><option value="pending">Expected</option><option value="arrived">Arrived</option><option value="not_coming">Not coming</option></select><div className={cx('text-xs mt-1', muted)}>{[m.teamName, m.teamLead && `Lead: ${m.teamLead}`].filter(Boolean).join(' · ') || 'No team'}</div></> : <div>{m.arrivalStatus}{m.teamName ? ` · ${m.teamName}` : ''}</div>}</td>
                       <td className={cx('px-4 py-2.5 text-xs tabular-nums', muted)}>{m.arrivalStatus === 'arrived' && m.arrivedAt ? new Date(m.arrivedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}</td>
                       <td className="px-4 py-2.5">
-                        {canManageRooms ? (
+                        {canAdminAssignRoomMembers ? (
                           <select aria-label={`Room for ${m.name}`} value={m.roomId || ''} onChange={e => updateMember(m.id, { roomId: e.target.value || null })} className={cx(inputCls(dark), 'py-1.5 text-xs min-w-[10rem]')}>
                             <option value="">— Not in a room —</option>
                             {rooms.map(r => {
                               const free = r.capacity - membersInRoom(r.id).length;
-                              return <option key={r.id} value={r.id} disabled={free <= 0 && r.id !== m.roomId}>{r.name} ({Math.max(0, free)} free)</option>;
+                              return <option key={r.id} value={r.id} disabled={free <= 0 && r.id !== m.roomId}>{r.name} · {r.category === 'control_room' ? 'Control room' : 'Rest room'} ({Math.max(0, free)} free)</option>;
                             })}
                           </select>
                         ) : room ? <span className="font-medium">{room.name}</span> : <span className={cx('text-xs italic', muted)}>Not in a room</span>}
@@ -326,19 +396,46 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
         </div>
       )}
 
-      {roomModal && <RoomForm dark={dark} room={roomModal === 'new' ? null : roomModal} onClose={() => setRoomModal(null)}
+      {roomModal && <RoomForm dark={dark} room={roomModal === 'new' ? null : roomModal} teams={manpower.teams} onClose={() => setRoomModal(null)}
         onSave={(v) => (roomModal === 'new' ? addRoom(v) : updateRoom(roomModal.id, v))} />}
+      {roomAssignmentModal && <RoomAssignmentModal dark={dark} room={roomAssignmentModal} members={members} presentMembers={presentRoomCandidates} eventSelected={!!roomEventId} onClose={() => setRoomAssignmentModal(null)} onSave={ids => saveRoomAssignment(roomAssignmentModal, ids)} />}
+      {requirementsRoom && <RoomRequirementsModal dark={dark} room={requirementsRoom} canDefine={canDefineRoomRequirements} canFulfill={canFulfillRoomRequirements(requirementsRoom)} onClose={() => setRequirementsRoom(null)} onSave={next => updateRoomSetup(requirementsRoom.id, next)} />}
       {memberModal && <MemberForm dark={dark} rooms={rooms} members={members}
         edit={'id' in memberModal ? memberModal : null} presetRoom={'id' in memberModal ? undefined : memberModal.room}
-        onClose={() => setMemberModal(null)} onAdd={addMembers} onEdit={updateMember} />}
+        canAssignRoomMembers={canAdminAssignRoomMembers} onClose={() => setMemberModal(null)} onAdd={addMembers} onEdit={updateMember} />}
       {confirm && <ConfirmModal dark={dark} title={confirm.title} body={confirm.body} confirmLabel={confirm.label} onConfirm={confirm.run} onClose={() => setConfirm(null)} />}
     </div>
   );
 };
 
 // ---------------------------------------------------------------------------
-const RoomForm: React.FC<{ dark: boolean; room: Room | null; onClose: () => void; onSave: (v: { name: string; block: string; capacity: number; notes: string }) => Promise<boolean> }> = ({ dark, room, onClose, onSave }) => {
+const SummaryCard: React.FC<{
+  dark: boolean; icon: React.ComponentType<{ className?: string }>; title: string; value: number; metricLabel: string;
+  metricValue: number; detail: string; percent: number | null; color: string;
+}> = ({ dark, icon: Icon, title, value, metricLabel, metricValue, detail, percent, color }) => (
+  <section className={cx('flex min-h-28 items-center justify-between gap-4 rounded-xl border p-4', card(dark))} aria-label={`${title} summary`}>
+    <div className="min-w-0">
+      <div className="flex items-center gap-2">
+        <Icon className="h-4 w-4 text-blue-400" />
+        <h2 className="text-xs font-semibold text-mute">Total {title.toLowerCase()}</h2>
+      </div>
+      <div className="mt-1 text-2xl font-bold tabular-nums">{value}</div>
+      <div className="mt-2 flex items-center gap-1.5 text-xs">
+        <span className="text-mute">{metricLabel}</span>
+        <span className="font-semibold tabular-nums">{metricValue}</span>
+      </div>
+      <p className="mt-0.5 truncate text-[10px] text-mute" title={detail}>{detail}</p>
+    </div>
+    <div className="h-16 w-16 shrink-0 rounded-full p-[5px]" role="img" aria-label={`${title}: ${percent === null ? 'no data' : `${percent}% ${metricLabel.toLowerCase()}`}`} style={{ background: `conic-gradient(${color} ${percent ?? 0}%, rgba(148,163,184,.2) 0)` }}>
+      <div className="flex h-full w-full items-center justify-center rounded-full bg-surface text-xs font-bold tabular-nums">{percent === null ? '—' : `${percent}%`}</div>
+    </div>
+  </section>
+);
+
+const RoomForm: React.FC<{ dark: boolean; room: Room | null; teams: { id: string; name: string; lead: string }[]; onClose: () => void; onSave: (v: { name: string; category: Room['category']; block: string; capacity: number; notes: string; responsibleTeam: string; requirements: RoomRequirement[] }) => Promise<boolean> }> = ({ dark, room, teams, onClose, onSave }) => {
   const [name, setName] = useState(room?.name || '');
+  const [category, setCategory] = useState<Room['category']>(room?.category || 'rest_room');
+  const [responsibleTeam, setResponsibleTeam] = useState(room?.responsibleTeam || '');
   const [block, setBlock] = useState(room?.block || '');
   const [capacity, setCapacity] = useState(String(room?.capacity ?? 4));
   const [notes, setNotes] = useState(room?.notes || '');
@@ -346,7 +443,7 @@ const RoomForm: React.FC<{ dark: boolean; room: Room | null; onClose: () => void
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    const ok = await onSave({ name, block, capacity: Number(capacity), notes });
+    const ok = await onSave({ name, category, block, capacity: Number(capacity), notes, responsibleTeam, requirements: room?.requirements || [] });
     setBusy(false);
     if (ok) onClose();
   };
@@ -357,7 +454,11 @@ const RoomForm: React.FC<{ dark: boolean; room: Room | null; onClose: () => void
           <div><label className={labelCls(dark)} htmlFor="rn">Room name / number</label><input id="rn" autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. A-101" className={inputCls(dark)} /></div>
           <div><label className={labelCls(dark)} htmlFor="rb">Block / camp (optional)</label><input id="rb" value={block} onChange={e => setBlock(e.target.value)} placeholder="e.g. Block A" className={inputCls(dark)} /></div>
         </div>
-        <div><label className={labelCls(dark)} htmlFor="rc">Beds (capacity)</label><input id="rc" type="number" min={1} max={500} required value={capacity} onChange={e => setCapacity(e.target.value)} className={inputCls(dark)} /></div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div><label className={labelCls(dark)} htmlFor="room-category">Category</label><select id="room-category" value={category} onChange={e => setCategory(e.target.value as Room['category'])} className={inputCls(dark)}><option value="rest_room">Rest room</option><option value="control_room">Control room</option></select></div>
+          {category === 'control_room' && <div><label className={labelCls(dark)} htmlFor="room-team">Team fulfilling requirements</label><select id="room-team" required value={responsibleTeam} onChange={e => setResponsibleTeam(e.target.value)} className={inputCls(dark)}><option value="">Choose a Sewadar team</option>{teams.map(team => <option key={team.id} value={team.name}>{team.name}{team.lead ? ` · Lead: ${team.lead}` : ''}</option>)}</select>{!teams.length && <p className="mt-1 text-[11px] text-amber-300">Create a team in Sewadars → Teams first.</p>}</div>}
+        </div>
+        <div><label className={labelCls(dark)} htmlFor="rc">{category === 'control_room' ? 'Member capacity' : 'Room capacity (beds)'}</label><input id="rc" type="number" min={1} max={500} required value={capacity} onChange={e => setCapacity(e.target.value)} className={inputCls(dark)} /><p className={cx('mt-1 text-[11px]', dark ? 'text-gray-500' : 'text-gray-500')}>{category === 'control_room' ? 'Capacity limits how many roster members can be assigned to this control room.' : 'Capacity is used for member placement; beds are not room setup requirements.'}</p></div>
         <div><label className={labelCls(dark)} htmlFor="rno">Notes (optional)</label><input id="rno" value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. Ground floor, AC" className={inputCls(dark)} /></div>
         <div className="flex justify-end gap-2 pt-1"><button type="button" onClick={onClose} className={btnGhost(dark)}>Cancel</button><button type="submit" disabled={busy} className={btnPrimary}>{busy ? 'Saving…' : 'Save room'}</button></div>
       </form>
@@ -365,11 +466,131 @@ const RoomForm: React.FC<{ dark: boolean; room: Room | null; onClose: () => void
   );
 };
 
+const RoomRequirementsModal: React.FC<{
+  dark: boolean; room: Room; canDefine: boolean; canFulfill: boolean; onClose: () => void;
+  onSave: (requirements: RoomRequirement[]) => Promise<boolean>;
+}> = ({ dark, room, canDefine, canFulfill, onClose, onSave }) => {
+  const [items, setItems] = useState<RoomRequirement[]>(room.requirements.map(item => ({ ...item })));
+  const [busy, setBusy] = useState(false);
+  const changeItem = (index: number, patch: Partial<RoomRequirement>) => setItems(current => current.map((item, i) => i === index ? { ...item, ...patch } : item));
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    const cleaned = items.map(item => ({
+      ...item,
+      name: item.name.trim(),
+      quantity: Math.max(0, Number(item.quantity) || 0),
+      readyQuantity: Math.min(Math.max(0, Number(item.readyQuantity) || 0), Math.max(0, Number(item.quantity) || 0)),
+      collectFrom: String(item.collectFrom || '').trim(),
+      returned: !!item.returned,
+    })).filter(item => item.name);
+    const ok = await onSave(cleaned);
+    setBusy(false);
+    if (ok) onClose();
+  };
+  return (
+    <Modal title={`Necessities · ${room.name}`} dark={dark} wide onClose={onClose}>
+      <form onSubmit={submit} className="space-y-3">
+        <p className={cx('text-xs', dark ? 'text-gray-400' : 'text-gray-600')}>
+          {room.category === 'rest_room' ? 'Accommodation members prepare and return these necessities.' : `The ${room.responsibleTeam || 'assigned'} team prepares and returns these necessities.`}
+        </p>
+        {items.length === 0 && <p className={cx('rounded-lg border border-dashed border-line px-3 py-5 text-center text-xs', dark ? 'text-gray-500' : 'text-gray-500')}>No necessities added yet.</p>}
+        <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+          {items.map((item, index) => (
+            <div key={index} className="rounded-lg border border-line p-3 space-y-2">
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_minmax(0,1fr)_auto] sm:items-end">
+                <label className={labelCls(dark)}>Necessity<input disabled={!canDefine} value={item.name} onChange={e => changeItem(index, { name: e.target.value })} placeholder="Fan, mattress, blanket…" className={cx(inputCls(dark), 'mt-1')} /></label>
+                <label className={labelCls(dark)}>Needed<input disabled={!canDefine} type="number" min={0} value={item.quantity} onChange={e => changeItem(index, { quantity: Number(e.target.value), readyQuantity: Math.min(item.readyQuantity, Number(e.target.value) || 0) })} className={cx(inputCls(dark), 'mt-1')} /></label>
+                <label className={labelCls(dark)}>Collect from<input disabled={!canDefine} value={item.collectFrom || ''} onChange={e => changeItem(index, { collectFrom: e.target.value })} placeholder="Store / block / contact" className={cx(inputCls(dark), 'mt-1')} /></label>
+                {canDefine && <button type="button" aria-label={`Remove ${item.name || 'necessity'}`} className={cx(btnGhost(dark), 'px-2 text-rose-400')} onClick={() => setItems(current => current.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></button>}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+                <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={item.quantity > 0 && item.readyQuantity >= item.quantity} disabled={!canFulfill || item.quantity <= 0} onChange={e => changeItem(index, { readyQuantity: e.target.checked ? item.quantity : 0, returned: e.target.checked ? item.returned : false })} />Ready</label>
+                <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={!!item.returned} disabled={!canFulfill || item.quantity <= 0 || item.readyQuantity < item.quantity} onChange={e => changeItem(index, { returned: e.target.checked })} />Returned</label>
+                <span className={cx('ml-auto tabular-nums', dark ? 'text-gray-400' : 'text-gray-600')}>{Math.min(item.readyQuantity, item.quantity)}/{item.quantity} ready</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        {canDefine && <button type="button" className={btnGhost(dark)} onClick={() => setItems(current => [...current, { name: '', quantity: 1, readyQuantity: 0, collectFrom: '', returned: false }])}><Plus className="h-3.5 w-3.5" />Add necessity</button>}
+        {!canDefine && !canFulfill && <p className={cx('text-[11px]', dark ? 'text-gray-500' : 'text-gray-500')}>View only. Room necessities are managed by Accommodation or the responsible team.</p>}
+        <div className="flex justify-end gap-2 border-t border-line pt-3">
+          <button type="button" onClick={onClose} className={btnGhost(dark)}>Close</button>
+          {(canDefine || canFulfill) && <button type="submit" disabled={busy} className={btnPrimary}>{busy ? 'Saving…' : 'Save necessities'}</button>}
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+const RoomAssignmentModal: React.FC<{
+  dark: boolean; room: Room; members: Member[]; presentMembers: Member[]; eventSelected: boolean; onClose: () => void;
+  onSave: (memberIds: string[]) => Promise<boolean>;
+}> = ({ dark, room, members, presentMembers, eventSelected, onClose, onSave }) => {
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => presentMembers.filter(member => member.roomId === room.id).map(member => member.id));
+  const [search, setSearch] = useState('');
+  const [busy, setBusy] = useState(false);
+  const query = search.trim().toLocaleLowerCase();
+  const filteredPresentMembers = presentMembers.filter(member => !query || [member.name, member.department, DEPT_LABEL[member.department], member.mobile].some(value => String(value || '').toLocaleLowerCase().includes(query)));
+  const assignedElsewhere = (member: Member) => member.roomId && member.roomId !== room.id;
+  const stayingNonPresent = members.filter(member => member.roomId === room.id && !presentMembers.some(present => present.id === member.id)).length;
+  const maxSelectable = Math.max(0, room.capacity - stayingNonPresent);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    const ok = await onSave(selectedIds);
+    setBusy(false);
+    if (ok) onClose();
+  };
+  const toggle = (id: string, checked: boolean) => setSelectedIds(current => checked ? [...current, id] : current.filter(value => value !== id));
+  return (
+    <Modal title={`Add present Sewadars · ${room.name}`} dark={dark} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-3">
+        <p className={cx('text-xs', dark ? 'text-gray-400' : 'text-gray-600')}>
+          Select members marked Present for the event. Only members already in the Sewadar roster are listed.
+        </p>
+        {!eventSelected ? (
+          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300">Select an event in the header to see present Sewadars.</p>
+        ) : !presentMembers.length ? (
+          <p className={cx('rounded-lg border border-dashed border-line p-5 text-center text-xs', dark ? 'text-gray-500' : 'text-gray-500')}>No Sewadars are currently marked Present for this event.</p>
+        ) : (
+          <>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" aria-hidden />
+            <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search present Sewadars…" aria-label="Search present Sewadars" className={cx(inputCls(dark), 'pl-9')} />
+          </div>
+          <div className="max-h-[45vh] divide-y divide-line overflow-y-auto rounded-lg border border-line">
+            {filteredPresentMembers.map(member => {
+              const elsewhere = assignedElsewhere(member);
+              const checked = selectedIds.includes(member.id);
+              return (
+                <label key={member.id} className={cx('flex items-center gap-3 px-3 py-2.5 text-sm', elsewhere ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
+                  <input type="checkbox" checked={checked} disabled={!!elsewhere || (!checked && selectedIds.length >= maxSelectable)} onChange={event => toggle(member.id, event.target.checked)} />
+                  <span className="min-w-0 flex-1 truncate font-medium">{member.name}</span>
+                  {member.department && <span className={cx('text-xs', dark ? 'text-gray-400' : 'text-gray-600')}>{DEPT_LABEL[member.department] || member.department}</span>}
+                  {elsewhere && <span className="text-[10px] text-amber-300">Already assigned</span>}
+                </label>
+              );
+            })}
+            {!filteredPresentMembers.length && <p className={cx('p-4 text-center text-xs', dark ? 'text-gray-500' : 'text-gray-500')}>No present Sewadars match “{search}”.</p>}
+          </div>
+          </>
+        )}
+        <p className={cx('text-[11px]', dark ? 'text-gray-500' : 'text-gray-500')}>{selectedIds.length} selected · {maxSelectable} bed(s) available</p>
+        <div className="flex justify-end gap-2 border-t border-line pt-3">
+          <button type="button" onClick={onClose} className={btnGhost(dark)}>Cancel</button>
+          <button type="submit" disabled={busy || !eventSelected} className={btnPrimary}>{busy ? 'Saving…' : 'Save room members'}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
 const MemberForm: React.FC<{
-  dark: boolean; rooms: Room[]; members: Member[]; edit: Member | null; presetRoom?: string; onClose: () => void;
+  dark: boolean; rooms: Room[]; members: Member[]; edit: Member | null; presetRoom?: string; canAssignRoomMembers: boolean; onClose: () => void;
   onAdd: (names: string[], department: string, roomId: string | null, details?: Partial<Member>) => Promise<boolean>;
   onEdit: (id: string, patch: Partial<Omit<Member, 'id'>>) => Promise<boolean>;
-}> = ({ dark, rooms, members, edit, presetRoom, onClose, onAdd, onEdit }) => {
+}> = ({ dark, rooms, members, edit, presetRoom, canAssignRoomMembers, onClose, onAdd, onEdit }) => {
   const [names, setNames] = useState(edit?.name || '');
   const [dept, setDept] = useState(edit?.department || '');
   const [roomId, setRoomId] = useState(edit?.roomId || presetRoom || '');
@@ -381,7 +602,7 @@ const MemberForm: React.FC<{
     e.preventDefault();
     setBusy(true);
     const ok = edit
-      ? await onEdit(edit.id, { name: names, department: dept, roomId: roomId || null, ...detail })
+      ? await onEdit(edit.id, { name: names, department: dept, ...(canAssignRoomMembers ? { roomId: roomId || null } : {}), ...detail })
       : await onAdd(names.split('\n'), dept, roomId || null, detail);
     setBusy(false);
     if (ok) onClose();
@@ -407,7 +628,7 @@ const MemberForm: React.FC<{
           </div>
           <div>
             <label className={labelCls(dark)} htmlFor="mr">Room</label>
-            <select id="mr" value={roomId} onChange={e => setRoomId(e.target.value)} className={inputCls(dark)}>
+            <select id="mr" value={roomId} disabled={!canAssignRoomMembers} onChange={e => setRoomId(e.target.value)} className={inputCls(dark)}>
               <option value="">— Not in a room —</option>
               {rooms.map(r => <option key={r.id} value={r.id} disabled={freeIn(r) <= 0}>{r.name} ({Math.max(0, freeIn(r))} free)</option>)}
             </select>

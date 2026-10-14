@@ -36,6 +36,66 @@ the migration files it has not received yet, in version order. Each migration
 file remains available below as the upgrade history; migration v16 needs v11–v15
 first.
 
+## Meeting invitations and request escalation emails
+
+The meeting scheduler can open a prefilled Google Calendar or Outlook event
+composer. When Teams is selected and Microsoft Graph is connected, the app can
+create the Teams meeting automatically. When Microsoft Graph is connected, scheduling also
+creates a busy event in the configured Outlook calendar and sends calendar
+invitations to the selected audience, booking the chosen one-hour slot. Without
+Graph, invite emails contain an `.ics` file that recipients can add themselves.
+Portal notifications continue to be created by the database.
+
+To enable email delivery:
+
+1. Create a free Resend account and verify a sending domain. Resend's free
+   transactional tier currently allows up to 3,000 emails per month and 100 per
+   day; those caps apply to all meeting and escalation emails.
+2. Deploy the function: `supabase functions deploy workflow-email`.
+3. Add these secrets in Supabase **Project Settings → Edge Functions → Secrets**:
+   `RESEND_API_KEY`, `RESEND_FROM_EMAIL` (for example,
+   `Event Command Center <notifications@your-verified-domain>`), and
+   `APP_BASE_URL` (the deployed app URL).
+4. To automatically create Teams meetings, reserve Outlook calendar time, and send attendee invitations,
+   register an app in Microsoft Entra ID, grant the **Microsoft Graph application
+   permissions** `Calendars.ReadWrite` and `OnlineMeetings.ReadWrite.All`, and grant admin consent. For Teams online meetings, configure a Teams application access policy for the dedicated organizer mailbox and grant that policy to the mailbox. Restrict the app's
+   mailbox access to the dedicated meeting calendar/mailbox where possible. Add
+   these Edge Function secrets:
+   `OUTLOOK_TENANT_ID`, `OUTLOOK_CLIENT_ID`, `OUTLOOK_CLIENT_SECRET`, and
+   `OUTLOOK_CALENDAR_USER` (the mailbox email address or user principal name).
+   The application-permission flow requires a Microsoft 365 work/school tenant
+   and an admin to grant consent; personal Outlook.com accounts need a different
+   delegated OAuth setup. The configured `OUTLOOK_CALENDAR_USER` is also the Teams
+   meeting organizer. If the meeting is online, Teams is selected, and no join
+   link was pasted, the function creates a Teams meeting and saves its join link
+   before emailing invitees. A pasted link is used as-is.
+
+5. To generate minutes from Teams transcripts when an organizer marks a meeting
+   done, add the Graph application permission `OnlineMeetingTranscript.Read.All`
+   and grant admin consent. Keep the Teams application access policy in place,
+   and ensure the Microsoft 365 tenant permits Graph transcript access. Add
+   `OPENAI_API_KEY` to Supabase Edge Function secrets; optionally set
+   `OPENAI_MINUTES_MODEL` to choose the model. Apply
+   `supabase/migration_v77_meeting_transcripts.sql` to existing databases and
+   deploy `workflow-email`. Teams transcription must be enabled for the meeting.
+   Minutes are generated from the transcript and saved in the existing minutes
+   field. Transcript text is sent to the OpenAI API for summarization. If the
+   transcript is not available when the organizer marks the meeting done, the
+   app displays the reason and provides a retry action on that meeting.
+
+The function emails invited portal accounts from the meeting's selected
+audience. With Graph connected it also writes the meeting into the configured
+Outlook calendar as busy and invites attendees. When the IT Department Head
+escalates a request, it emails all active Super Admin accounts in the
+organization. If calendar or email delivery is not configured or fails, the app
+reports that the in-app action succeeded and identifies the delivery issue.
+
+Google Meet and other provider links must still be created by the organizer and
+pasted into the app. Teams links can be created automatically when Graph and
+the Teams application access policy are configured. Microsoft Graph uses the
+configured service mailbox to book the Outlook calendar slot and send attendee
+invitations.
+
 The migration inventory is:
 
    | File | Adds |
@@ -61,6 +121,16 @@ The migration inventory is:
    | `migration_v27_cctv_wifi_assets.sql` | CCTV/WiFi asset registers |
    | `migration_v28_request_it_owner_approval.sql` | Request approvals: branch head → IT owner → organization owner; refreshes open requests into the IT review queue |
    | `migration_v29_meeting_minutes.sql` | Meeting minutes stored with each meeting and organizer/owner edit permission |
+   | `migration_v30_member_shift.sql`–`migration_v65_permanent_member_holidays.sql` | Member scheduling, event planning, radio requests, request workflows, delivery tracking, vendor purchasing, and roster updates (apply every missing version in order) |
+   | `migration_v66_team_task_priority.sql` | Team task priority and optional priority deadline |
+   | `migration_v67_task_resource_handoffs.sql` | Issue inventory tools/material to task team leaders and track good/damaged returns |
+   | `migration_v68_department_feedback_updates.sql` | Department-scoped feedback, announcements, and lessons learned for the Issues & Reports Administration page |
+   | `migration_v69_accommodation_room_categories.sql` | Adds Rest room and Control room categories and assigns Control room setup requirements to a Sewadar team |
+   | `migration_v70_task_completion_notifications.sql` | Sends task completion notifications to the task creator's notification bell |
+   | `migration_v71_remove_food_ready_for_event.sql` | Removes Ready for event from Food and returns existing meals in that state to In preparation |
+   | `migration_v72_general_feedback.sql` | Combines material/site-event reports as Issues and adds a separate general Feedback option |
+   | `migration_v73_event_linked_reports.sql` | Links Issues & Reports entries to an event |
+   | `migration_v74_wifi_event_usage.sql` | Associates Wi-Fi access issues with events for usage reports |
 
 `migration_v16` needs v11–v15 first (it reads inventory, purchase, notifications and the history table).
 
@@ -84,11 +154,11 @@ Run it even on a project that already has `schema.sql` applied.
 
 1. In Supabase: **Settings** → **API**.
 2. Copy the **Project URL** and the **anon / public key**.
-3. In this project's root folder, copy `.env.example` to a new file named `.env`.
+3. In this project's root folder, copy `.env.example` to `.env.local`.
 4. Paste in your values:
    ```
-   REACT_APP_SUPABASE_URL=https://your-project-ref.supabase.co
-   REACT_APP_SUPABASE_ANON_KEY=your-anon-key
+   NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
    ```
 5. Never share the **service_role** key or commit `.env` to git — the `.gitignore` already excludes it.
 
@@ -299,3 +369,63 @@ Adds an Online/Offline category to each vendor. Procurement order mode follows t
 
 ## migration_v54_order_tracking_stage.sql
 Adds staged online-order tracking and IT Department Head notifications. Purchase can save an order ID before dispatch, then attach the courier AWB later for AfterShip status updates. Notifications are sent when the order is saved, courier tracking starts, and delivery status/checkpoints change. Apply after migration_v52. Deploy `aftership-register-tracking` and `aftership-webhook`; `supabase/config.toml` allows the signed webhook endpoint without a Supabase JWT. Configure the AfterShip API key, webhook secret, and webhook URL as described for migration_v47. Buyer-account marketplace order IDs are references; live scans begin once the courier AWB is available. The same migration is included in `setup.sql` for new databases.
+
+## migration_v55_request_vendor_rate_visible.sql
+Removes per-request vendor/rate visibility settings. Everyone who can view a request can also see its vendor and purchase rate; PO numbers remain role-limited. Apply after migration_v54. The update is included in `setup.sql` for new databases.
+
+## migration_v56_purchase_misc_amount.sql
+Adds a non-item miscellaneous amount to purchase orders. Procurement automatically includes the approved request installation/miscellaneous allowance once in the linked PO total, without creating a separate product line. Apply after migration_v55. The column is also included in `setup.sql` for new databases.
+
+## migration_v57_sewadar_roster_skills_arrival_period.sql
+Adds skills and a morning/noon/evening/night expected-arrival period to shared Sewadar profiles. Apply after migration_v56. The schema change is also included in `setup.sql` for new databases.
+
+## migration_v58_event_scoped_member_operations.sql
+Keeps Sewadar profiles shared while storing arrivals, badge issuance/return, call logs, Walkie allocations, and deliveries in the Normal workspace or the selected event scope for their module. Event reports show arrival, returned-back, and badge status per Sewadar. The header remembers the selected scope independently for Sewadars, Walkie, Control Rooms, and event reports. Run after migration_v57; included in `setup.sql` for new databases.
+
+## migration_v59_room_setup_requirements.sql
+Adds room setup requirements and readiness tracking to Rooms & Members. Each room can track required and already-present quantities for supplies such as fans, mattresses, and blankets; readiness is shown on the room card when all requirements are met. Bed capacity remains only for member placement and is not included in the setup requirements. Run after migration_v58; included in `setup.sql` for new databases.
+
+## migration_v60_cctv_control_room_sewa.sql
+Adds an event-scoped CCTV Control Room workspace. Each room has a location and PC count; Sewadars can be scheduled into 9 AM–12 PM, 12–3 PM, 3–6 PM, and 6–9 PM shifts, with attendance tracking and on-the-spot people. IT Department Heads and CCTV/Control Room sub-department heads can manage rooms and shift plans; CCTV and Control Room staff can add on-site attendees and mark attendance. Run after migration_v59; included in `setup.sql` for new databases.
+
+## migration_v61_cctv_custom_shifts.sql
+Adds custom start and end times for Special shifts in the CCTV Control Room roster. Run after migration_v60; included in `setup.sql` for new databases.
+
+## migration_v62_event_calling_rosters.sql
+Adds Monthly, Annual, and Special event types; Special events store their selected Sewadar IDs for the event calling roster. Run after migration_v61; included in `setup.sql` for new databases.
+
+## migration_v63_accommodation_event_readiness.sql
+Adds the Rooms & Members section under Accommodation. IT owners define per-event room requirements, including quantities and where to collect supplies; Accommodation marks each line ready and returned. Rooms show “Ready for [event]” and readiness/return timestamps when the checklists are complete. Meal plans are event-scoped and add a “Ready for event” status with a timestamp. Run after migration_v62; included in `setup.sql` for new databases.
+
+## migration_v64_event_arrival_time.sql
+Adds an event-specific expected arrival date and time for Sewadars in the Calling roster. Values are saved per selected event; existing shared profile values remain the fallback until an event-specific schedule is saved. Permanent Sewadars do not use these arrival fields. Run after migration_v63; included in `setup.sql` for new databases.
+
+## migration_v65_permanent_member_holidays.sql
+Adds Went home / Returned tracking and cumulative holiday-day totals for Permanent Sewadars. The current leave period is included in the displayed total and added to the saved total when the member returns. Run after migration_v64; included in `setup.sql` for new databases.
+
+## migration_v66_team_task_priority.sql
+Adds Immediately, Till the time, and As you have time priority levels to team tasks. Till the time tasks can store a specific deadline. Run after migration_v65; included in `setup.sql` for new databases.
+
+## migration_v67_task_resource_handoffs.sql
+Adds task-level inventory resource allocations. Team leaders confirm receipt before a task is completed; after completion, they record good and damaged quantities returned. Issue and return entries update the Inventory ledger. Run after migration_v66; included in `setup.sql` for new databases.
+
+## migration_v68_department_feedback_updates.sql
+Adds department-scoped feedback from the header shortcut, plus department-targeted or all-department announcements and lessons learned. Feedback can be submitted by department users; administrators can manage feedback and publish updates. Sub-department users can view posts for their department and posts targeted to all departments. Run after migration_v67; included in `setup.sql` for new databases.
+
+## migration_v69_accommodation_room_categories.sql
+Adds Rest room and Control room categories to Accommodation rooms. Existing rooms become Rest rooms. Control rooms can select a Sewadar team responsible for requirements; room membership continues to use the shared Accommodation roster. Event attendance counts in Rooms & Members follow the selected event and update when members arrive or are marked returned. Run after migration_v68; included in `setup.sql` for new databases.
+
+## migration_v71_remove_food_ready_for_event.sql
+Removes Ready for event from the Food menu status flow. Existing meals in that state move back to In preparation. Run after migration_v70; included in `setup.sql` for new databases.
+
+## migration_v73_event_linked_reports.sql
+Requires an event on every new issue, complaint, and feedback report submitted from the header shortcut. Admins can filter the inbox by event and link older reports that predate this migration. Run after migration_v72; included in `setup.sql` for new databases.
+
+## migration_v75_accommodation_control_room_sync.sql
+Links event-specific CCTV Control Room records to Accommodation Control Room records. Materials, quantities, ready/returned state, pickup locations, and assigned Accommodation members then show in the Control Room view. Run after migration_v74; included in `setup.sql` for new databases.
+
+## migration_v76_event_workflow_links.sql
+Connects event records to the shared meeting, task, inventory, and report flows. Adds department ownership, event-linked meetings and subtasks, audience-based meeting privacy, inventory requirement publishing, and event task links. Run after migration_v75; included in setup.sql for new databases.
+
+## migration_v77_meeting_transcripts.sql
+Stores the Teams online meeting ID so transcript-based minutes can be generated. Run after migration_v76; included in setup.sql for new databases.

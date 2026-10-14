@@ -3,3 +3,6 @@ verify_jwt = false
 
 [functions.aftership-register-tracking]
 verify_jwt = true
+
+[functions.workflow-email]
+verify_jwt = true

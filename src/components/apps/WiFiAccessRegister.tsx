@@ -1,12 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { Edit3, Eye, EyeOff, KeyRound, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { supabase } from '../../modules/walkie/lib/supabaseClient';
+import { useEventScope } from '../../context/EventScopeContext';
 import { inputCls, btnGhost, btnPrimary } from '../ui';
 
-type AccessRow = { id: string; network_name: string; access_point: string; login_id: string; login_password: string; recipient_name: string; recipient_email: string; department: string; valid_until: string | null; notes: string; status: 'active' | 'expired' | 'revoked' };
-const DEPARTMENTS = ['Security', 'Medical', 'Operations', 'Media', 'Logistics', 'Other'];
+type AccessRow = { id: string; event_id: string | null; network_name: string; access_point: string; login_id: string; login_password: string; recipient_name: string; recipient_email: string; department: string; valid_until: string | null; notes: string; status: 'active' | 'expired' | 'revoked' };
+const accessError = (error: any) => /event_id|schema cache/i.test(error?.message || '')
+  ? `${error.message} — run supabase/migration_v74_wifi_event_usage.sql, then reload.`
+  : error?.message || 'Could not load Wi-Fi access.';
 
-export const WiFiAccessRegister: React.FC<{ organizationId?: string; canManage: boolean }> = ({ organizationId, canManage }) => {
+export const WiFiAccessRegister: React.FC<{ organizationId?: string; canManage: boolean; departments: { id: string; name: string }[] }> = ({ organizationId, canManage, departments }) => {
+  const eventScope = useEventScope();
+  const eventId = eventScope.scopeFor('wifi');
   const [rows, setRows] = useState<AccessRow[]>([]);
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -16,20 +21,22 @@ export const WiFiAccessRegister: React.FC<{ organizationId?: string; canManage: 
   const [form, setForm] = useState({ network_name: '', access_point: '', login_id: '', login_password: '', recipient_name: '', recipient_email: '', department: '', valid_until: '', notes: '' });
   const load = async () => {
     if (!organizationId) return;
-    const { data, error: e } = await supabase.from('wifi_access_accounts').select('*').order('created_at', { ascending: false });
-    if (e) setError(e.message); else { setError(''); setRows(data || []); }
+    let query = supabase.from('wifi_access_accounts').select('*').order('created_at', { ascending: false });
+    query = eventId ? query.eq('event_id', eventId) : query.is('event_id', null);
+    const { data, error: e } = await query;
+    if (e) setError(accessError(e)); else { setError(''); setRows(data || []); }
   };
   useEffect(() => {
     load();
     if (!organizationId) return;
     const ch = supabase.channel(`wifi-access-${organizationId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'wifi_access_accounts', filter: `organization_id=eq.${organizationId}` }, load).subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [organizationId]); // eslint-disable-line
+  }, [organizationId, eventId]); // eslint-disable-line
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }));
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); if (!organizationId) return;
     setBusy(true); setError('');
-    const payload = { ...form, valid_until: form.valid_until || null, updated_at: new Date().toISOString() };
+    const payload = { ...form, event_id: eventId || null, valid_until: form.valid_until || null, updated_at: new Date().toISOString() };
     const result = editingId
       ? await supabase.from('wifi_access_accounts').update(payload).eq('id', editingId)
       : await supabase.from('wifi_access_accounts').insert({ ...payload, id: `wifi-${Date.now()}`, organization_id: organizationId });
@@ -48,10 +55,11 @@ export const WiFiAccessRegister: React.FC<{ organizationId?: string; canManage: 
   };
   const toggleReveal = (id: string) => setRevealed(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
   const effective = (r: AccessRow) => r.status === 'active' && r.valid_until && r.valid_until < new Date().toISOString().slice(0, 10) ? 'expired' : r.status;
+  const departmentOptions = Array.from(new Set([...departments.map(d => d.name), form.department].filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
   return <section className="space-y-4">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold text-ink flex items-center gap-2"><KeyRound size={18} className="text-blue-400" />Wi-Fi access register</h2><p className="text-sm text-mute mt-1">Track credentials issued to departments, named recipients, and access expiry.</p></div>
-      {canManage && <button className={btnPrimary} onClick={() => { setEditingId(null); setForm({ network_name: '', access_point: '', login_id: '', login_password: '', recipient_name: '', recipient_email: '', department: '', valid_until: '', notes: '' }); setOpen(x => !x); }}><Plus size={15} />Issue access</button>}
+    <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-lg font-semibold text-ink flex items-center gap-2"><KeyRound size={18} className="text-blue-400" />Wi-Fi access register</h2><p className="text-sm text-mute mt-1">Track event access, recipients, and expiry. Departments sync with Walkie.</p></div>
+      <div className="flex flex-wrap items-end gap-2">{canManage && <button className={btnPrimary} onClick={() => { setEditingId(null); setForm({ network_name: '', access_point: '', login_id: '', login_password: '', recipient_name: '', recipient_email: '', department: '', valid_until: '', notes: '' }); setOpen(x => !x); }}><Plus size={15} />Issue access</button>}</div>
     </div>
     {error && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}<div className="mt-2"><button className={btnGhost} onClick={load}><RefreshCw size={14} />Retry</button></div></div>}
     {open && <form onSubmit={save} className="rounded-xl border border-line bg-surface p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -62,7 +70,7 @@ export const WiFiAccessRegister: React.FC<{ organizationId?: string; canManage: 
       <label className="text-xs text-mute">Password<input required type="password" value={form.login_password} onChange={e => set('login_password', e.target.value)} className={inputCls + ' mt-1'} /></label>
       <label className="text-xs text-mute">Recipient name<input required value={form.recipient_name} onChange={e => set('recipient_name', e.target.value)} className={inputCls + ' mt-1'} /></label>
       <label className="text-xs text-mute">Recipient email (for private access)<input type="email" value={form.recipient_email} onChange={e => set('recipient_email', e.target.value)} className={inputCls + ' mt-1'} /></label>
-      <label className="text-xs text-mute">Department<input value={form.department} onChange={e => set('department', e.target.value)} list="wifi-departments" className={inputCls + ' mt-1'} /><datalist id="wifi-departments">{DEPARTMENTS.map(d => <option key={d} value={d} />)}</datalist></label>
+      <label className="text-xs text-mute">Department<select value={form.department} onChange={e => set('department', e.target.value)} className={inputCls + ' mt-1'}><option value="">Choose a Walkie department…</option>{departmentOptions.map(name => <option key={name} value={name}>{name}</option>)}</select></label>
       <label className="text-xs text-mute">Access valid through<input type="date" value={form.valid_until} onChange={e => set('valid_until', e.target.value)} className={inputCls + ' mt-1'} /></label>
       <label className="text-xs text-mute sm:col-span-2 xl:col-span-4">Notes<input value={form.notes} onChange={e => set('notes', e.target.value)} className={inputCls + ' mt-1'} /></label>
       <div className="sm:col-span-2 xl:col-span-4 flex justify-end gap-2"><button type="button" className={btnGhost} onClick={() => { setOpen(false); setEditingId(null); }}>Cancel</button><button disabled={busy} className={btnPrimary}>{busy ? 'Saving…' : editingId ? 'Save changes' : 'Save access'}</button></div>

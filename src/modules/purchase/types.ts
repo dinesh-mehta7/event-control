@@ -6,7 +6,7 @@ export interface POItem { id: string; inventoryItemId: string | null; name: stri
 export interface PurchaseTracking { id: string; poId: string; purchaseItemId: string; marketplace: string; marketplaceOrderNumber: string; trackingNumber: string; courierSlug: string; status: string; subStatus: string; trackingUrl: string; estimatedDelivery: string; checkpoints: { checkpoint_time?: string; message?: string; location?: string; tag?: string }[]; updatedAt: string }
 export interface PO {
   id: string; number: string; vendorId: string | null; vendorMode: VendorMode | null; title: string; requestedBy: string; deliverTo: string; expectedDate: string;
-  status: POStatus; notes: string; paid: number; createdBy: string; approvedBy: string; approvedAt: string; createdAt: string; decisionNote: string; items: POItem[];
+  status: POStatus; notes: string; miscAmount: number; paid: number; createdBy: string; approvedBy: string; approvedAt: string; createdAt: string; decisionNote: string; items: POItem[];
 }
 // A delivery against an order line (goods received note).
 export interface Receipt { id: string; poId: string; itemId: string; qty: number; location: string; givenBy: string; receivedBy: string; challan: string; note: string; doneBy: string; doneAt: string }
@@ -37,7 +37,7 @@ export const PAYREQ: Record<PayReqStatus, { label: string; tone: 'ok' | 'warn' |
 export const PAY_MODES: [string, string][] = [['bank', 'Bank transfer'], ['upi', 'UPI'], ['cash', 'Cash'], ['cheque', 'Cheque'], ['card', 'Card']];
 export const payModeLabel = (k: string) => PAY_MODES.find(m => m[0] === k)?.[1] || k;
 
-export const poTotal = (p: PO) => p.items.reduce((a, i) => a + i.qtyOrdered * i.rate, 0);
+export const poTotal = (p: PO) => p.items.reduce((a, i) => a + i.qtyOrdered * i.rate, 0) + (p.miscAmount || 0);
 export const poDue = (p: PO) => Math.max(0, Math.round((poTotal(p) - p.paid) * 100) / 100);
 export const poUnitsLeft = (p: PO) => p.items.reduce((a, i) => a + Math.max(0, i.qtyOrdered - i.qtyReceived), 0);
 // Statuses in which money is owed to the vendor.

@@ -12,7 +12,7 @@ export type MeetingStatus = 'scheduled' | 'live' | 'done' | 'cancelled';
 
 export interface MeetingRow {
   id: string; kind: MeetingKind; title: string; agenda: string; message: string; mode: MeetingMode; place: string; link: string;
-  startsAt: string; audienceAll: boolean; audienceDepts: SubDepartmentId[]; audienceGroups: string[]; status: MeetingStatus;
+  startsAt: string; audienceAll: boolean; audienceDepts: SubDepartmentId[]; audienceGroups: string[]; eventId: string | null; status: MeetingStatus;
   createdBy: string | null; createdByName: string; minutes: string;
 }
 export interface NotificationRow {
@@ -21,12 +21,12 @@ export interface NotificationRow {
 }
 export interface NewMeeting {
   kind: MeetingKind; title: string; agenda?: string; message?: string; mode?: MeetingMode; place?: string; link?: string;
-  startsAt?: string; audienceAll?: boolean; audienceDepts?: SubDepartmentId[]; audienceGroups?: string[];
+  startsAt?: string; audienceAll?: boolean; audienceDepts?: SubDepartmentId[]; audienceGroups?: string[]; eventId?: string;
 }
 
 const mapMeeting = (r: any): MeetingRow => ({
   id: r.id, kind: r.kind, title: r.title, agenda: r.agenda || '', message: r.message || '', mode: r.mode, place: r.place || '', link: r.link || '',
-  startsAt: r.starts_at, audienceAll: !!r.audience_all, audienceDepts: r.audience_depts || [], audienceGroups: r.audience_groups || [], status: r.status,
+  startsAt: r.starts_at, audienceAll: !!r.audience_all, audienceDepts: r.audience_depts || [], audienceGroups: r.audience_groups || [], eventId: r.event_id || null, status: r.status,
   createdBy: r.created_by || null, createdByName: r.created_by_name || '', minutes: r.minutes || '',
 });
 const mapNotification = (r: any): NotificationRow => ({
@@ -47,6 +47,7 @@ interface Ctx {
   canEditMeetingMinutes: (m: MeetingRow) => boolean;
   createMeeting: (m: NewMeeting) => Promise<string | null>;       // returns an error message, or null when it worked
   setMeetingStatus: (id: string, status: MeetingStatus) => Promise<string | null>;
+  generateMeetingMinutes: (id: string) => Promise<string | null>;
   saveMeetingMinutes: (id: string, minutes: string) => Promise<string | null>;
   markRead: (id: string) => void; markAllRead: () => void;
   panelOpen: boolean; openPanel: () => void; closePanel: () => void;
@@ -99,20 +100,39 @@ export const MeetingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [uid, org, load, loadSoon]);
 
   const createMeeting = useCallback(async (m: NewMeeting) => {
-    const { error } = await supabase.rpc('create_meeting', {
+    const meetingArgs = {
       p_kind: m.kind, p_title: m.title, p_agenda: m.agenda || '', p_mode: m.mode || 'offline',
       p_place: m.place || '', p_link: m.link || '', p_starts_at: m.startsAt || new Date().toISOString(),
       p_audience_all: m.audienceAll ?? true, p_audience_depts: m.audienceDepts || [],
       p_audience_groups: m.audienceGroups || [], p_message: m.message || '',
-    });
+    };
+    const { data, error } = m.eventId
+      ? await supabase.rpc('create_event_linked_meeting', { ...meetingArgs, p_event_id: m.eventId })
+      : await supabase.rpc('create_meeting', meetingArgs);
     if (error) return dbMessage(error);
     await load();
+    if (m.kind === 'meeting' && data) {
+      const { error: mailError } = await supabase.functions.invoke('workflow-email', { body: { kind: 'meeting_invitation', meeting_id: data } });
+      if (mailError || data?.warning) return `EMAIL_WARNING: The meeting is saved and portal notifications were sent, but calendar/email delivery needs attention. ${mailError?.message || data?.warning || 'Check the email and Outlook setup.'}`;
+    }
     return null;
   }, [load]);
 
   const setMeetingStatus = useCallback(async (id: string, status: MeetingStatus) => {
     const { error } = await supabase.rpc('set_meeting_status', { p_id: id, p_status: status });
     if (error) return dbMessage(error);
+    await load();
+    if (status === 'done' && meetings.find(meeting => meeting.id === id)?.kind === 'meeting') {
+      const { data, error: minutesError } = await supabase.functions.invoke('workflow-email', { body: { kind: 'meeting_auto_minutes', meeting_id: id } });
+      if (minutesError || data?.error) return `Meeting marked done. Automatic minutes could not be generated yet: ${minutesError?.message || data?.error || 'Check Teams transcription and Microsoft Graph setup.'}`;
+      await load();
+    }
+    return null;
+  }, [load, meetings]);
+
+  const generateMeetingMinutes = useCallback(async (id: string) => {
+    const { data, error } = await supabase.functions.invoke('workflow-email', { body: { kind: 'meeting_auto_minutes', meeting_id: id } });
+    if (error || data?.error) return error?.message || data?.error || 'Minutes could not be generated.';
     await load();
     return null;
   }, [load]);
@@ -140,9 +160,9 @@ export const MeetingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     canSchedule: ['owner', 'dept_head', 'sub_dept_head'].includes(level),
     canCallEmergency: ['owner', 'dept_head', 'sub_dept_head', 'staff'].includes(level),
     canEditMeetingMinutes: (m: MeetingRow) => ['owner', 'dept_head'].includes(level) || m.createdBy === uid,
-    ready, createMeeting, setMeetingStatus, saveMeetingMinutes, markRead, markAllRead,
+    ready, createMeeting, setMeetingStatus, generateMeetingMinutes, saveMeetingMinutes, markRead, markAllRead,
     panelOpen, openPanel: () => setPanelOpen(true), closePanel: () => setPanelOpen(false),
-  }), [meetings, notifications, sewadarTeams, level, uid, ready, createMeeting, setMeetingStatus, saveMeetingMinutes, markRead, markAllRead, panelOpen]);
+  }), [meetings, notifications, sewadarTeams, level, uid, ready, createMeeting, setMeetingStatus, generateMeetingMinutes, saveMeetingMinutes, markRead, markAllRead, panelOpen]);
 
   return <C.Provider value={value}>{children}</C.Provider>;
 };

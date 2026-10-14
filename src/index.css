@@ -20,6 +20,23 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Soft neumorphic surfaces for the light theme. Dark mode keeps its existing
+   flat, high-contrast surfaces. Raised panels use paired light/dark shadows;
+   fields and pressed controls sit into the shared pale surface. */
+html:not(.dark) [class~="bg-surface"] {
+  border-color: rgb(213 220 230 / 0.9) !important;
+  box-shadow: 7px 7px 16px rgb(163 177 198 / 0.34), -7px -7px 16px rgb(255 255 255 / 0.82);
+}
+html:not(.dark) [class~="bg-field"] {
+  border-color: rgb(205 214 226 / 0.9) !important;
+  box-shadow: inset 3px 3px 7px rgb(163 177 198 / 0.25), inset -3px -3px 7px rgb(255 255 255 / 0.85);
+}
+html:not(.dark) [class~="bg-raised"] {
+  box-shadow: inset 2px 2px 5px rgb(163 177 198 / 0.18), inset -2px -2px 5px rgb(255 255 255 / 0.65);
+}
+html:not(.dark) [class~="bg-canvas"] { background-color: rgb(var(--c-canvas)); }
+html:not(.dark) [class~="bg-surface"]:hover { box-shadow: 8px 8px 18px rgb(163 177 198 / 0.38), -8px -8px 18px rgb(255 255 255 / 0.88); }
+
 /* ── Scrollbars ──────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

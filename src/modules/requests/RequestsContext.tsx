@@ -65,7 +65,6 @@ interface Ctx {
   deliver: (partId: string, location: string, receivedBy: string, note: string) => Promise<string | null>;
   returnPart: (partId: string, qty: number, note: string) => Promise<string | null>;
   confirmReceipt: (id: string) => Promise<string | null>;
-  setVisibility: (id: string, showVendor: boolean, showRate: boolean) => Promise<string | null>;
   catalogue: CatalogueItem[];
   loadAvailability: () => Promise<Record<string, Availability>>;
   refresh: () => Promise<void>;
@@ -115,10 +114,10 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       title: r.title, purpose: r.purpose || '', deliverTo: r.deliver_to || '', neededBy: r.needed_by || '', priority: r.priority, miscItems: r.review_misc_items || '', miscBudget: Number(r.review_misc_budget || 0),
       status: r.status as ReqStatus, subNote: r.sub_note || '', itNote: r.it_note || '', ownerNote: r.owner_note || '',
       createdAt: r.created_at, updatedAt: r.updated_at,
-      showVendor: !!r.show_vendor, showRate: !!r.show_rate, confirmedAt: r.confirmed_at || null, confirmedBy: r.confirmed_by || '',
+      confirmedAt: r.confirmed_at || null, confirmedBy: r.confirmed_by || '',
       items: items.filter(i => i.requestId === r.id), parts: parts.filter(p => p.requestId === r.id), events: events.filter(e => e.requestId === r.id),
     })));
-    // Order progress per purchased line. The database decides what this person may see (PO number, vendor, rate).
+    // Order progress per purchased line. The database limits PO numbers by role and only returns requests this user can see.
     if (oi.error) setOrders({});
     else {
       const out: Record<string, OrderInfo> = {};
@@ -195,7 +194,12 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [load]);
   const subReview = useCallback((id: string, approve: boolean, note: string) => run(() => supabase.rpc('request_sub_review', { p_id: id, p_approve: approve, p_note: note })), [run]);
   const itDecide = useCallback(async (id: string, action: 'approve' | 'escalate' | 'reject', note: string, miscItems: string, miscBudget: number, lines: { id: string; approvedQty: number; cutReason: string; budgetRate: number | null; arrangementConfirmed: boolean; plan: PlanPart[] }[]) => {
-    return run(() => supabase.rpc('request_it_decide', { p_id: id, p_action: action, p_note: note, p_lines: lines.map((l, index) => ({ id: l.id, approved_qty: l.approvedQty, cut_reason: l.cutReason, budget_rate: l.budgetRate, arrangement_confirmed: l.arrangementConfirmed, misc_items: index === 0 ? miscItems : undefined, misc_budget: index === 0 ? miscBudget : undefined, plan: l.plan.map(p => ({ source: p.source, qty: p.qty, inventory_item_id: p.inventoryItemId })) })) }));
+    const decisionError = await run(() => supabase.rpc('request_it_decide', { p_id: id, p_action: action, p_note: note, p_lines: lines.map((l, index) => ({ id: l.id, approved_qty: l.approvedQty, cut_reason: l.cutReason, budget_rate: l.budgetRate, arrangement_confirmed: l.arrangementConfirmed, misc_items: index === 0 ? miscItems : undefined, misc_budget: index === 0 ? miscBudget : undefined, plan: l.plan.map(p => ({ source: p.source, qty: p.qty, inventory_item_id: p.inventoryItemId })) })) }));
+    if (decisionError || action !== 'escalate') return decisionError;
+    const { data, error } = await supabase.functions.invoke('workflow-email', { body: { kind: 'request_escalated', request_id: id } });
+    if (error || data?.warning) return `Request escalated in the app, but its email could not be sent. ${error?.message || data?.warning || 'Check the email setup.'}`;
+    if (data?.warning) return `Request escalated in the app, but its email could not be sent. ${data.warning}`;
+    return null;
   }, [run]);
   const assignDelivery = useCallback(async (id: string, delivery: { team: string; memberId: string }) => {
     return run(() => supabase.rpc('request_set_delivery_assignment', { p_id: id, p_team: delivery.team || null, p_member: delivery.memberId || null }));
@@ -216,8 +220,6 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const returnPart = useCallback((partId: string, qty: number, note: string) =>
     run(() => supabase.rpc('request_return_part', { p_fulfilment: partId, p_qty: qty, p_note: note })), [run]);
   const confirmReceipt = useCallback((id: string) => run(() => supabase.rpc('request_confirm_receipt', { p_id: id })), [run]);
-  const setVisibility = useCallback((id: string, showVendor: boolean, showRate: boolean) =>
-    run(() => supabase.rpc('request_set_visibility', { p_id: id, p_vendor: showVendor, p_rate: showRate })), [run]);
   const loadAvailability = useCallback(async () => {
     const { data } = await supabase.rpc('inventory_available');
     const out: Record<string, Availability> = {};
@@ -227,9 +229,9 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const value = useMemo<Ctx>(() => ({
     requests, loading, loadError, ready, me, orders, catalogue, canReviewSub, canReviewIt, canOwnerReview, canCancel, canArrange, canDecideArrangement, canOrder, canConfirm,
-    waitingForMe, toArrange, actionCount, submit, subReview, itDecide, ownerReview, assignDelivery, cancel, planLine, createPO, deliver, returnPart, confirmReceipt, setVisibility, loadAvailability, refresh: load,
+    waitingForMe, toArrange, actionCount, submit, subReview, itDecide, ownerReview, assignDelivery, cancel, planLine, createPO, deliver, returnPart, confirmReceipt, loadAvailability, refresh: load,
   }), [requests, loading, loadError, ready, me, orders, catalogue, canReviewSub, canReviewIt, canOwnerReview, canCancel, canArrange, canDecideArrangement, canOrder, canConfirm, waitingForMe, toArrange, actionCount,
-    submit, subReview, itDecide, ownerReview, assignDelivery, cancel, planLine, createPO, deliver, returnPart, confirmReceipt, setVisibility, loadAvailability, load]);
+    submit, subReview, itDecide, ownerReview, assignDelivery, cancel, planLine, createPO, deliver, returnPart, confirmReceipt, loadAvailability, load]);
   return <C.Provider value={value}>{children}</C.Provider>;
 };
 

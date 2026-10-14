@@ -4,9 +4,24 @@ export type MealStatus = 'scheduled' | 'preparing' | 'distributing' | 'distribut
 export interface Room {
   id: string;
   name: string;
+  category: 'rest_room' | 'control_room';
   block: string;
   capacity: number;
   notes: string;
+  responsibleTeam: string;
+  requirements: RoomRequirement[];
+  readyAt: string;
+  returnedAt: string;
+  requirementsByScope?: Record<string, RoomRequirement[]>;
+  readinessByScope?: Record<string, { readyAt?: string; returnedAt?: string }>;
+}
+
+export interface RoomRequirement {
+  name: string;
+  quantity: number;
+  readyQuantity: number;
+  collectFrom?: string;
+  returned?: boolean;
 }
 
 export interface Member {
@@ -36,6 +51,7 @@ export interface MealRow {
   status: MealStatus;
   changedAt: string | null;
   changedBy: string;
+  readyAt: string;
 }
 
 // Meals a new day starts with, and the quick-add presets. Anything else can be added as a custom meal.

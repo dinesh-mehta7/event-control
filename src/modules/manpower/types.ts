@@ -2,6 +2,7 @@ export type Arrival = 'pending' | 'arrived' | 'not_coming';
 export type CallOutcome = 'coming' | 'later' | 'not_coming' | 'no_answer' | 'busy' | 'off' | 'wrong';
 export type DeviceType = 'none' | 'walkie' | 'phone' | 'laptop' | 'tablet' | 'other';
 export type SewadarMemberType = 'salary_based' | 'monthly' | 'annual';
+export type ArrivalTimeOfDay = 'morning' | 'noon' | 'evening' | 'night' | '';
 
 export interface Sewadar {
   id: string;
@@ -23,6 +24,11 @@ export interface Sewadar {
   address: string;
   address2: string;
   expectedArrival: string;
+  expectedArrivalPeriod: ArrivalTimeOfDay;
+  wentHomeAt: string | null;
+  returnedFromHomeAt: string | null;
+  totalHolidayDays: number;
+  skills: string[];
   teamName: string;
   teamLead: string;
   teams: string[];
@@ -31,8 +37,11 @@ export interface Sewadar {
   deviceRef: string;
   arrival: Arrival;
   arrivedAt: string | null;
+  returnedBack: boolean;
   badgeIssued: boolean;
   badgeAt: string | null;
+  badgeReturned: boolean;
+  badgeReturnedAt: string | null;
   callCount: number;
   lastCallAt: string | null;
   lastCallOutcome: CallOutcome | null;

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Plus, Trash2, Send } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Plus, Trash2, Send, CalendarDays } from 'lucide-react';
 import { Field, btnPrimary, inputCls } from '../../components/ui';
 import { btnGhost } from '../../components/ui';
 import { useRequests } from './RequestsContext';
@@ -12,6 +12,8 @@ const blank = (): NewLine => ({ kind: 'item', name: '', unit: 'pcs', qty: 1, rea
 
 // The requester records what they need, why, and whether each item must be returned; stock stays hidden.
 export const NewRequest: React.FC<{ onDone: (id: string) => void; copyFrom?: { title: string; purpose: string; deliverTo: string; lines: NewLine[] } | null }> = ({ onDone, copyFrom }) => {
+  const formRef = useRef<HTMLDivElement>(null);
+  const datePickerRef = useRef<HTMLInputElement>(null);
   const { submit, me, catalogue } = useRequests();
   const walkieApp: any = useWalkie();
   const { currentUser, departments } = walkieApp;
@@ -24,6 +26,7 @@ export const NewRequest: React.FC<{ onDone: (id: string) => void; copyFrom?: { t
   const [deliverTo, setDeliverTo] = useState(copyFrom?.deliverTo || '');
   const [departmentId, setDepartmentId] = useState(currentUser?.departmentId || '');
   const [neededBy, setNeededBy] = useState('');
+  const [neededByText, setNeededByText] = useState('');
   const [urgent, setUrgent] = useState(false);
   const [lines, setLines] = useState<NewLine[]>(copyFrom?.lines?.length ? copyFrom.lines.map(l => ({ ...l, kind: 'item' })) : [blank()]);
   const [busy, setBusy] = useState(false);
@@ -35,7 +38,7 @@ export const NewRequest: React.FC<{ onDone: (id: string) => void; copyFrom?: { t
     const hit = catalogue.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
     set(i, hit ? { name: hit.name, unit: hit.unit, inventoryItemId: hit.id } : { name, inventoryItemId: null });
   };
-  const today = new Date().toISOString().slice(0, 10);
+  const today = (() => { const date = new Date(); date.setMinutes(date.getMinutes() - date.getTimezoneOffset()); return date.toISOString().slice(0, 10); })();
   const orgId = currentUser?.organizationId;
   const ownDept = departments.find(d => d.id === currentUser?.departmentId);
   const selectedDept = departments.find(d => d.id === departmentId);
@@ -50,6 +53,7 @@ export const NewRequest: React.FC<{ onDone: (id: string) => void; copyFrom?: { t
   }, [orgId]);
 
   const send = async () => {
+    if (busy) return;
     setErr('');
     if (requestType === 'walkies') {
       const walkies = Number(radioQty.walkies), chargers = Number(radioQty.chargers), earphones = Number(radioQty.earphones);
@@ -67,6 +71,7 @@ export const NewRequest: React.FC<{ onDone: (id: string) => void; copyFrom?: { t
     if (!purpose.trim()) return setErr('Say why this is needed. The approvers use it to decide.');
     if (!deliverTo.trim()) return setErr('Say where it should be delivered.');
     if (!selectedDept) return setErr('Choose the department for this request.');
+    if (neededByText.trim() && !neededBy) return setErr('Enter a date today or later as DD/MM/YYYY.');
     const clean = lines.filter(l => l.name.trim());
     if (!clean.length) return setErr('Add at least one item.');
     if (clean.some(l => !(l.qty > 0) || !Number.isInteger(l.qty))) return setErr('Every item needs a whole-number quantity above zero.');
@@ -80,9 +85,21 @@ export const NewRequest: React.FC<{ onDone: (id: string) => void; copyFrom?: { t
   };
 
   const route = 'Every request goes to the IT Department Head first, regardless of the selected department. They set the budget and stock-versus-purchase arrangement, then approve it or escalate it to the Super Admin.';
+  const handleEnter = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' || event.defaultPrevented || event.nativeEvent.isComposing) return;
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) || target instanceof HTMLInputElement && ['checkbox', 'radio', 'button', 'submit'].includes(target.type) || target instanceof HTMLTextAreaElement && event.shiftKey) return;
+    event.preventDefault();
+    if (busy) return;
+    const fields = Array.from(formRef.current?.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([disabled]):not([tabindex="-1"]), select:not([disabled]), textarea:not([disabled])') || []);
+    const index = fields.indexOf(target);
+    const next = index >= 0 ? fields[index + 1] : undefined;
+    if (next) next.focus();
+    else void send();
+  };
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div ref={formRef} onKeyDown={handleEnter} className="max-w-4xl space-y-4">
       <section className="rounded-xl border border-line bg-surface p-4">
         <div className="mb-3 text-xs font-medium text-mute">Request type</div>
         <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Request type">
@@ -95,7 +112,30 @@ export const NewRequest: React.FC<{ onDone: (id: string) => void; copyFrom?: { t
           <Field label="Title"><input className={inputCls} value={title} maxLength={120} onChange={e => setTitle(e.target.value)} placeholder="e.g. Cables for Gate 3 counter" /></Field>
           <Field label="Deliver to"><input className={inputCls} value={deliverTo} onChange={e => setDeliverTo(e.target.value)} placeholder="Place or counter" /></Field>
           <Field label="Department"><select className={inputCls} value={departmentId} onChange={e => setDepartmentId(e.target.value)}><option value="">Choose a department</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
-          <Field label="Needed by (optional)"><input type="date" min={today} className={inputCls} value={neededBy} onChange={e => setNeededBy(e.target.value)} /></Field>
+          <Field label="Needed by (optional)"><div className="relative">
+            <input type="text" inputMode="numeric" maxLength={10} className={inputCls + ' pr-10'} value={neededByText} onChange={e => {
+            const value = e.target.value;
+            setNeededByText(value);
+            const match = value.trim().match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})$/);
+            if (!match) { setNeededBy(''); return; }
+            const [, dayText, monthText, yearText] = match;
+            const day = Number(dayText), month = Number(monthText), year = Number(yearText);
+            const date = new Date(year, month - 1, day);
+            const iso = `${yearText}-${monthText.padStart(2, '0')}-${dayText.padStart(2, '0')}`;
+            const todayLocal = new Date(); todayLocal.setHours(0, 0, 0, 0);
+            setNeededBy(date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day && date >= todayLocal ? iso : '');
+          }} placeholder="DD/MM/YYYY" />
+            <button type="button" aria-label="Choose needed-by date from calendar" title="Choose date from calendar" onClick={() => {
+              const picker = datePickerRef.current;
+              if (!picker) return;
+              try { if (picker.showPicker) picker.showPicker(); else picker.click(); } catch { picker.focus(); }
+            }} className="absolute inset-y-0 right-0 grid w-10 place-items-center rounded-r-lg text-mute transition-colors hover:bg-raised hover:text-ink"><CalendarDays size={16} /></button>
+            <input ref={datePickerRef} type="date" min={today} value={neededBy} tabIndex={-1} aria-label="Needed by date calendar" onChange={e => {
+              const iso = e.target.value;
+              setNeededBy(iso);
+              setNeededByText(iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
+            }} className="pointer-events-none absolute right-0 top-0 h-10 w-10 opacity-0" />
+          </div></Field>
           <Field label="Why is it needed?" className="sm:col-span-2"><textarea className={inputCls} rows={2} value={purpose} onChange={e => setPurpose(e.target.value)} placeholder="Explain once what these items are needed for" /></Field>
           <label className="flex cursor-pointer items-center gap-2 self-end pb-2 text-sm text-ink-soft"><input type="checkbox" className="accent-blue-600" checked={urgent} onChange={e => setUrgent(e.target.checked)} />Urgent request</label>
         </div>

@@ -16,7 +16,7 @@ export interface TabDef { id: string; label: string; count?: number; alert?: boo
 // animate from the actual previous tab instead of restarting at the first tab.
 const lastActiveTabByLabel = new Map<string, string>();
 
-export const Tabs: React.FC<{ tabs: TabDef[]; value: string; onChange: (id: string) => void; label?: string; bordered?: boolean }> = ({ tabs, value, onChange, label = 'Sections', bordered = true }) => {
+export const Tabs: React.FC<{ tabs: TabDef[]; value: string; onChange: (id: string) => void; label?: string; bordered?: boolean; compact?: boolean }> = ({ tabs, value, onChange, label = 'Sections', bordered = true, compact = false }) => {
   const root = useRef<HTMLDivElement>(null);
   const pendingInitialSlide = useRef(false);
   const [indicator, setIndicator] = useState({ x: 0, width: 0 });
@@ -81,7 +81,7 @@ export const Tabs: React.FC<{ tabs: TabDef[]; value: string; onChange: (id: stri
             }
             onChange(t.id);
           }}
-            className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 border-transparent px-3.5 py-2.5 text-sm transition-colors ${on ? 'text-ink font-semibold' : 'text-mute hover:text-ink'}`}>
+            className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 border-transparent ${compact ? 'px-2.5 py-1.5' : 'px-3.5 py-2.5'} text-sm transition-colors ${on ? 'text-ink font-semibold' : 'text-mute hover:text-ink'}`}>
             {t.label}
             {t.count !== undefined && (
               <span className={`min-w-[20px] rounded-full px-1.5 py-0.5 text-center text-xs font-medium ${t.alert && t.count > 0 ? 'bg-amber-500/15 text-amber-300' : 'bg-raised text-mute'}`}>{t.count}</span>

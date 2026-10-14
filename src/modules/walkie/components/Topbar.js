@@ -103,7 +103,7 @@ export default function Topbar({ extra = null }) {
 
       {/* Mobile Drawer Menu */}
       {showMobileMenu && (
-        <div className="fixed inset-0 bg-black/55 z-40 lg:hidden" onClick={() => setShowMobileMenu(false)}>
+        <div className="fixed inset-0 bg-black/55 z-40 lg:hidden">
           <div 
             className={`w-64 h-full p-6 flex flex-col justify-between transition-transform duration-200 
               ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}
@@ -120,7 +120,6 @@ export default function Topbar({ extra = null }) {
                     key={item.id}
                     onClick={() => {
                       setCurrentTab(item.id);
-                      setShowMobileMenu(false);
                     }}
                     className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors
                       ${currentTab === item.id 

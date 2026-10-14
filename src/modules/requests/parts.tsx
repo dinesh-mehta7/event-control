@@ -1,32 +1,42 @@
 import React from 'react';
 import { Check } from 'lucide-react';
 import { Pill } from '../../components/ui';
-import { STATUS_LABEL, STATUS_TONE, STEPS, fmtDateTime, lineStatus, stepOf } from './types';
+import { STATUS_LABEL, STATUS_TONE, fmtDateTime, lineStatus } from './types';
 import type { OrderInfo, Req, ReqStatus } from './types';
 
 export const StatusBadge: React.FC<{ status: ReqStatus; closed?: boolean }> = ({ status, closed }) => <Pill c={STATUS_TONE[status]}>{status === 'fulfilled' && closed ? 'Closed' : STATUS_LABEL[status]}</Pill>;
 export const UrgentBadge: React.FC = () => <Pill c="bg-red-500/15 text-red-300">Urgent</Pill>;
 
 // The IT Department Head's review includes the arrangement, so there is no separate Arranged step.
-export const Stepper: React.FC<{ r: Pick<Req, 'status' | 'items' | 'parts'> & Partial<Req> }> = ({ r }) => {
+export const Stepper: React.FC<{ r: Pick<Req, 'status' | 'items' | 'parts'> & Partial<Req>; orders: Record<string, OrderInfo> }> = ({ r, orders }) => {
   const dead = r.status === 'rejected' || r.status === 'cancelled';
   const hasEscalation = r.status === 'pending_owner' || !!r.events?.some(e => e.kind === 'escalated');
-  const steps = hasEscalation ? STEPS : STEPS.filter((_, i) => i !== 2);
-  const rawAt = dead ? 0 : stepOf(r as Req);
-  const at = !hasEscalation && rawAt >= 2 ? rawAt - 1 : rawAt;
+  const superApproved = !!r.events?.some(e => e.kind === 'approved' && e.text.toLowerCase().includes('super admin'));
+  const purchaseParts = r.parts.filter(part => part.source === 'purchase');
+  const hasPurchase = purchaseParts.length > 0;
+  const ordered = hasPurchase && purchaseParts.every(part => part.purchaseItemId && ['ordered', 'partial', 'received'].includes(orders[part.purchaseItemId]?.poStatus || ''));
+  const approved = ['pending_owner', 'approved', 'fulfilled'].includes(r.status);
+  const steps: { label: string; state: 'done' | 'current' | 'idle' }[] = [
+    { label: 'Requested', state: !dead && r.status !== 'pending_sub' ? 'done' : 'idle' },
+    { label: 'IT Department Head', state: r.status === 'pending_it' ? 'current' : approved ? 'done' : 'idle' },
+    ...(hasEscalation ? [{ label: 'Super Admin', state: r.status === 'pending_owner' ? 'current' as const : superApproved ? 'done' as const : 'idle' as const }] : []),
+    ...(hasPurchase ? [{ label: 'Ordered', state: ordered ? 'done' as const : r.status === 'approved' ? 'current' as const : 'idle' as const }] : []),
+    { label: 'Delivered', state: r.status === 'fulfilled' ? 'done' : r.status === 'approved' && (!hasPurchase || ordered) ? 'current' : 'idle' },
+    { label: 'Received', state: r.confirmedAt ? 'done' : r.status === 'fulfilled' ? 'current' : 'idle' },
+  ];
   return (
     <ol className="grid w-full items-start" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }} aria-label="Request progress">
       {steps.map((s, i) => {
-        const done = !dead && i < at; const cur = !dead && i === at;
+        const done = !dead && s.state === 'done'; const cur = !dead && s.state === 'current';
         return (
-          <li key={s} className="min-w-0 text-center">
+          <li key={s.label} className="min-w-0 text-center">
             <div className="relative flex h-7 items-center justify-center">
               {i < steps.length - 1 && <span aria-hidden="true" className={`absolute left-1/2 right-[-50%] top-1/2 h-[2px] -translate-y-1/2 rounded-full transition-colors duration-500 ease-out ${done ? 'bg-gradient-to-r from-blue-500 to-sky-400' : 'bg-line-strong'}`} />}
               <span className={`relative z-10 grid h-6 w-6 place-items-center rounded-full border text-[11px] font-semibold transition-[background-color,border-color,color,box-shadow,transform] duration-300 ease-out ${done ? 'scale-100 border-blue-500 bg-blue-600 text-white shadow-[0_0_12px_rgba(37,99,235,0.28)]' : cur ? 'scale-105 border-blue-400 bg-blue-500/15 text-blue-300 ring-4 ring-blue-500/10' : 'border-line-strong bg-surface text-faint'}`}>
                 {done ? <Check size={13} strokeWidth={2.5} /> : i + 1}
               </span>
             </div>
-            <span className={`mt-1.5 block px-1 text-[11px] leading-tight transition-colors duration-300 ${done ? 'font-medium text-blue-300' : cur ? 'font-semibold text-ink' : 'text-faint'}`}>{s}</span>
+            <span className={`mt-1.5 block px-1 text-[11px] leading-tight transition-colors duration-300 ${done ? 'font-medium text-blue-300' : cur ? 'font-semibold text-ink' : 'text-faint'}`}>{s.label}</span>
           </li>
         );
       })}
@@ -37,7 +47,7 @@ export const Stepper: React.FC<{ r: Pick<Req, 'status' | 'items' | 'parts'> & Pa
 const TONE = { ok: 'bg-emerald-500/15 text-emerald-300', warn: 'bg-amber-500/15 text-amber-300', mute: 'bg-raised text-ink-soft', bad: 'bg-red-500/15 text-red-300' } as const;
 
 // Keep one fact in each cell so the request summary stays easy to scan.
-// Vendor and rate appear only when the database let this person see them (the Super Admin decides per ticket).
+// Vendor and rate are included for everyone who can see this request.
 export const ItemsTable: React.FC<{ r: Req; orders: Record<string, OrderInfo> }> = ({ r, orders }) => {
   const decided = r.status === 'approved' || r.status === 'fulfilled';
   return (

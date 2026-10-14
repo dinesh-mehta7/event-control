@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Search, KeyRound, RefreshCw, Copy } from 'lucide-react';
 import { useAccess } from '../../context/AccessContext';
 import type { GrantLevel, Member } from '../../context/AccessContext';
-import { DEPTS } from '../../pages/orgData';
+import { DEPTS } from '../../views/orgData';
 import { Empty, Pill, Tabs, PageIntro, btnGhost, btnPrimary, inputCls, th } from '../ui';
 import { AccessRequestsList } from './ApprovalsView';
 import { AuditLogsView } from './AuditLogsView';

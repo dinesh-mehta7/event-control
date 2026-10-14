@@ -9,7 +9,7 @@ const mapVendor = (r: any): Vendor => ({ id: r.id, name: r.name, vendorMode: r.v
 const mapItem = (r: any): POItem => ({ id: r.id, inventoryItemId: r.inventory_item_id || null, name: r.name, unit: r.unit || 'pcs', qtyOrdered: r.qty_ordered, qtyReceived: r.qty_received, requestId: r.request_id || null, requestNumber: r.request_number || '', rate: Number(r.rate) || 0 });
 const mapPO = (r: any, items: POItem[]): PO => ({
   id: r.id, number: r.po_number || '', vendorId: r.vendor_id || null, vendorMode: r.vendor_mode || null, title: r.title, requestedBy: r.requested_by || '', deliverTo: r.deliver_to || '',
-  expectedDate: r.expected_date || '', status: r.status, notes: r.notes || '', paid: Number(r.paid_amount) || 0, createdBy: r.created_by || '',
+  expectedDate: r.expected_date || '', status: r.status, notes: r.notes || '', miscAmount: Number(r.misc_amount) || 0, paid: Number(r.paid_amount) || 0, createdBy: r.created_by || '',
   approvedBy: r.approved_by || '', approvedAt: r.approved_at || '', createdAt: r.created_at, decisionNote: r.decision_note || '', items,
 });
 const mapPayReq = (r: any): PaymentRequest => ({
@@ -36,7 +36,7 @@ const friendlyError = (error: any): string => {
 
 export interface VendorInput { name: string; vendorMode: VendorMode | ''; contact: string; phone: string; email: string; address: string; notes: string }
 // What can still be edited on an order: the vendor, the date, a note and the rate of every line. Lines come from requests.
-export interface DraftInput { vendorId: string; vendorMode: VendorMode | ''; expectedDate: string; notes: string; rates: Record<string, number> }
+export interface DraftInput { vendorId: string; vendorMode: VendorMode | ''; expectedDate: string; notes: string; miscAmount: number; rates: Record<string, number> }
 export interface ReceiveMeta { location: string; givenBy: string; receivedBy: string; challan: string; note: string }
 export interface PayInput { mode: string; ref: string; paidBy: string; note: string }
 export interface PStats { awaiting: number; open: number; toReceive: number; overdue: number; due: number; orders: number }
@@ -188,8 +188,18 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const selectedVendor = vendors.find(v => v.id === input.vendorId);
     if (submit && (!selectedVendor?.vendorMode || selectedVendor.vendorMode !== input.vendorMode)) { toast('Choose a vendor with a matching Online or Offline category.', 'error'); return false; }
     if (submit && po.items.some(i => !(+input.rates[i.id] > 0))) { toast('Enter the rate for every item before marking it ordered.', 'error'); return false; }
-    const head = { vendor_id: input.vendorId || null, vendor_mode: input.vendorMode || null, expected_date: input.expectedDate || null, notes: input.notes.trim() };
-    const r = await supabase.from('purchase_orders').update(head).eq('id', id);
+    const head = { vendor_id: input.vendorId || null, vendor_mode: input.vendorMode || null, expected_date: input.expectedDate || null, notes: input.notes.trim(), misc_amount: Math.max(0, Math.round((input.miscAmount || 0) * 100) / 100) };
+    let miscColumnMissing = false;
+    let r = await supabase.from('purchase_orders').update(head).eq('id', id);
+    if (r.error && /misc_amount/i.test(r.error.message) && /column|schema cache|does not exist|could not find/i.test(r.error.message)) {
+      miscColumnMissing = true;
+      if (submit) {
+        toast('Cannot place this order yet: apply supabase/migration_v56_purchase_misc_amount.sql and reload the Supabase schema first.', 'error');
+        return false;
+      }
+      const { misc_amount: _unsupported, ...compatibleHead } = head;
+      r = await supabase.from('purchase_orders').update(compatibleHead).eq('id', id);
+    }
     if (r.error) { toast(`Could not save: ${friendlyError(r.error)}`, 'error'); return false; }
     for (const i of po.items) {
       const rate = Math.max(0, Math.round((+input.rates[i.id] || 0) * 100) / 100);
@@ -203,7 +213,8 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     await load();
     log('Purchase Order', `${user.name} ${submit ? 'marked as ordered' : 'updated'} ${po.number}`, 'info');
-    toast(submit ? (input.vendorMode === 'online' ? 'Online order marked as placed. Add tracking details when available.' : 'Offline order marked as placed.') : 'Saved.');
+    if (miscColumnMissing) toast('Draft saved, but miscellaneous costs need supabase/migration_v56_purchase_misc_amount.sql before they can be saved or the order placed.', 'warning');
+    else if (submit) toast(input.vendorMode === 'online' ? 'Online order marked as placed. Add tracking details when available.' : 'Offline order marked as placed.');
     return true;
   };
 

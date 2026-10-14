@@ -45,16 +45,16 @@ ACCENTS.forEach(h => {
 // Semantic tokens — light & dark. Used by ALL modules via Tailwind utilities.
 const tokens = {
   light: {
-    canvas:       '#f8fbff',
-    surface:      '#ffffff',
-    raised:       '#eaf3ff',
-    line:         '#dbeafe',
-    'line-strong':'#bfd9ff',
+    canvas:       '#e9eef5',
+    surface:      '#e9eef5',
+    raised:       '#e1e7ef',
+    line:         '#d5dce6',
+    'line-strong':'#c8d1de',
     ink:          '#020817',
     'ink-soft':   '#1e293b',
     mute:         '#526079',
     faint:        '#7a879f',
-    field:        '#ffffff',
+    field:        '#e9eef5',
     brand:        '#2563eb',
     'brand-soft': '#dbeafe',
     'brand-fg':   '#ffffff',

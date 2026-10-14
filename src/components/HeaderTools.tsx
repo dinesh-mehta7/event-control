@@ -69,7 +69,7 @@ const Bell_: React.FC = () => {
 
   return (
     <div ref={box} className="relative"
-      onPointerEnter={e => { if (e.pointerType === 'mouse') setOpen(true); }}
+      onPointerEnter={e => { if (e.pointerType === 'mouse') { setOpen(true); if (unread > 0) markAllRead(); } }}
       onPointerLeave={e => { if (e.pointerType === 'mouse') setOpen(false); }}>
       <button aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} aria-expanded={open}
         onPointerDown={e => { last.current = e.pointerType; }}

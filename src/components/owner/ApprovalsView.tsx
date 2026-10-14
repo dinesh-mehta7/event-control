@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { UserCheck, Check, X } from 'lucide-react';
 import { useAccess } from '../../context/AccessContext';
 import type { GrantLevel, Member } from '../../context/AccessContext';
-import { DEPTS } from '../../pages/orgData';
+import { DEPTS } from '../../views/orgData';
 import { Card, Empty, Pill, btnGhost, btnPrimary, inputCls } from '../ui';
 import type { SubDepartmentId } from '../../types';
 

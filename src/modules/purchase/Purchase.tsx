@@ -2,10 +2,9 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { Check, ClipboardList, Edit3, Plus, Search, ShoppingCart, Trash2, Truck, Wallet, X } from 'lucide-react';
 import { Modal, ConfirmModal, btnGhost, cx, inputCls, labelCls } from '../accommodation/ui';
 import { todayStr } from '../accommodation/dates';
-import { inr } from '../../pages/orgData';
+import { inr } from '../../views/orgData';
 import { useRequests } from '../requests/RequestsContext';
-import { unlinkedPurchaseParts } from '../requests/types';
-import { exportRequestsXlsx } from '../requests/exportXlsx';
+import { STATUS_LABEL as REQUEST_STATUS_LABEL, unlinkedPurchaseParts } from '../requests/types';
 import { usePurchase } from './PurchaseContext';
 import type { VendorInput } from './PurchaseContext';
 import { useInventory } from '../inventory';
@@ -120,22 +119,14 @@ const PaymentList: React.FC<{ rows: Payment[] | null; empty: string; showPo?: bo
   if (rows === null) return <Empty>Loading…</Empty>;
   if (!rows.length) return <Empty>{empty}</Empty>;
   return (
-    <ul className="divide-y divide-line/70">
+    <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-xs"><thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr>{['Amount', ...(showPo ? ['Purchase order'] : []), 'Method', 'Reference', 'Paid by', 'Note', 'Date', 'Recorded by'].map((heading, index) => <th key={index} className="px-3 py-2.5 font-semibold">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line/70">
       {rows.map(r => {
         const o = po.get(r.poId);
-        const meta = [payModeLabel(r.mode), r.ref && `Ref ${r.ref}`, r.paidBy && `Paid by ${r.paidBy}`, r.note].filter(Boolean).join(' · ');
         return (
-          <li key={r.id} className="px-4 py-3 flex items-start justify-between gap-3 text-sm">
-            <div className="min-w-0">
-              <div className="font-bold tabular-nums">{money(r.amount)}</div>
-              {showPo && o && <div className="text-xs text-mute mt-0.5">{o.number} · {o.title}</div>}
-              <div className="text-xs text-mute mt-1">{meta}</div>
-            </div>
-            <div className="text-xs text-faint text-right shrink-0">{when(r.doneAt)}<br />{r.doneBy}</div>
-          </li>
+          <tr key={r.id} className="hover:bg-raised/30"><td className="px-3 py-2.5 whitespace-nowrap font-bold tabular-nums">{money(r.amount)}</td>{showPo && <td className="px-3 py-2.5 whitespace-nowrap">{o ? `${o.number} · ${o.title}` : '—'}</td>}<td className="px-3 py-2.5 whitespace-nowrap">{payModeLabel(r.mode)}</td><td className="px-3 py-2.5 whitespace-nowrap">{r.ref || '—'}</td><td className="px-3 py-2.5 whitespace-nowrap">{r.paidBy || '—'}</td><td className="px-3 py-2.5">{r.note || '—'}</td><td className="px-3 py-2.5 whitespace-nowrap">{when(r.doneAt)}</td><td className="px-3 py-2.5 whitespace-nowrap">{r.doneBy || '—'}</td></tr>
         );
       })}
-    </ul>
+    </tbody></table></div>
   );
 };
 
@@ -196,35 +187,34 @@ const OrdersView: React.FC<{ filter: POStatus | 'all'; setFilter: (f: POStatus |
 
 const VendorsView: React.FC = () => {
   const { vendors, orders, canManage, addVendor, updateVendor, deleteVendor } = usePurchase();
+  const { requests } = useRequests();
   const [form, setForm] = useState<Vendor | 'new' | null>(null);
   const [del, setDel] = useState<Vendor | null>(null);
-  const stat = (id: string) => { const os = orders.filter(o => o.vendorId === id && o.status !== 'cancelled' && o.status !== 'rejected'); return { n: os.length, v: os.reduce((a, o) => a + poTotal(o), 0) }; };
+  const stat = (id: string) => { const os = orders.filter(o => o.vendorId === id && o.status !== 'cancelled' && o.status !== 'rejected'); return { orders: os, count: os.length, spend: os.reduce((a, o) => a + poTotal(o), 0) }; };
   return (
     <div className="space-y-5">
       <div className="flex justify-end">{canManage && <button className={primary} onClick={() => setForm('new')}><Plus className="w-4 h-4" />Add vendor</button>}</div>
-      <section className={cx(panel, 'overflow-hidden')}>
+      <section className={cx(panel, 'overflow-x-auto')}>
         {vendors.length === 0 ? <Empty>No vendors yet.</Empty> : (
-          <ul className="divide-y divide-line/70">
-            {vendors.map(v => {
+          <table className="w-full min-w-[1250px] text-xs">
+            <thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr>{['Vendor', 'Category', 'Contact person', 'Phone', 'Email', 'Total orders', 'Total spend', 'Requests · status', 'Address', ''].map((heading, i) => <th key={i} className="px-3 py-2.5 font-semibold">{heading}</th>)}</tr></thead>
+            <tbody className="divide-y divide-line/70">{vendors.map(v => {
               const s = stat(v.id);
-              return (
-                <li key={v.id} className="px-4 py-3.5 flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2"><span className="font-semibold text-sm">{v.name}</span><span className={cx('rounded-full border px-2 py-0.5 text-[10px] font-semibold', v.vendorMode === 'online' ? 'border-blue-500/30 bg-blue-500/10 text-blue-300' : v.vendorMode === 'offline' ? 'border-violet-500/30 bg-violet-500/10 text-violet-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-300')}>{vendorModeLabel(v.vendorMode)}</span></div>
-                    <div className="text-xs text-mute mt-0.5">{[v.contact, v.phone, v.email].filter(Boolean).join(' · ') || 'No contact details'}</div>
-                    {v.address && <div className="text-xs text-faint mt-0.5">{v.address}</div>}
-                    <div className="text-xs text-faint mt-1">{s.n} order{s.n === 1 ? '' : 's'} · {money(s.v)}</div>
-                  </div>
-                  {canManage && (
-                    <div className="flex gap-1.5 shrink-0">
-                      <button className={btnGhost(D)} onClick={() => setForm(v)} aria-label={`Edit ${v.name}`}><Edit3 className="w-3.5 h-3.5" /></button>
-                      <button className={cx(btnGhost(D), 'text-rose-400')} onClick={() => setDel(v)} aria-label={`Delete ${v.name}`}><Trash2 className="w-3.5 h-3.5" /></button>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+              const linked = new Map<string, string>();
+              s.orders.forEach(order => order.items.forEach(item => {
+                if (!item.requestNumber || linked.has(item.requestNumber)) return;
+                const request = requests.find(r => r.number === item.requestNumber);
+                linked.set(item.requestNumber, request ? REQUEST_STATUS_LABEL[request.status] : STATUS[order.status]?.label || order.status);
+              }));
+              return <tr key={v.id} className="hover:bg-raised/30">
+                <td className="px-3 py-3 font-semibold text-ink">{v.name}</td><td className="px-3 py-3 whitespace-nowrap">{vendorModeLabel(v.vendorMode)}</td><td className="px-3 py-3">{v.contact || '—'}</td><td className="px-3 py-3 whitespace-nowrap">{v.phone || '—'}</td><td className="px-3 py-3">{v.email || '—'}</td>
+                <td className="px-3 py-3 whitespace-nowrap tabular-nums">{s.count}</td><td className="px-3 py-3 whitespace-nowrap tabular-nums font-semibold">{money(s.spend)}</td>
+                <td className="px-3 py-3 min-w-48">{linked.size ? <div className="space-y-1">{Array.from(linked, ([number, status]) => <div key={number} className="whitespace-nowrap"><span className="font-mono text-blue-300">{number}</span><span className="text-mute"> · {status}</span></div>)}</div> : '—'}</td>
+                <td className="px-3 py-3 max-w-56 truncate">{v.address || '—'}</td>
+                <td className="px-3 py-2"><div className="flex gap-1">{canManage && <><button className={btnGhost(D)} onClick={() => setForm(v)} aria-label={`Edit ${v.name}`}><Edit3 className="w-3.5 h-3.5" /></button><button className={cx(btnGhost(D), 'text-rose-400')} onClick={() => setDel(v)} aria-label={`Delete ${v.name}`}><Trash2 className="w-3.5 h-3.5" /></button></>}</div></td>
+              </tr>;
+            })}</tbody>
+          </table>
         )}
       </section>
       {form && <VendorForm initial={form === 'new' ? null : form} onClose={() => setForm(null)} onSave={v => (form === 'new' ? addVendor(v) : updateVendor(form.id, v))} />}
@@ -253,26 +243,19 @@ const VendorForm: React.FC<{ initial: Vendor | null; onClose: () => void; onSave
   );
 };
 
-const ReceivingView: React.FC<{ open: (id: string) => void; onReceive: (id: string) => void }> = ({ open, onReceive }) => {
-  const { orders, vendorName, canReceive } = usePurchase();
-  const incoming = orders.filter(o => INCOMING.includes(o.status)).sort((a, b) => (a.expectedDate || '9999').localeCompare(b.expectedDate || '9999'));
+const ReceivingView: React.FC = () => {
+  const { orders, vendorName } = usePurchase();
+  const received = orders.filter(o => o.items.some(item => item.qtyReceived > 0)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   const rows = useLedger<Receipt>('receipts', 300);
   return (
     <div className="space-y-5">
-      <Section title={`Waiting to be received (${incoming.length})`}>
-        {incoming.length === 0 ? <Empty>No orders are waiting for delivery.</Empty> : (
-          <ul className="divide-y divide-line/70">
-            {incoming.map(o => (
-              <li key={o.id} className="px-4 py-3 flex items-center justify-between gap-3">
-                <button className="min-w-0 text-left" onClick={() => open(o.id)}>
-                  <div className="font-semibold text-sm truncate">{o.number} · {o.title}</div>
-                  <div className="text-xs text-faint">{vendorName(o.vendorId)} · {poUnitsLeft(o)} units left · <span className={overdue(o) ? 'text-rose-400 font-semibold' : ''}>{o.expectedDate ? day(o.expectedDate) : 'no date'}</span></div>
-                </button>
-                {canReceive && <button className={cx(btnGhost(D), 'text-emerald-300 shrink-0')} onClick={() => onReceive(o.id)}><Truck className="w-3.5 h-3.5" />Receive goods</button>}
-              </li>
-            ))}
-          </ul>
-        )}
+      <Section title={`Received orders (${received.length})`}>
+        {received.length === 0 ? <Empty>No orders have been received yet.</Empty> : <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-xs"><thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr>{['Purchase order', 'Request', 'Vendor', 'Items received', 'Quantity received', 'Status'].map((heading, index) => <th key={index} className="px-3 py-2.5 font-semibold">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line/70">{received.map(order => {
+          const items = order.items.filter(item => item.qtyReceived > 0);
+          const requestNos = Array.from(new Set(items.map(item => item.requestNumber).filter(Boolean)));
+          const receivedQty = items.reduce((sum, item) => sum + item.qtyReceived, 0);
+          return <tr key={order.id} className="hover:bg-raised/30"><td className="px-3 py-2.5 whitespace-nowrap font-mono font-bold text-blue-300">{order.number}</td><td className="px-3 py-2.5 whitespace-nowrap">{requestNos.join(', ') || '—'}</td><td className="px-3 py-2.5 whitespace-nowrap">{vendorName(order.vendorId)}</td><td className="px-3 py-2.5">{items.map(item => `${item.name} × ${item.qtyReceived} ${item.unit}`).join(', ')}</td><td className="px-3 py-2.5 whitespace-nowrap font-semibold tabular-nums text-emerald-300">{receivedQty}</td><td className="px-3 py-2.5"><StatusChip s={order.status} /></td></tr>;
+        })}</tbody></table></div>}
       </Section>
       <Section title="Goods received log"><ReceiptList rows={rows} empty="Nothing has been received yet." /></Section>
     </div>
@@ -437,83 +420,52 @@ const PayReqRow: React.FC<{ r: PaymentRequest; showOrder?: boolean; open?: (poId
 
 // ---- the buy list: everything approved that the store team said must be bought -------------------------
 const BuyListView: React.FC<{ editOrder: (id: string) => void }> = ({ editOrder }) => {
-  const { requests, orders: reqOrders, loadAvailability } = useRequests();
-  const { orders, createOrder, canManage } = usePurchase();
-  const [sel, setSel] = useState<Set<string>>(new Set()); const [busy, setBusy] = useState(false); const [q, setQ] = useState('');
+  const { requests } = useRequests();
+  const { orders, createOrder, canManage, vendorName } = usePurchase();
   const lines = useMemo(() => requests.flatMap(r => unlinkedPurchaseParts(r)
     .map(p => ({ part: p, req: r, item: r.items.find(i => i.id === p.itemId) })).filter(x => !!x.item)) as { part: any; req: any; item: any }[], [requests]);
-  const groups = useMemo(() => {
-    const m = new Map<string, { key: string; name: string; unit: string; rows: typeof lines }>();
-    lines.forEach(l => {
-      const key = l.part.inventoryItemId || l.item.inventoryItemId || l.item.name.trim().toLowerCase();
-      const g = m.get(key) || { key, name: l.item.name, unit: l.item.unit, rows: [] as typeof lines }; g.rows.push(l); m.set(key, g);
-    });
-    const t = q.trim().toLowerCase();
-    return Array.from(m.values()).filter(g => !t || g.name.toLowerCase().includes(t) || g.rows.some(r => r.req.number.toLowerCase().includes(t))).sort((a, b) => a.name.localeCompare(b.name));
-  }, [lines, q]);
-  const unfinishedOrders = useMemo(() => {
-    const t = q.trim().toLowerCase();
-    return orders.filter(o => !o.vendorId && ['draft', 'pending', 'rejected'].includes(o.status)
-      && (!t || o.number.toLowerCase().includes(t) || o.title.toLowerCase().includes(t) || o.items.some(i => i.name.toLowerCase().includes(t))))
-      .sort((a, b) => a.createdAt < b.createdAt ? 1 : -1);
-  }, [orders, q]);
-  // Parts that left the list (ordered by someone else) disappear from the selection.
-  useEffect(() => { setSel(s => { const ids = new Set(lines.map(l => l.part.id)); const n = new Set(Array.from(s).filter(x => ids.has(x))); return n.size === s.size ? s : n; }); }, [lines]);
-  const toggle = (id: string) => setSel(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const toggleGroup = (ids: string[]) => setSel(s => { const n = new Set(s); const all = ids.every(i => n.has(i)); ids.forEach(i => (all ? n.delete(i) : n.add(i))); return n; });
-  const chosen = lines.filter(l => sel.has(l.part.id));
-  const tickets = new Set(chosen.map(l => l.req.number)).size;
-  const make = async () => { setBusy(true); const id = await createOrder(chosen.map(l => l.part.id)); setBusy(false); if (id) { setSel(new Set()); editOrder(id); } };
-  const dl = async () => exportRequestsXlsx(requests.filter(r => r.status === 'approved'), reqOrders, await loadAvailability(), 'buy-list');
+  const seenParts = useRef(new Set<string>());
+  const createOrderRef = useRef(createOrder); createOrderRef.current = createOrder;
+  useEffect(() => {
+    if (!canManage || !lines.length) return;
+    const byRequest = new Map<string, string[]>();
+    lines.forEach(line => { if (!seenParts.current.has(line.part.id)) { const ids = byRequest.get(line.req.id) || []; ids.push(line.part.id); byRequest.set(line.req.id, ids); } });
+    byRequest.forEach(ids => ids.forEach(id => seenParts.current.add(id)));
+    const requestBatches: string[][] = [];
+    byRequest.forEach(ids => requestBatches.push(ids));
+    void (async () => {
+      for (let index = 0; index < requestBatches.length; index++) await createOrderRef.current(requestBatches[index]);
+    })();
+  }, [lines, canManage]);
+  const approvedRequests = useMemo(() => requests.filter(request => {
+    if (request.status !== 'approved' || !request.parts.some(part => part.source === 'purchase' && part.status === 'planned')) return false;
+    const tickets = orders.filter(order => order.items.some(item => item.requestId === request.id || item.requestNumber === request.number));
+    return tickets.some(order => ['draft', 'pending', 'rejected'].includes(order.status)) || (!tickets.length && unlinkedPurchaseParts(request).length > 0);
+  }), [requests, orders]);
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap gap-3 items-center justify-between">
-        <div className="relative w-full sm:max-w-sm"><Search className="absolute left-3 top-3 h-4 w-4 text-faint" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Search item or ticket…" aria-label="Search the buy list" className={cx(inputCls(D), 'pl-9')} /></div>
-        <button className={btnGhost(D)} onClick={dl}>Excel</button>
-      </div>
-      <p className="text-xs text-mute">Approved purchase demand that has no vendor or placed order stays here. Finish draft orders by choosing a vendor, or select unlinked request lines to create a new PO.</p>
-      {unfinishedOrders.length > 0 && <Section title={`Orders needing a vendor · ${unfinishedOrders.length}`}>
-        <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-xs">
-          <thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr>{['Purchase order', 'Vendor / lines', 'Expected', 'Total', ''].map((x, i) => <th key={i} className="px-4 py-2.5 font-semibold">{x}</th>)}</tr></thead>
-          <tbody className="divide-y divide-line/70">
-            {unfinishedOrders.map(o => <tr key={o.id} className="hover:bg-raised/30">
-              <td className="px-4 py-3"><div className="flex items-center gap-2"><span className="font-mono font-bold text-blue-400">{o.number}</span><span className="text-mute">For {Array.from(new Set(o.items.map(i => i.requestNumber).filter(Boolean))).join(', ') || 'request'}</span><span className="rounded-full bg-slate-500/10 px-2 py-0.5 font-medium text-slate-300">{o.status === 'rejected' ? 'Needs changes' : o.status === 'pending' ? 'Ready to place' : 'Draft'}</span>{o.vendorMode && <span className="text-[10px] font-semibold text-mute">{vendorModeLabel(o.vendorMode)}</span>}</div></td>
-              <td className="px-4 py-3 text-ink-soft"><div>No vendor yet · {o.items.length} line{o.items.length === 1 ? '' : 's'} · {o.deliverTo || o.items.map(i => i.name).join(', ')}</div></td>
-              <td className="px-4 py-3 text-ink-soft whitespace-nowrap">{o.expectedDate ? day(o.expectedDate) : '—'}</td>
-              <td className="px-4 py-3 text-right font-semibold tabular-nums text-ink whitespace-nowrap">{money(poTotal(o))}</td>
-              <td className="px-4 py-3 text-right"><button type="button" className={btnGhost(D)} onClick={() => editOrder(o.id)}>Choose vendor</button></td>
-            </tr>)}
-          </tbody>
-        </table></div>
-      </Section>}
-      {groups.length === 0 && unfinishedOrders.length === 0 ? <section className={cx(panel, 'px-5 py-8 text-center')}><p className="text-sm font-medium text-ink-soft">Nothing to buy right now.</p><p className="mx-auto mt-1 max-w-xl text-xs leading-relaxed text-mute">Approved quantities with a selected vendor or already placed order are tracked under Orders.</p></section> : groups.map(g => {
-        const ids = g.rows.map(r => r.part.id); const total = g.rows.reduce((a, r) => a + r.part.qty, 0);
-        return (
-          <section key={g.key} className={cx(panel, 'overflow-hidden')}>
-            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-line">
-              <label className="flex items-center gap-2 text-sm font-bold cursor-pointer min-w-0">
-                {canManage && <input type="checkbox" className="accent-blue-600" aria-label={`Select all ${g.name}`} checked={ids.every(i => sel.has(i))} onChange={() => toggleGroup(ids)} />}
-                <span className="truncate">{g.name}</span>
-              </label>
-              <span className="text-sm tabular-nums text-amber-300 font-semibold shrink-0">{total} {g.unit} to buy</span>
-            </div>
-            <ul className="divide-y divide-line/70">
-              {g.rows.map(({ part, req }) => (
-                <li key={part.id} className="px-4 py-2.5 flex items-center gap-3">
-                  {canManage && <input type="checkbox" className="accent-blue-600" aria-label={`Select ${req.number}`} checked={sel.has(part.id)} onChange={() => toggle(part.id)} />}
-                  <div className="min-w-0 flex-1 text-sm"><span className="font-mono text-xs text-blue-400 font-bold">{req.number}</span> <span className="text-ink-soft">{req.title}</span>
-                    <div className="text-xs text-mute">{req.requesterName}{req.deliverTo ? ` · deliver to ${req.deliverTo}` : ''}{req.neededBy ? ` · needed by ${day(req.neededBy)}` : ''}{req.priority === 'urgent' ? ' · URGENT' : ''}</div></div>
-                  <span className="tabular-nums text-sm shrink-0">{part.qty} {g.unit}</span>
-                </li>))}
-            </ul>
-          </section>);
-      })}
-      {canManage && chosen.length > 0 && (
-        <div className="sticky bottom-3 z-10 rounded-xl border border-blue-500/40 bg-surface shadow-lg px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-          <div className="text-sm"><b>{chosen.length}</b> line{chosen.length === 1 ? '' : 's'} selected from <b>{tickets}</b> ticket{tickets === 1 ? '' : 's'}</div>
-          <div className="flex gap-2"><button className={btnGhost(D)} onClick={() => setSel(new Set())}>Clear</button><button className={primary} disabled={busy} onClick={make}><ShoppingCart className="w-4 h-4" />{busy ? 'Creating…' : 'Create one order'}</button></div>
-        </div>)}
+      <section className={cx(panel, 'overflow-x-auto')}>
+        {approvedRequests.length ? <table className="w-full min-w-[1050px] table-fixed border-x border-line text-[10px] xl:min-w-0 xl:text-[11px]">
+          <colgroup><col className="w-[9%]" /><col className="w-[9%]" /><col className="w-[10%]" /><col className="w-[9%]" /><col className="w-[7%]" /><col className="w-[8%]" /><col className="w-[7%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[7%]" /><col className="w-[10%]" /></colgroup>
+          <thead className="bg-raised/40 text-left text-[8px] uppercase tracking-wide text-mute xl:text-[9px]"><tr>{['Request', 'Requester', 'Department', 'Item', 'Qty to order', 'Needed by', 'PO ticket', 'Vendor', 'Expected', 'Budget', 'Status', ''].map((heading, index) => <th key={index} className="border-r border-line px-1.5 py-1.5 font-bold last:border-r-0">{heading}</th>)}</tr></thead>
+          <tbody className="divide-y divide-line/70">{approvedRequests.flatMap(request => request.parts.filter(part => part.source === 'purchase' && part.status === 'planned').map(part => {
+            const item = request.items.find(row => row.id === part.itemId);
+            const order = orders.find(candidate => candidate.items.some(line => line.id === part.purchaseItemId && !!part.purchaseItemId));
+            const canOpen = order && ['draft', 'pending', 'rejected'].includes(order.status);
+            return <tr key={part.id} className="hover:bg-raised/30">
+              <td className="border-r border-line/70 px-1.5 py-1.5 align-top"><span className="font-mono font-bold text-blue-300">{request.number}</span><div className="mt-0.5 break-words text-mute">{request.title}</div></td>
+              <td className="border-r border-line/70 px-1.5 py-1.5 align-top break-words">{request.requesterName}</td><td className="border-r border-line/70 px-1.5 py-1.5 align-top break-words">{request.departmentName || '—'}</td>
+              <td className="border-r border-line/70 px-1.5 py-1.5 align-top break-words font-medium text-ink">{item?.name || 'Request item'}</td><td className="border-r border-line/70 px-1.5 py-1.5 align-top tabular-nums">{part.qty} {item?.unit || ''}</td>
+              <td className="border-r border-line/70 px-1.5 py-1.5 align-top">{request.neededBy ? day(request.neededBy) : '—'}</td><td className="border-r border-line/70 px-1.5 py-1.5 align-top break-words font-mono text-blue-300">{order?.number || (part.purchaseItemId ? '—' : 'Preparing…')}</td>
+              <td className="border-r border-line/70 px-1.5 py-1.5 align-top break-words">{order ? vendorName(order.vendorId) : '—'}</td><td className="border-r border-line/70 px-1.5 py-1.5 align-top">{order?.expectedDate ? day(order.expectedDate) : '—'}</td>
+              <td className="border-r border-line/70 px-1.5 py-1.5 align-top tabular-nums break-words">{item?.budgetAmount != null ? money(item.budgetAmount) : '—'}</td>
+              <td className="border-r border-line/70 px-1.5 py-1.5 align-top">{order ? <StatusChip s={order.status} /> : <span className="text-mute">Approved</span>}</td>
+              <td className="px-1 py-1.5 text-center align-top">{canOpen && <button type="button" className={`${btnGhost(D)} !px-1.5 !py-0.5 text-[9px]`} onClick={() => editOrder(order.id)}>Open</button>}</td>
+            </tr>;
+          }))}</tbody>
+        </table> : <Empty>No approved requests waiting to be ordered.</Empty>}
+      </section>
     </div>
   );
 };
@@ -586,20 +538,60 @@ const OrderTrackingView: React.FC<{ open: (id: string) => void }> = ({ open }) =
     </section>
   </div>;
 };
+
+// Orders that have been placed but still need their marketplace/order reference details.
+const OrderedView: React.FC<{ open: (id: string) => void }> = ({ open }) => {
+  const { orders, vendors, trackings, loading } = usePurchase();
+  const [kind, setKind] = useState<'all' | VendorMode>('all');
+  const rows = orders.filter(order => ['ordered', 'partial'].includes(order.status)
+    && (kind === 'all' || (vendors.find(vendor => vendor.id === order.vendorId)?.vendorMode || order.vendorMode) === kind))
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  return <div className="space-y-3">
+    <div className="flex gap-2" role="group" aria-label="Filter ordered tickets by vendor type">{(['all', 'online', 'offline'] as const).map(value => <button key={value} type="button" aria-pressed={kind === value} onClick={() => setKind(value)} className={cx('rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors', kind === value ? 'border-blue-500 bg-blue-600 text-white' : 'border-line text-mute hover:bg-raised')}>{value === 'all' ? 'All' : value === 'online' ? 'Online' : 'Offline'}</button>)}</div>
+    <Section title={`Ordered tickets (${rows.length})`}>
+      {rows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[1150px] text-xs"><thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr>{['PO ticket', 'Request', 'Vendor', 'Type', 'Items', 'Expected', 'Total', 'Status', 'Order ID', 'Shipment ID', ''].map((heading, index) => <th key={index} className="px-3 py-2.5 font-semibold">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line/70">{rows.map(order => {
+        const mode = vendors.find(vendor => vendor.id === order.vendorId)?.vendorMode || order.vendorMode;
+        const trackingRows = trackings.filter(tracking => tracking.poId === order.id);
+        const requestNos = Array.from(new Set(order.items.map(item => item.requestNumber).filter(Boolean)));
+        return <tr key={order.id} className="hover:bg-raised/30"><td className="px-3 py-2.5 whitespace-nowrap font-mono font-bold text-blue-300">{order.number}</td><td className="px-3 py-2.5 whitespace-nowrap">{requestNos.join(', ') || '—'}</td><td className="px-3 py-2.5 whitespace-nowrap">{vendors.find(vendor => vendor.id === order.vendorId)?.name || '—'}</td><td className="px-3 py-2.5">{mode === 'online' ? 'Online' : mode === 'offline' ? 'Offline' : '—'}</td><td className="px-3 py-2.5">{order.items.map(item => `${item.name} × ${item.qtyOrdered}`).join(', ')}</td><td className="px-3 py-2.5 whitespace-nowrap">{order.expectedDate ? day(order.expectedDate) : '—'}</td><td className="px-3 py-2.5 whitespace-nowrap tabular-nums">{money(poTotal(order))}</td><td className="px-3 py-2.5"><StatusChip s={order.status} /></td><td className="px-3 py-2.5 whitespace-nowrap">{trackingRows.map(row => row.marketplaceOrderNumber).filter(Boolean).join(', ') || '—'}</td><td className="px-3 py-2.5 whitespace-nowrap">{trackingRows.map(row => row.trackingNumber).filter(Boolean).join(', ') || '—'}</td><td className="px-3 py-2.5 text-right">{mode === 'online' && <button type="button" className={btnGhost(D)} onClick={() => open(order.id)}>{trackingRows.some(row => row.marketplaceOrderNumber || row.trackingNumber) ? 'Edit details' : 'Add details'}</button>}</td></tr>;
+      })}</tbody></table></div> : <Empty>{loading ? 'Loading orders…' : 'No ordered tickets in this category.'}</Empty>}
+    </Section>
+  </div>;
+};
+
+// Orders with details saved wait here until Procurement records receipt.
+const WaitingView: React.FC = () => {
+  const { orders, vendors, trackings, loading } = usePurchase();
+  const rows = orders.filter(order => ['ordered', 'partial'].includes(order.status))
+    .sort((a, b) => (a.expectedDate || '9999').localeCompare(b.expectedDate || '9999'));
+  return <Section title={`Waiting for receipt (${rows.length})`}>
+    {rows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[650px] text-xs"><thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr>{['Purchase order', 'Vendor', 'Order status', 'Shipment status'].map((heading, index) => <th key={index} className="px-3 py-2.5 font-semibold">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line/70">{rows.map(order => {
+      const latest = trackings.filter(tracking => tracking.poId === order.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+      return <tr key={order.id} className="hover:bg-raised/30"><td className="px-3 py-2.5 whitespace-nowrap font-mono font-bold text-blue-300">{order.number}</td><td className="px-3 py-2.5 whitespace-nowrap">{vendors.find(vendor => vendor.id === order.vendorId)?.name || '—'}</td><td className="px-3 py-2.5"><StatusChip s={order.status} /></td><td className="px-3 py-2.5 whitespace-nowrap">{latest ? latest.subStatus || latest.status : 'Awaiting update'}</td></tr>;
+    })}</tbody></table></div> : <Empty>{loading ? 'Loading orders…' : 'No orders are waiting for receipt.'}</Empty>}
+  </Section>;
+};
 // ---- vendor + rates (the lines themselves come from the tickets) ------------------------------------------
 const OrderEditModal: React.FC<{ id: string; onClose: () => void }> = ({ id, onClose }) => {
   const { orders, vendors, saveDraft } = usePurchase();
+  const { requests } = useRequests();
   const o = orders.find(x => x.id === id);
   const [vendorId, setVendorId] = useState(o?.vendorId || ''); const [expected, setExpected] = useState(o?.expectedDate || ''); const [notes, setNotes] = useState(o?.notes || '');
   const [vendorMode, setVendorMode] = useState<VendorMode>(vendors.find(v => v.id === o?.vendorId)?.vendorMode || o?.vendorMode || 'online');
   const [rates, setRates] = useState<Record<string, string>>(() => Object.fromEntries((o?.items || []).map(i => [i.id, i.rate ? String(i.rate) : ''])));
+  const requestNumbers = Array.from(new Set((o?.items || []).map(item => item.requestNumber).filter(Boolean)));
+  const autoMisc = requests.filter(request => requestNumbers.includes(request.number)
+    && !orders.some(other => other.id !== o?.id && other.miscAmount > 0 && other.items.some(item => item.requestNumber === request.number)))
+    .reduce((sum, request) => sum + (request.miscBudget || 0), 0);
+  const [miscAmount, setMiscAmount] = useState(o?.miscAmount || 0);
   const [busy, setBusy] = useState(false);
+  useEffect(() => { if (!o?.miscAmount && autoMisc > 0) setMiscAmount(autoMisc); }, [o?.id, o?.miscAmount, autoMisc]);
   if (!o) return null;
   const num = (id2: string) => parseFloat(rates[id2]) || 0;
-  const total = o.items.reduce((a, i) => a + i.qtyOrdered * num(i.id), 0);
+  const total = o.items.reduce((a, i) => a + i.qtyOrdered * num(i.id), 0) + miscAmount;
   const save = async (submit: boolean) => {
     setBusy(true);
-    const ok = await saveDraft(o.id, { vendorId, vendorMode, expectedDate: expected, notes, rates: Object.fromEntries(o.items.map(i => [i.id, num(i.id)])) }, submit);
+    const ok = await saveDraft(o.id, { vendorId, vendorMode, expectedDate: expected, notes, miscAmount, rates: Object.fromEntries(o.items.map(i => [i.id, num(i.id)])) }, submit);
     setBusy(false); if (ok) onClose();
   };
   return (
@@ -628,9 +620,10 @@ const OrderEditModal: React.FC<{ id: string; onClose: () => void }> = ({ id, onC
             </tbody>
           </table>
         </div>
+        {autoMisc > 0 && <div className="rounded-lg border border-blue-500/25 bg-blue-500/5 px-3 py-2 text-xs text-ink-soft">Request miscellaneous / installation allowance is included automatically: <b className="tabular-nums">{money(miscAmount)}</b>. It is included in the PO total without creating a separate item line.</div>}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <span className="text-sm text-mute">Total <b className="text-ink tabular-nums">{money(total)}</b></span>
-          <div className="flex gap-2"><button className={btnGhost(D)} onClick={onClose}>Cancel</button><button className={btnGhost(D)} disabled={busy} onClick={() => save(false)}>Save draft</button>{vendorMode && <button className={primary} disabled={busy} onClick={() => save(true)}>{busy ? 'Saving…' : vendorMode === 'online' ? 'Place marketplace order & track' : 'Mark local order placed'}</button>}</div>
+          <div className="flex gap-2"><button className={btnGhost(D)} onClick={onClose}>Cancel</button><button className={primary} disabled={busy || !vendorId || o.items.some(item => !(num(item.id) > 0))} onClick={() => save(false)}>{busy ? 'Saving…' : 'Save details'}</button></div>
         </div>
         <p className="text-xs text-mute">{vendorMode === 'online' ? 'Place the order on the e-commerce marketplace (such as Amazon or Flipkart), then record it here. Add the marketplace order number and courier details for tracking.' : vendorMode === 'offline' ? 'Place the order directly with the local supplier, then mark it here. Marketplace tracking is not used.' : 'Choose a vendor category to continue: online marketplace (e-commerce brand) or offline/local supplier.'} Order lines come from approved requests.</p>
       </div>
@@ -640,28 +633,25 @@ const OrderEditModal: React.FC<{ id: string; onClose: () => void }> = ({ id, onC
 
 // ---- order detail ------------------------------------------------------------------------------------------
 const OrderModal: React.FC<{ id: string; onClose: () => void; onEdit: (id: string) => void; onReceive: (id: string) => void; onAsk: (id: string) => void }> = ({ id, onClose, onEdit, onReceive, onAsk }) => {
-  const { orders, vendors, payRequests, trackings, canManage, canReceive, setStatus, deleteOrder, fetchReceipts, fetchPayments, registerTracking } = usePurchase();
+  const { orders, vendors, payRequests, trackings, canManage, canReceive, setStatus, deleteOrder, saveDraft, fetchReceipts, fetchPayments, registerTracking } = usePurchase();
   const { requests } = useRequests();
   const o = orders.find(x => x.id === id);
   const [rc, setRc] = useState<Receipt[] | null>(null);
   const [pm, setPm] = useState<Payment[] | null>(null);
   const [ask, setAsk] = useState<'cancel' | 'delete' | 'reject' | null>(null);
   const [trackingLine, setTrackingLine] = useState('');
-  const [trackingVendorId, setTrackingVendorId] = useState(o?.vendorId || '');
   const [marketplaceOrderNumber, setMarketplaceOrderNumber] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [courierSlug, setCourierSlug] = useState('');
   const [trackingBusy, setTrackingBusy] = useState(false);
+  const [placingBusy, setPlacingBusy] = useState(false);
   const [showTrackingForm, setShowTrackingForm] = useState(false);
   const sig = o ? o.paid * 3 + o.items.reduce((a, i) => a + i.qtyReceived, 0) : 0;
   useEffect(() => { if (!o) return; let on = true; fetchReceipts(id).then(r => on && setRc(r)); if (canManage) fetchPayments(id).then(r => on && setPm(r)); return () => { on = false; }; }, [id, sig]); // eslint-disable-line
-  useEffect(() => {
-    if (!o) return;
-    const current = vendors.find(v => v.id === o.vendorId && v.vendorMode === 'online');
-    setTrackingVendorId(previous => vendors.some(v => v.id === previous && v.vendorMode === 'online') ? previous : current?.id || vendors.find(v => v.vendorMode === 'online')?.id || '');
-  }, [id, o?.vendorId, vendors]);
   if (!o) return <Modal title="Order" dark={D} onClose={onClose}><p className="text-sm text-mute">This order no longer exists.</p></Modal>;
   const vendor = vendors.find(v => v.id === o.vendorId);
+  const resolvedVendorMode = vendor?.vendorMode || o.vendorMode;
+  const readyToPlace = !!vendor && !!resolvedVendorMode && vendor.vendorMode === resolvedVendorMode && o.items.length > 0 && o.items.every(item => item.rate > 0);
   const total = poTotal(o); const due = poDue(o);
   const mine = payRequests.filter(r => r.poId === o.id);
   const asked = mine.filter(r => r.status === 'pending' || r.status === 'approved').reduce((a, r) => a + r.amount, 0);
@@ -707,8 +697,7 @@ const OrderModal: React.FC<{ id: string; onClose: () => void; onEdit: (id: strin
   const remainingApprovedBudget = approvedRequestBudget - linkedOrderTotal;
   const act = (s: POStatus, msg: string, note?: string) => setStatus(o.id, s, msg, note);
   const orderTrackings = trackings.filter(t => t.poId === o.id);
-  const trackingVendors = vendors.filter(v => v.vendorMode === 'online');
-  const trackingVendor = trackingVendors.find(v => v.id === trackingVendorId);
+  const trackingVendor = vendor?.vendorMode === 'online' ? vendor : undefined;
   const addTracking = async (e: React.FormEvent) => {
     e.preventDefault(); if (!trackingVendor || !trackingLine || (!trackingNumber.trim() && !marketplaceOrderNumber.trim())) return;
     setTrackingBusy(true);
@@ -716,8 +705,22 @@ const OrderModal: React.FC<{ id: string; onClose: () => void; onEdit: (id: strin
     setTrackingBusy(false);
     if (ok) { setTrackingLine(''); setMarketplaceOrderNumber(''); setTrackingNumber(''); setCourierSlug(''); setShowTrackingForm(false); }
   };
+  const placeConfiguredOrder = async () => {
+    if (!readyToPlace || !o.vendorId || !resolvedVendorMode) return;
+    setPlacingBusy(true);
+    const saved = await saveDraft(o.id, {
+      vendorId: o.vendorId,
+      vendorMode: resolvedVendorMode,
+      expectedDate: o.expectedDate,
+      notes: o.notes,
+      miscAmount: o.miscAmount,
+      rates: Object.fromEntries(o.items.map(item => [item.id, item.rate])),
+    }, true);
+    setPlacingBusy(false);
+    if (saved) onClose();
+  };
   return (
-    <Modal title={`${o.number} · ${o.title}`} dark={D} onClose={onClose} xl>
+    <Modal title={`${o.number} · ${o.title}`} dark={D} onClose={onClose} xl stickyHeader>
       <div className="flex flex-wrap items-center gap-2 mb-4"><StatusChip s={o.status} />{o.vendorMode && <span className="rounded-full border border-line-strong bg-raised px-2 py-0.5 text-xs font-semibold text-ink-soft">{o.vendorMode === 'online' ? 'Online marketplace order' : 'Offline vendor order'}</span>}<PayChip po={o} />{overdue(o) && <span className={cx('text-xs font-semibold px-2 py-0.5 rounded-full border', TONE.bad)}>Overdue</span>}</div>
       {o.status === 'rejected' && <div className="mb-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">Rejected by {o.approvedBy}: {o.decisionNote || 'no reason given'}</div>}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-3 rounded-xl border border-line bg-raised/20 px-4 py-3.5 mb-3">
@@ -746,6 +749,7 @@ const OrderModal: React.FC<{ id: string; onClose: () => void; onEdit: (id: strin
           </tbody>
         </table>
       </div>
+      {o.miscAmount > 0 && <div className="flex items-center justify-between rounded-lg border border-line bg-raised/20 px-3 py-2 text-xs text-mute"><span>Miscellaneous / installation allowance (included in total)</span><b className="tabular-nums text-ink">{money(o.miscAmount)}</b></div>}
       {linkedRequests.length > 0 && <section className="mt-3 rounded-xl border border-line bg-raised/20 p-3 sm:p-4">
         <div className="text-xs font-semibold text-ink">Budget check</div>
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -768,7 +772,7 @@ const OrderModal: React.FC<{ id: string; onClose: () => void; onEdit: (id: strin
       {o.vendorMode === 'online' && ['ordered', 'partial', 'received'].includes(o.status) && (orderTrackings.length > 0 || showTrackingForm) && <section className={cx(panel, 'mt-5 overflow-hidden')}>
         <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3"><div><h3 className="text-sm font-semibold">Order tracking</h3><p className="mt-0.5 text-xs text-mute">Save the marketplace order ID now. Add the courier AWB after dispatch for automatic delivery updates.</p></div>{canManage && <button type="button" className={btnGhost(D)} onClick={() => { const pending = orderTrackings.find(t => !t.trackingNumber); if (pending) { setTrackingLine(pending.purchaseItemId); setMarketplaceOrderNumber(pending.marketplaceOrderNumber); } else if (o.items.length === 1) setTrackingLine(o.items[0].id); setShowTrackingForm(v => !v); }}>{showTrackingForm ? 'Close' : orderTrackings.some(t => !t.trackingNumber) ? 'Add courier AWB' : 'Add order details'}</button>}</div>
         {canManage && showTrackingForm && <form onSubmit={addTracking} className="grid gap-2 border-b border-line p-3 sm:grid-cols-2 xl:grid-cols-6">
-          <div><select aria-label="Online vendor" required className={inputCls(D)} value={trackingVendorId} onChange={e => setTrackingVendorId(e.target.value)}><option value="">Choose online vendor</option>{trackingVendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</select><p className="mt-1 text-[10px] text-mute">Choose the online vendor saved on this PO.</p></div>
+          <div className={cx(inputCls(D), 'flex items-center font-medium')} aria-label="Online vendor">{trackingVendor?.name || 'PO vendor not set'}</div>
           <select aria-label="Purchase item" className={inputCls(D)} value={trackingLine} onChange={e => setTrackingLine(e.target.value)}><option value="">Choose item</option>{o.items.map(item => <option key={item.id} value={item.id}>{item.name} · {item.qtyOrdered} {item.unit}</option>)}</select>
           <input aria-label="Marketplace order ID" className={inputCls(D)} value={marketplaceOrderNumber} onChange={e => setMarketplaceOrderNumber(e.target.value)} placeholder="Marketplace order ID" />
           <input aria-label="Courier tracking number or AWB (optional until dispatch)" className={inputCls(D)} value={trackingNumber} onChange={e => setTrackingNumber(e.target.value)} placeholder="Courier tracking no. / AWB (after dispatch)" />
@@ -790,9 +794,9 @@ const OrderModal: React.FC<{ id: string; onClose: () => void; onEdit: (id: strin
       {(rc === null || rc.length > 0) && <div className="mt-6"><div className="text-xs font-semibold text-mute mb-1">Goods received</div><div className={cx(panel, 'overflow-hidden')}><ReceiptList rows={rc} empty="" showPo={false} /></div></div>}
       {canManage && (pm === null || pm.length > 0) && <div className="mt-5"><div className="text-xs font-semibold text-mute mb-1">Payments made</div><div className={cx(panel, 'overflow-hidden')}><PaymentList rows={pm} empty="" showPo={false} /></div></div>}
 
-      <div className="sticky bottom-0 z-10 -mx-5 mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-line bg-surface/95 px-5 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+      <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-3">
         {canManage && ['draft', 'pending', 'rejected'].includes(o.status) && <button className={btnGhost(D)} onClick={() => onEdit(o.id)}><Edit3 className="w-3.5 h-3.5" />Vendor and rates</button>}
-        {canManage && ['draft', 'pending', 'rejected'].includes(o.status) && <button className={primary} onClick={() => onEdit(o.id)}><Check className="w-4 h-4" />{o.vendorMode === 'offline' ? 'Mark local order placed' : o.vendorMode === 'online' ? 'Place marketplace order & track' : 'Choose vendor category'}</button>}
+        {canManage && ['draft', 'pending', 'rejected'].includes(o.status) && <button className={primary} disabled={placingBusy || !readyToPlace} onClick={placeConfiguredOrder}><Check className="w-4 h-4" />{placingBusy ? 'Placing…' : 'Place order'}</button>}
         {canManage && o.status === 'approved' && <button className={primary} onClick={() => act('ordered', 'Marked as ordered.')}>I have placed the order</button>}
         {canReceive && INCOMING.includes(o.status) && <button className={good} onClick={() => onReceive(o.id)}><Truck className="w-4 h-4" />Receive goods</button>}
         {canManage && PAYABLE.includes(o.status) && due - asked > 0.009 && <button className={btnGhost(D)} onClick={() => onAsk(o.id)}>Ask for a payment</button>}
@@ -809,35 +813,24 @@ const OrderModal: React.FC<{ id: string; onClose: () => void; onEdit: (id: strin
 
 // ---- payments ----------------------------------------------------------------------------------------------
 const PaymentsView: React.FC<{ open: (id: string) => void; onAsk: (id: string) => void }> = ({ open, onAsk }) => {
-  const { orders, payRequests, vendorName, canManage, stats } = usePurchase();
+  const { orders, payRequests, vendorName, canManage, stats, withdrawPayment } = usePurchase();
+  const [payingId, setPayingId] = useState<string | null>(null);
   const ready = payRequests.filter(r => r.status === 'pending' || r.status === 'approved');
   const closed = payRequests.filter(r => ['paid', 'rejected', 'cancelled'].includes(r.status)).slice(0, 30);
   const asked = (poId: string) => payRequests.filter(r => r.poId === poId && (r.status === 'pending' || r.status === 'approved')).reduce((a, r) => a + r.amount, 0);
   const due = orders.filter(o => PAYABLE.includes(o.status) && poDue(o) - asked(o.id) > 0.009);
   const rows = useLedger<Payment>('payments', 300);
+  const requestTable = (list: PaymentRequest[], actions: boolean) => list.length ? <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-xs"><thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr>{['Amount', 'PO ticket', 'Status', 'Requested by', 'Requested at', 'Note', ...(actions ? [''] : [])].map((heading, index) => <th key={index} className="px-3 py-2.5 font-semibold">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line/70">{list.map(request => { const order = orders.find(row => row.id === request.poId); return <tr key={request.id} className="hover:bg-raised/30"><td className="px-3 py-2.5 whitespace-nowrap font-bold tabular-nums">{money(request.amount)}</td><td className="px-3 py-2.5 whitespace-nowrap">{order ? <button type="button" onClick={() => open(order.id)} className="font-mono font-bold text-blue-300 hover:underline">{order.number}</button> : '—'}</td><td className="px-3 py-2.5 whitespace-nowrap">{PAYREQ[request.status].label}</td><td className="px-3 py-2.5 whitespace-nowrap">{request.requestedBy || '—'}</td><td className="px-3 py-2.5 whitespace-nowrap">{when(request.requestedAt)}</td><td className="px-3 py-2.5">{request.note || '—'}</td>{actions && <td className="px-3 py-2.5 text-right whitespace-nowrap">{canManage && <div className="flex justify-end gap-1"><button type="button" className={good} onClick={() => setPayingId(request.id)}>Pay now</button><button type="button" className={btnGhost(D)} onClick={() => withdrawPayment(request.id)}>Cancel</button></div>}</td>}</tr>; })}</tbody></table></div> : <Empty>{actions ? 'No payment requests are ready.' : 'No earlier payment requests.'}</Empty>;
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <Stat label="Still to pay" value={money(stats.due)} dot="bg-amber-400" />
-        <Stat label="Ready to pay" value={ready.length} dot="bg-blue-400" />
-        <Stat label="Orders with money due" value={orders.filter(o => PAYABLE.includes(o.status) && poDue(o) > 0).length} dot="bg-rose-400" />
-      </div>
-      {ready.length > 0 && <Section title={`Ready to pay (${ready.length})`}><ul className="divide-y divide-line/70">{ready.map(r => <PayReqRow key={r.id} r={r} showOrder open={open} />)}</ul></Section>}
+      <div className={cx(panel, 'overflow-x-auto')}><table className="w-full min-w-[600px] text-xs"><thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr><th className="px-3 py-2 font-semibold">Still to pay</th><th className="px-3 py-2 font-semibold">Ready to pay</th><th className="px-3 py-2 font-semibold">Orders with money due</th></tr></thead><tbody><tr><td className="px-3 py-2.5 text-base font-bold tabular-nums text-amber-300">{money(stats.due)}</td><td className="px-3 py-2.5 text-base font-bold tabular-nums text-blue-300">{ready.length}</td><td className="px-3 py-2.5 text-base font-bold tabular-nums text-rose-300">{orders.filter(o => PAYABLE.includes(o.status) && poDue(o) > 0).length}</td></tr></tbody></table></div>
+      <Section title={`Ready to pay (${ready.length})`}>{requestTable(ready, true)}</Section>
       <Section title={`Orders where a payment can be asked for (${due.length})`}>
-        {due.length === 0 ? <Empty>Nothing more to ask for.</Empty> : (
-          <ul className="divide-y divide-line/70">
-            {due.map(o => (
-              <li key={o.id} className="px-4 py-3 flex items-center justify-between gap-3">
-                <button className="min-w-0 text-left" onClick={() => open(o.id)}>
-                  <div className="font-semibold text-sm truncate">{o.number} · {o.title}</div>
-                  <div className="text-xs text-faint">{vendorName(o.vendorId)} · total {money(poTotal(o))} · paid {money(o.paid)}</div>
-                </button>
-                <div className="flex items-center gap-2 shrink-0"><b className="tabular-nums text-amber-300">{money(poDue(o))}</b>{canManage && <button className={btnGhost(D)} onClick={() => onAsk(o.id)}>Ask for a payment</button>}</div>
-              </li>))}
-          </ul>)}
+        {due.length === 0 ? <Empty>Nothing more to ask for.</Empty> : <div className="overflow-x-auto"><table className="w-full min-w-[800px] text-xs"><thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr>{['PO ticket', 'Vendor', 'Total', 'Paid', 'Due', ''].map((heading, index) => <th key={index} className="px-3 py-2.5 font-semibold">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line/70">{due.map(order => <tr key={order.id} className="hover:bg-raised/30"><td className="px-3 py-2.5 whitespace-nowrap"><button type="button" onClick={() => open(order.id)} className="font-mono font-bold text-blue-300 hover:underline">{order.number}</button><span className="ml-2 text-ink-soft">{order.title}</span></td><td className="px-3 py-2.5">{vendorName(order.vendorId)}</td><td className="px-3 py-2.5 whitespace-nowrap tabular-nums">{money(poTotal(order))}</td><td className="px-3 py-2.5 whitespace-nowrap tabular-nums text-emerald-300">{money(order.paid)}</td><td className="px-3 py-2.5 whitespace-nowrap tabular-nums text-amber-300">{money(poDue(order))}</td><td className="px-3 py-2.5 text-right">{canManage && <button className={btnGhost(D)} onClick={() => onAsk(order.id)}>Ask for a payment</button>}</td></tr>)}</tbody></table></div>}
       </Section>
-      {closed.length > 0 && <Section title="Earlier payment requests"><ul className="divide-y divide-line/70">{closed.map(r => <PayReqRow key={r.id} r={r} showOrder open={open} />)}</ul></Section>}
+      {closed.length > 0 && <Section title="Earlier payment requests">{requestTable(closed, false)}</Section>}
       <Section title="Payments made"><PaymentList rows={rows} empty="No payments recorded yet." /></Section>
+      {payingId && <PayNowModal id={payingId} onClose={() => setPayingId(null)} />}
     </div>
   );
 };
@@ -854,11 +847,11 @@ export const PurchaseDesk: React.FC<{ view: DeskView }> = ({ view }) => {
     <div className="space-y-5">
       {!canManage && <div className="p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-xl text-xs">🔒 {canReceive ? 'You can view orders and record goods received, but not change orders.' : 'You can view orders but not change them.'}</div>}
       {loadError && <div role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-400 text-sm p-3">Could not load purchases: {loadError}</div>}
-      {view === 'buy' && <BuyListView editOrder={setEditing} />}
-      {view === 'tracking' && <OrderTrackingView open={setViewing} />}
-      {view === 'orders' && <OrdersView filter={filter} setFilter={setFilter} open={setViewing} />}
+      {view === 'buy' && <BuyListView editOrder={setViewing} />}
+      {view === 'tracking' && <WaitingView />}
+      {view === 'orders' && <OrderedView open={setViewing} />}
       {view === 'vendors' && <VendorsView />}
-      {view === 'receiving' && <ReceivingView open={setViewing} onReceive={setReceiving} />}
+      {view === 'receiving' && <ReceivingView />}
       {view === 'payments' && <PaymentsView open={setViewing} onAsk={setAsking} />}
 
       {viewing && !editing && !receiving && !asking && <OrderModal id={viewing} onClose={() => setViewing(null)} onEdit={setEditing} onReceive={setReceiving} onAsk={setAsking} />}
@@ -870,8 +863,8 @@ export const PurchaseDesk: React.FC<{ view: DeskView }> = ({ view }) => {
 };
 
 const PURCHASE_TABS: { id: DeskView; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: 'buy', label: 'Buy list', icon: ShoppingCart }, { id: 'tracking', label: 'Order tracking', icon: ClipboardList }, { id: 'orders', label: 'Orders', icon: Check },
-  { id: 'receiving', label: 'Receiving', icon: Truck }, { id: 'payments', label: 'Payments', icon: Wallet },
+  { id: 'buy', label: 'To Order', icon: ShoppingCart }, { id: 'orders', label: 'Ordered', icon: Check }, { id: 'tracking', label: 'Waiting', icon: ClipboardList },
+  { id: 'receiving', label: 'Received', icon: Truck }, { id: 'payments', label: 'Payments', icon: Wallet },
   { id: 'vendors', label: 'Vendors', icon: Search },
 ];
 
@@ -914,9 +907,7 @@ export const PurchaseApp: React.FC<{ initialTab?: DeskView }> = ({ initialTab = 
   const go = (next: DeskView) => { setTab(next); location.hash = `#/purchase/${next}`; };
   return <div className="space-y-3">
     <header className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-base font-semibold text-ink">Procurement</h2><p className="text-xs text-mute">Order, receive, and pay for approved department requests.</p></div></header>
-    <section aria-label="Purchase totals" className="grid grid-cols-3 gap-2">
-      {totals.map(([label, amount]) => <div key={label} className="rounded-lg border border-line bg-surface px-3 py-2"><div className="text-[10px] font-medium text-mute">{label}</div><div className="mt-0.5 truncate text-sm font-semibold tabular-nums text-ink">{money(amount)}</div></div>)}
-    </section>
+    <section aria-label="Purchase totals" className={cx(panel, 'overflow-x-auto')}><table className="w-full min-w-[520px] text-xs"><thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr>{totals.map(([label]) => <th key={label} className="px-3 py-2 font-semibold">{label}</th>)}</tr></thead><tbody><tr>{totals.map(([label, amount]) => <td key={label} className="px-3 py-2.5 text-sm font-semibold tabular-nums text-ink">{money(amount)}</td>)}</tr></tbody></table></section>
     <nav ref={navRef} className="relative flex gap-1 overflow-x-auto border-b border-line" aria-label="Purchase sections">
       <span aria-hidden="true" className={cx('pointer-events-none absolute bottom-0 left-0 h-0.5 rounded-full bg-blue-500', indicatorReady ? 'transition-[transform,width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]' : 'transition-none')} style={{ width: indicator.width, transform: `translateX(${indicator.left}px)` }} />
       {PURCHASE_TABS.map(({ id, label, icon: Icon }) => <button key={id} ref={node => { tabRefs.current[id] = node; }} onClick={() => go(id)} aria-current={tab === id ? 'page' : undefined} className={cx('inline-flex items-center gap-1.5 whitespace-nowrap px-2.5 py-2 text-xs font-medium transition-colors duration-200', tab === id ? 'text-blue-400' : 'text-mute hover:text-ink')}><Icon className="h-3.5 w-3.5" />{label}</button>)}

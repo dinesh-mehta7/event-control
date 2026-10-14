@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, FileSpreadsheet, Inbox, Plus, X } from 'lucide-react';
 import { Empty, Tabs, btnGhost, inputCls, btnPrimary } from '../../components/ui';
-import { DEPTS } from '../../pages/orgData';
+import { DEPTS } from '../../views/orgData';
 import { useRequests } from './RequestsContext';
 import { NewRequest } from './NewRequest';
 import { RequestDetail } from './RequestDetail';
@@ -92,7 +92,7 @@ const Stat: React.FC<{ label: string; n: number; tone: string; onClick: () => vo
   </button>
 );
 
-const Overview: React.FC<{ onOpen: (filter: string) => void; onDownloadAll: () => void; downloadingAll: boolean; ready: boolean; scope: string }> = ({ onOpen, onDownloadAll, downloadingAll, ready, scope }) => {
+const Overview: React.FC<{ onOpen: (filter: string) => void }> = ({ onOpen }) => {
   const { requests, me, waitingForMe, toArrange } = useRequests();
   const n = (f: string) => requests.filter(r => matches(r, f)).length;
   const total = requests.length;
@@ -108,12 +108,7 @@ const Overview: React.FC<{ onOpen: (filter: string) => void; onDownloadAll: () =
   const overviewHeading = attention.length ? 'Needs your attention' : 'Recent requests';
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h2 className="text-sm font-semibold text-ink">{scope}</h2>
-          <p className="text-xs text-mute mt-0.5">A clear view of what is waiting, being arranged, and delivered.</p></div>
-        {me.isExec && <button type="button" className={btnGhost} disabled={!ready || downloadingAll} onClick={onDownloadAll}><FileSpreadsheet size={14} />{downloadingAll ? 'Preparing Excel…' : 'Download all requests'}</button>}
-      </div>
+    <div className="space-y-3">
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         <Stat label="All requests" n={total} tone="text-ink" onClick={() => onOpen('all')} />
         <Stat label="Waiting for approval" n={n('open')} tone="text-amber-300" onClick={() => onOpen('open')} />
@@ -156,8 +151,9 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
     ...(me.isExec ? [{ id: 'all', label: 'All requests' }] : []),
   ], [showReview, waitingForMe.length, me.isExec, me.level]);
 
-  if (tab && tab.startsWith('rq-')) return <RequestDetail id={tab} onBack={() => history.length > 1 ? history.back() : go('')} onCopy={c => { setCopy(c); go('new'); }} />;
   const cur = tab === 'new' ? 'new' : tab === 'fulfil' || tabs.some(t => t.id === tab) ? (tab as string) : 'overview';
+  useEffect(() => { setExportMenuOpen(false); }, [cur]);
+  if (tab && tab.startsWith('rq-')) return <RequestDetail id={tab} onBack={() => history.length > 1 ? history.back() : go('')} onCopy={c => { setCopy(c); go('new'); }} />;
 
   const mine = requests.filter(r => r.requesterId === me.id && matches(r, filter));
   const canExport = me.isExec || me.team === 'inventory' || me.team === 'purchase';
@@ -175,26 +171,50 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
     finally { setDownloadingCurrent(false); }
   };
 
-  const filterBar = (
-    <div className="flex flex-wrap items-center gap-2">
-      {FILTERS.map(([id, label]) => (
-        <button key={id} onClick={() => setFilter(id)} className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${filter === id ? 'bg-blue-600 border-blue-600 text-white' : 'border-line-strong text-mute hover:text-ink hover:bg-raised'}`}>{label}</button>))}
+  const statusFilter = (id: string) => (
+    <div className="relative">
+      <label className="sr-only" htmlFor={id}>Filter requests</label>
+      <select id={id} value={filter} onChange={event => setFilter(event.target.value)} className="h-9 appearance-none rounded-lg border border-line-strong bg-raised pl-3 pr-9 text-xs font-medium text-ink outline-none transition-colors hover:bg-raised/80 focus:border-blue-500">
+        {FILTERS.map(([option, label]) => <option key={option} value={option}>{label}</option>)}
+      </select>
+      <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-mute" />
     </div>
   );
 
+  const exportControl = () => (canExport || me.isExec) ? <div className="relative" ref={exportMenuRef}>
+    <button type="button" className={btnGhost} aria-haspopup="menu" aria-expanded={exportMenuOpen} onClick={() => setExportMenuOpen(open => !open)}>
+      <FileSpreadsheet size={14} />Download <ChevronDown size={14} className={`transition-transform duration-200 ${exportMenuOpen ? 'rotate-180' : ''}`} />
+    </button>
+    {exportMenuOpen && <div role="menu" className="absolute right-0 top-full z-30 mt-2 w-56 origin-top-right rounded-xl border border-line bg-surface p-1.5 shadow-2xl animate-pop-in">
+      {canExport && <button type="button" role="menuitem" disabled={downloadingCurrent} onClick={() => { setExportMenuOpen(false); void downloadCurrent(); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-soft transition-colors hover:bg-raised hover:text-ink disabled:opacity-50">{downloadingCurrent ? 'Preparing…' : 'Excel: current results'}</button>}
+      {me.isExec && <button type="button" role="menuitem" disabled={!ready || downloadingAll} onClick={() => { setExportMenuOpen(false); void downloadAll(); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-soft transition-colors hover:bg-raised hover:text-ink disabled:opacity-50">{downloadingAll ? 'Preparing…' : 'Download all by department'}</button>}
+    </div>}
+  </div> : null;
+
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
-        <p className="max-w-2xl text-xs text-mute">Raise a supply request, follow approvals, and track delivery from one place.</p>
-        {cur === 'new' ? <button className={btnGhost} onClick={() => go('')}>Back to requests</button> : <button className={btnPrimary} onClick={() => go('new')}><Plus size={14} />New request</button>}
-      </header>
-      {cur !== 'new' && <Tabs label="Request views" value={cur} onChange={id => go(id === 'overview' ? '' : id)} tabs={tabs} />}
+    <div className="space-y-2">
+      {cur === 'new' ? <header className="flex justify-end"><button className={btnGhost} onClick={() => go('')}>Back to requests</button></header> : (
+        <div className="flex min-w-0 items-end gap-3">
+          <div className="min-w-0 flex-1"><Tabs compact bordered={false} label="Request views" value={cur} onChange={id => go(id === 'overview' ? '' : id)} tabs={tabs} /></div>
+          <div className="flex shrink-0 items-center gap-2 pb-1.5">
+            <div className={`grid overflow-hidden transition-[grid-template-columns,opacity] duration-300 ease-in-out ${cur === 'mine' || cur === 'all' ? 'grid-cols-[1fr] opacity-100' : 'grid-cols-[0fr] opacity-0'}`}>
+              <div className="min-w-0 overflow-hidden">{statusFilter('request-status-filter')}</div>
+            </div>
+            <div className={`grid overflow-hidden transition-[grid-template-columns,opacity] duration-300 ease-in-out ${cur === 'all' && (canExport || me.isExec) ? 'grid-cols-[1fr] opacity-100' : 'grid-cols-[0fr] opacity-0'}`}>
+              <div className="min-w-0 overflow-hidden">{exportControl()}</div>
+            </div>
+            <div className={`grid overflow-hidden transition-[grid-template-columns,opacity] duration-300 ease-in-out ${me.isExec && cur === 'overview' ? 'grid-cols-[1fr] opacity-100' : 'grid-cols-[0fr] opacity-0'}`}>
+              <div className="min-w-0 overflow-hidden whitespace-nowrap"><button type="button" className={btnGhost} disabled={!ready || downloadingAll} onClick={downloadAll}><FileSpreadsheet size={14} />{downloadingAll ? 'Preparing Excel…' : 'Download all requests'}</button></div>
+            </div>
+            <button className={btnPrimary} onClick={() => go('new')}><Plus size={14} />New request</button>
+          </div>
+        </div>
+      )}
       {loadError && <div role="alert" className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{loadError}</div>}
       {!ready && !loadError && <p className="text-sm text-mute">Loading…</p>}
 
-      {cur === 'overview' && <Overview onDownloadAll={downloadAll} downloadingAll={downloadingAll} ready={ready} scope={me.isExec ? 'All requests in the organization' : me.level === 'sub_dept_head' ? 'Requests from your department' : 'Your requests'}
-        onOpen={f => { setFilter(f); go(me.isExec || me.level === 'sub_dept_head' ? 'all' : 'mine'); }} />}
-      {cur === 'mine' && <>{filterBar}<List rows={mine} empty={filter === 'all' ? 'You have not raised any request yet. Use “New request” to start.' : 'No requests with this status.'} /></>}
+      {cur === 'overview' && <Overview onOpen={f => { setFilter(f); go(me.isExec || me.level === 'sub_dept_head' ? 'all' : 'mine'); }} />}
+      {cur === 'mine' && <List rows={mine} empty={filter === 'all' ? 'You have not raised any request yet. Use “New request” to start.' : 'No requests with this status.'} />}
       {cur === 'new' && <NewRequestDialog onClose={closeNewRequest}><NewRequest key={copy ? 'copy' : 'blank'} copyFrom={copy} onDone={id => { setCopy(null); if (id === 'event-radio') { location.hash = '#/walkie/requests'; return; } go(id); }} /></NewRequestDialog>}
       {cur === 'review' && (
         <div className="space-y-4">
@@ -210,24 +230,6 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <input className={inputCls + ' min-w-[220px] flex-1 sm:max-w-md'} placeholder="Search number, title, person" aria-label="Search requests" value={q} onChange={e => setQ(e.target.value)} />
-            <div className="ml-auto flex items-center gap-2">
-              <label className="sr-only" htmlFor="request-status-filter">Filter requests</label>
-              <div className="relative">
-                <select id="request-status-filter" value={filter} onChange={event => setFilter(event.target.value)} className="h-9 appearance-none rounded-lg border border-line-strong bg-raised pl-3 pr-9 text-xs font-medium text-ink outline-none transition-colors hover:bg-raised/80 focus:border-blue-500">
-                  {FILTERS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-mute" />
-              </div>
-              {(canExport || me.isExec) && <div className="relative" ref={exportMenuRef}>
-                <button type="button" className={btnGhost} aria-haspopup="menu" aria-expanded={exportMenuOpen} onClick={() => setExportMenuOpen(open => !open)}>
-                  <FileSpreadsheet size={14} />Download <ChevronDown size={14} className={`transition-transform duration-200 ${exportMenuOpen ? 'rotate-180' : ''}`} />
-                </button>
-                {exportMenuOpen && <div role="menu" className="absolute right-0 top-full z-30 mt-2 w-56 origin-top-right rounded-xl border border-line bg-surface p-1.5 shadow-2xl animate-pop-in">
-                  {canExport && <button type="button" role="menuitem" disabled={downloadingCurrent} onClick={() => { setExportMenuOpen(false); void downloadCurrent(); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-soft transition-colors hover:bg-raised hover:text-ink disabled:opacity-50">{downloadingCurrent ? 'Preparing…' : 'Excel: current results'}</button>}
-                  {me.isExec && <button type="button" role="menuitem" disabled={!ready || downloadingAll} onClick={() => { setExportMenuOpen(false); void downloadAll(); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs text-ink-soft transition-colors hover:bg-raised hover:text-ink disabled:opacity-50">{downloadingAll ? 'Preparing…' : 'Download all by department'}</button>}
-                </div>}
-              </div>}
-            </div>
           </div>
           <List rows={all} empty="No requests match." />
         </div>)}

@@ -1,12 +1,12 @@
 # Event Command
 
 Operations dashboard for an event IT team: radios, inventory, purchasing, accommodation, manpower, meetings and one
-approval flow for everything people ask for. React (Create React App) + Tailwind + Supabase.
+approval flow for everything people ask for. Next.js + React + Tailwind + Supabase.
 
 ```
 npm install
-cp .env.example .env     # add your Supabase URL and anon key
-npm start
+cp .env.example .env.local     # add your Supabase URL and publishable key
+npm run dev
 ```
 
 ## Who can do what
@@ -28,14 +28,14 @@ Map Super Admin to Organization Head, IT Admin to IT Department Head, and the ot
 chosen sub-department heads in **Users & Access**.
 
 ```
-REACT_APP_DEMO_SUPER_ADMIN_EMAIL=
-REACT_APP_DEMO_SUPER_ADMIN_PASSWORD=
-REACT_APP_DEMO_IT_ADMIN_EMAIL=
-REACT_APP_DEMO_IT_ADMIN_PASSWORD=
-REACT_APP_DEMO_DEPT_ADMIN_1_EMAIL=
-REACT_APP_DEMO_DEPT_ADMIN_1_PASSWORD=
-REACT_APP_DEMO_DEPT_ADMIN_2_EMAIL=
-REACT_APP_DEMO_DEPT_ADMIN_2_PASSWORD=
+NEXT_PUBLIC_DEMO_SUPER_ADMIN_EMAIL=
+NEXT_PUBLIC_DEMO_SUPER_ADMIN_PASSWORD=
+NEXT_PUBLIC_DEMO_IT_ADMIN_EMAIL=
+NEXT_PUBLIC_DEMO_IT_ADMIN_PASSWORD=
+NEXT_PUBLIC_DEMO_DEPT_ADMIN_1_EMAIL=
+NEXT_PUBLIC_DEMO_DEPT_ADMIN_1_PASSWORD=
+NEXT_PUBLIC_DEMO_DEPT_ADMIN_2_EMAIL=
+NEXT_PUBLIC_DEMO_DEPT_ADMIN_2_PASSWORD=
 ```
 
 ## The request flow
@@ -60,17 +60,18 @@ Everything that happens is also written to the Audit log.
 
 | Live (Supabase) | Demo data (this browser only) |
 |---|---|
-| Walkie, Accommodation member profiles/rooms/meals, Manpower and team tasks, Wi-Fi credential issue register, Inventory, Purchase, **Requests**, Meetings and Emergencies, Notifications, Access and sign-up codes, Audit log, Reports, Payments overview | CCTV camera inventory, Wi-Fi access point inventory, Control Rooms (browser-only demo data) |
+| CCTV camera inventory, Wi-Fi access point inventory, event-linked Wi-Fi access register and usage reports, Walkie, Accommodation member profiles/rooms/meals, Manpower and team tasks, Inventory, Purchase, **Requests**, Meetings and Emergencies, Notifications, Access and sign-up codes, Audit log, Reports, Payments overview | Control Rooms (browser-only demo data) |
 
 ## Project layout
 
 ```
 src/
+  app/                      Next.js App Router entry and root layout
   App.tsx                   routes, providers, shell (+ the public share route)
-  context/                  AppContext (signed-in user + demo data), AccessContext, MeetingsContext
+  context/                  AppContext (signed-in user + Control Rooms demo data), AccessContext, MeetingsContext
   components/ui.tsx         shared UI kit: Card, Pill, Field, Tabs, Stat, buttons, inputs
   components/owner/         Approvals, Users & Access, Audit log, Reports
-  pages/                    Dashboard (Home), Meetings, Payments & Approvals
+  views/                    Dashboard (Home), Meetings, Payments & Approvals
   modules/
     requests/               the request flow (context, form, detail page, approval + arrange panels, share page)
     inventory/ purchase/ accommodation/ manpower/ walkie/
@@ -79,9 +80,9 @@ supabase/                   SQL: run in order, see supabase/README.md
 
 ## Setup order for a new database
 
-Run these in the Supabase SQL Editor, in this order (each is safe to re-run):
-`schema.sql`, `auth_hardening.sql`, then `migration_v2` … `migration_v23` in numeric order (see `supabase/README.md`).
-Full steps are in `supabase/README.md`.
+For a new database, run `supabase/setup.sql` once. For an existing database,
+apply only the migrations it is missing, in numeric order. Full steps are in
+[`supabase/README.md`](supabase/README.md).
 
 ## Conventions
 

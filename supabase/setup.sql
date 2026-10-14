@@ -3451,8 +3451,7 @@ notify pgrst, 'reload schema';
 --   * The approval notification now carries the approved quantities and the reasons.
 --   * New notifications: item arrived in store, every delivery (also partial).
 --   * The requester confirms receipt (requests.confirmed_at) - that closes the ticket.
---   * Order progress per line for the ticket (request_order_info). The vendor name and the rate are
---     shown to the requester ONLY when the owner switches them on for that ticket.
+--   * Order progress per line for the ticket (request_order_info), including vendor and rate for request viewers.
 --   * The public read-only share link is removed.
 -- ============================================================================
 
@@ -3691,22 +3690,9 @@ end $$;
 revoke all on function public.request_confirm_receipt(text) from public, anon;
 grant execute on function public.request_confirm_receipt(text) to authenticated;
 
--- 8. The owner decides whether the vendor name / the rate are visible on a ticket ------------------
-create or replace function public.request_set_visibility(p_id text, p_vendor boolean, p_rate boolean)
-returns void language plpgsql security definer set search_path = public as $$
-begin
-  if not public.is_org_owner() then raise exception 'Only the Organization Head can change this.'; end if;
-  update public.requests set show_vendor = coalesce(p_vendor, false), show_rate = coalesce(p_rate, false)
-  where id = p_id and organization_id = public.current_organization_id();
-  if not found then raise exception 'Request not found.'; end if;
-  perform public._req_event(p_id, 'visibility', 'Vendor name ' || case when p_vendor then 'shown' else 'hidden' end || ', rate ' || case when p_rate then 'shown' else 'hidden' end || ' on this ticket');
-end $$;
-revoke all on function public.request_set_visibility(text, boolean, boolean) from public, anon;
-grant execute on function public.request_set_visibility(text, boolean, boolean) to authenticated;
-
--- 9. Order progress per purchased line --------------------------------------------------------------
--- Owner, IT head and the Purchase team always get vendor + rate. Everyone else only when the owner switched
--- them on for that ticket. The PO number is for the owner, IT head, Purchase and Inventory teams.
+-- 8. Order progress per purchased line --------------------------------------------------------------
+drop function if exists public.request_set_visibility(text, boolean, boolean);
+-- Everyone who can see a request also sees its vendor and rate. The PO number remains role-limited.
 create or replace function public.request_order_info()
 returns table (purchase_item_id text, request_id text, item_id text, ordered integer, received integer,
                po_number text, po_status text, expected_date date, vendor text, rate numeric)
@@ -3714,8 +3700,8 @@ language sql stable security definer set search_path = public as $$
   select f.purchase_item_id, f.request_id, f.item_id, pi.qty_ordered, pi.qty_received,
          case when me.level in ('owner','dept_head') or me.sub_department in ('purchase','inventory') then po.po_number end,
          po.status, po.expected_date,
-         case when me.level in ('owner','dept_head') or me.sub_department = 'purchase' or r.show_vendor then v.name end,
-         case when me.level in ('owner','dept_head') or me.sub_department = 'purchase' or r.show_rate then pi.rate end
+         v.name,
+         pi.rate
   from (select p.id, p.organization_id, p.level, p.sub_department from public.profiles p
         where p.id = auth.uid() and p.approved and p.is_active) me
   join public.requests r on r.organization_id = me.organization_id and public.can_see_request(r)
@@ -5561,7 +5547,7 @@ begin
   ns := case when nw=r.delivered_walkies and nc=r.delivered_chargers and ne=r.delivered_earphones then 'returned' else 'partial_return' end;
   update public.event_radio_requests set status=ns, returned_walkies=nw, returned_chargers=nc, returned_earphones=ne,
     returned_at=case when ns='returned' then now() else returned_at end,
-    return_feedback=concat_ws(E'\n',nullif(return_feedback,''),nullif(trim(coalesce(p_feedback,'')),'')),updated_at=now() where id=p_id;
+    return_feedback=concat_ws(E'',nullif(return_feedback,''),nullif(trim(coalesce(p_feedback,'')),'')),updated_at=now() where id=p_id;
 end $$;
 
 revoke all on function public.event_radio_request_submit(text,integer,integer,integer) from public;
@@ -7223,3 +7209,696 @@ for each row execute function public.purchase_tracking_notify_it_head();
 revoke all on function public.purchase_tracking_notify_it_head() from public, anon, authenticated;
 
 select pg_notify('pgrst', 'reload schema');
+alter table public.purchase_orders
+  add column if not exists misc_amount numeric(12,2) not null default 0
+  check (misc_amount >= 0);
+
+-- <<< BEGIN supabase/migration_v57_sewadar_roster_skills_arrival_period.sql >>>
+alter table public.accommodation_members
+  add column if not exists skills text[] not null default '{}',
+  add column if not exists expected_arrival_period text;
+
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.accommodation_members'::regclass
+      and conname = 'accommodation_members_expected_arrival_period_check'
+  ) then
+    alter table public.accommodation_members
+      add constraint accommodation_members_expected_arrival_period_check
+      check (expected_arrival_period is null or expected_arrival_period in ('morning','noon','evening','night'));
+  end if;
+end $$;
+
+-- <<< END supabase/migration_v57_sewadar_roster_skills_arrival_period.sql >>>
+
+-- <<< BEGIN supabase/migration_v58_event_scoped_member_operations.sql >>>
+alter table public.accommodation_member_calls
+  add column if not exists event_id text references public.event_plans(id) on delete cascade;
+alter table public.allocations add column if not exists event_id text references public.event_plans(id) on delete cascade;
+alter table public.deliveries add column if not exists event_id text references public.event_plans(id) on delete cascade;
+drop trigger if exists accommodation_member_call_bump on public.accommodation_member_calls;
+drop policy if exists event_attendance_write on public.event_attendance;
+create policy event_attendance_write on public.event_attendance for all using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.can_manage_events() or public.can_manage_manpower() or public.can_manage_rooms())
+) with check (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.can_manage_events() or public.can_manage_manpower() or public.can_manage_rooms())
+);
+create table if not exists public.sewadar_event_operations (
+  id text primary key,
+  organization_id text not null references public.organizations(id) on delete cascade,
+  event_id text references public.event_plans(id) on delete cascade,
+  event_scope_key text not null default 'normal',
+  member_id text not null references public.accommodation_members(id) on delete cascade,
+  arrival_status text not null default 'pending' check (arrival_status in ('pending','arrived','not_coming')),
+  arrived_at timestamptz,
+  badge_issued boolean not null default false,
+  badge_at timestamptz,
+  badge_returned boolean not null default false,
+  badge_returned_at timestamptz,
+  updated_at timestamptz not null default now(),
+  unique (organization_id, event_scope_key, member_id),
+  check ((event_id is null and event_scope_key = 'normal') or event_scope_key = event_id)
+);
+alter table public.sewadar_event_operations
+  add column if not exists badge_returned boolean not null default false,
+  add column if not exists badge_returned_at timestamptz;
+insert into public.sewadar_event_operations
+  (id, organization_id, event_scope_key, member_id, arrival_status, arrived_at, badge_issued, badge_at)
+select 'sewadar-op-' || m.id, m.organization_id, 'normal', m.id,
+  coalesce(m.arrival_status, 'pending'), m.arrived_at, coalesce(m.badge_issued, false), m.badge_at
+from public.accommodation_members m
+on conflict (organization_id, event_scope_key, member_id) do nothing;
+alter table public.sewadar_event_operations enable row level security;
+drop policy if exists sewadar_event_operations_select on public.sewadar_event_operations;
+create policy sewadar_event_operations_select on public.sewadar_event_operations for select using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+);
+drop policy if exists sewadar_event_operations_write on public.sewadar_event_operations;
+create policy sewadar_event_operations_write on public.sewadar_event_operations for all using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.can_manage_manpower() or public.can_manage_rooms())
+) with check (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.can_manage_manpower() or public.can_manage_rooms())
+);
+create index if not exists sewadar_event_operations_scope_idx on public.sewadar_event_operations (organization_id, event_scope_key, member_id);
+create index if not exists accommodation_member_calls_event_idx on public.accommodation_member_calls (organization_id, event_id, member_id, called_at desc);
+create index if not exists allocations_event_idx on public.allocations (organization_id, event_id, created_at desc);
+create index if not exists deliveries_event_idx on public.deliveries (organization_id, event_id, created_at desc);
+do $$ begin
+  begin execute 'alter publication supabase_realtime add table public.sewadar_event_operations';
+  exception when duplicate_object then null; end;
+end $$;
+-- <<< END supabase/migration_v58_event_scoped_member_operations.sql >>>
+-- <<< BEGIN supabase/migration_v59_room_setup_requirements.sql >>>
+alter table public.accommodation_rooms
+  add column if not exists requirements jsonb not null default '[]'::jsonb;
+-- <<< END supabase/migration_v59_room_setup_requirements.sql >>>
+-- <<< BEGIN supabase/migration_v60_cctv_control_room_sewa.sql >>>
+create table if not exists public.cctv_control_rooms (
+  id text primary key,
+  organization_id text not null references public.organizations(id) on delete cascade,
+  event_id text references public.event_plans(id) on delete cascade,
+  event_scope_key text not null default 'normal',
+  name text not null,
+  location text not null,
+  pc_count integer not null default 0 check (pc_count >= 0),
+  created_at timestamptz not null default now(),
+  unique (organization_id, event_scope_key, name),
+  check ((event_id is null and event_scope_key = 'normal') or event_scope_key = event_id)
+);
+create table if not exists public.cctv_control_room_duties (
+  id text primary key,
+  organization_id text not null references public.organizations(id) on delete cascade,
+  event_id text references public.event_plans(id) on delete cascade,
+  event_scope_key text not null default 'normal',
+  room_id text not null references public.cctv_control_rooms(id) on delete cascade,
+  shift_date date not null,
+  shift_key text not null check (shift_key in ('morning','noon','evening','night')),
+  member_id text references public.accommodation_members(id) on delete set null,
+  member_name text not null,
+  mobile text not null default '',
+  attendance_status text not null default 'scheduled' check (attendance_status in ('scheduled','arrived','absent')),
+  checked_in_at timestamptz,
+  assigned_by text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check ((event_id is null and event_scope_key = 'normal') or event_scope_key = event_id)
+);
+create index if not exists cctv_control_rooms_scope_idx on public.cctv_control_rooms (organization_id, event_scope_key, name);
+create index if not exists cctv_control_room_duties_scope_idx on public.cctv_control_room_duties (organization_id, event_scope_key, shift_date, room_id, shift_key);
+create unique index if not exists cctv_control_room_duties_member_once_idx on public.cctv_control_room_duties (organization_id, event_scope_key, shift_date, shift_key, member_id) where member_id is not null;
+alter table public.cctv_control_rooms enable row level security;
+alter table public.cctv_control_room_duties enable row level security;
+drop policy if exists cctv_control_rooms_read on public.cctv_control_rooms;
+create policy cctv_control_rooms_read on public.cctv_control_rooms for select using (organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved());
+drop policy if exists cctv_control_rooms_manage on public.cctv_control_rooms;
+create policy cctv_control_rooms_manage on public.cctv_control_rooms for all using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and exists (select 1 from public.profiles p where p.id = auth.uid() and (p.level in ('owner','dept_head') or (p.level = 'sub_dept_head' and p.sub_department in ('cctv','control'))))
+) with check (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and exists (select 1 from public.profiles p where p.id = auth.uid() and (p.level in ('owner','dept_head') or (p.level = 'sub_dept_head' and p.sub_department in ('cctv','control'))))
+);
+drop policy if exists cctv_control_room_duties_read on public.cctv_control_room_duties;
+create policy cctv_control_room_duties_read on public.cctv_control_room_duties for select using (organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved());
+drop policy if exists cctv_control_room_duties_insert on public.cctv_control_room_duties;
+create policy cctv_control_room_duties_insert on public.cctv_control_room_duties for insert with check (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and exists (select 1 from public.profiles p where p.id = auth.uid() and (p.level in ('owner','dept_head') or p.sub_department in ('cctv','control')))
+);
+drop policy if exists cctv_control_room_duties_update on public.cctv_control_room_duties;
+create policy cctv_control_room_duties_update on public.cctv_control_room_duties for update using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and exists (select 1 from public.profiles p where p.id = auth.uid() and (p.level in ('owner','dept_head') or p.sub_department in ('cctv','control')))
+) with check (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and exists (select 1 from public.profiles p where p.id = auth.uid() and (p.level in ('owner','dept_head') or p.sub_department in ('cctv','control')))
+);
+drop policy if exists cctv_control_room_duties_delete on public.cctv_control_room_duties;
+create policy cctv_control_room_duties_delete on public.cctv_control_room_duties for delete using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and exists (select 1 from public.profiles p where p.id = auth.uid() and (p.level in ('owner','dept_head') or (p.level = 'sub_dept_head' and p.sub_department in ('cctv','control'))))
+);
+do $$ begin
+  begin execute 'alter publication supabase_realtime add table public.cctv_control_rooms'; exception when duplicate_object then null; end;
+  begin execute 'alter publication supabase_realtime add table public.cctv_control_room_duties'; exception when duplicate_object then null; end;
+end $$;
+-- <<< END supabase/migration_v60_cctv_control_room_sewa.sql >>>
+-- <<< BEGIN supabase/migration_v61_cctv_custom_shifts.sql >>>
+alter table public.cctv_control_room_duties drop constraint if exists cctv_control_room_duties_shift_key_check;
+alter table public.cctv_control_room_duties add column if not exists shift_label text, add column if not exists shift_start time, add column if not exists shift_end time;
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v61_cctv_custom_shifts.sql >>>
+-- <<< BEGIN supabase/migration_v62_event_calling_rosters.sql >>>
+alter table public.event_plans add column if not exists event_type text not null default 'annual';
+alter table public.event_plans add column if not exists special_member_ids text[] not null default '{}';
+alter table public.event_plans drop constraint if exists event_plans_event_type_check;
+alter table public.event_plans add constraint event_plans_event_type_check check (event_type in ('monthly','annual','special'));
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v62_event_calling_rosters.sql >>>
+-- <<< BEGIN supabase/migration_v63_accommodation_event_readiness.sql >>>
+alter table public.accommodation_rooms add column if not exists requirements jsonb not null default '[]'::jsonb;
+alter table public.accommodation_rooms add column if not exists requirements_by_scope jsonb not null default '{}'::jsonb, add column if not exists readiness_by_scope jsonb not null default '{}'::jsonb;
+update public.accommodation_rooms set requirements_by_scope = jsonb_build_object('normal', requirements) where requirements_by_scope = '{}'::jsonb and requirements <> '[]'::jsonb;
+alter table public.meal_menu add column if not exists scope_key text not null default 'normal', add column if not exists event_id text, add column if not exists ready_at timestamptz;
+alter table public.meal_menu drop constraint if exists meal_menu_unique_slot;
+create unique index if not exists meal_menu_unique_slot_scope_idx on public.meal_menu (organization_id, menu_date, meal, scope_key);
+create index if not exists meal_menu_event_scope_date_idx on public.meal_menu (organization_id, scope_key, menu_date);
+update public.meal_menu set status='preparing' where status='ready_for_event';
+alter table public.meal_menu drop constraint if exists meal_menu_status_check;
+alter table public.meal_menu add constraint meal_menu_status_check check (status in ('scheduled','preparing','distributing','distributed'));
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v63_accommodation_event_readiness.sql >>>
+-- <<< BEGIN supabase/migration_v64_event_arrival_time.sql >>>
+alter table public.sewadar_event_operations add column if not exists arrival_schedule_overridden boolean not null default false, add column if not exists expected_arrival date, add column if not exists expected_arrival_period text;
+alter table public.sewadar_event_operations drop constraint if exists sewadar_event_operations_expected_arrival_period_check;
+alter table public.sewadar_event_operations add constraint sewadar_event_operations_expected_arrival_period_check check (expected_arrival_period is null or expected_arrival_period in ('morning','noon','evening','night'));
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v64_event_arrival_time.sql >>>
+-- <<< BEGIN supabase/migration_v65_permanent_member_holidays.sql >>>
+alter table public.accommodation_members add column if not exists went_home_at timestamptz, add column if not exists returned_from_home_at timestamptz, add column if not exists total_holiday_days integer not null default 0;
+alter table public.accommodation_members drop constraint if exists accommodation_members_total_holiday_days_check;
+alter table public.accommodation_members add constraint accommodation_members_total_holiday_days_check check (total_holiday_days >= 0);
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v65_permanent_member_holidays.sql >>>
+-- <<< BEGIN supabase/migration_v66_team_task_priority.sql >>>
+alter table public.manpower_tasks add column if not exists priority_level text not null default 'as_you_have_time', add column if not exists priority_until timestamptz;
+alter table public.manpower_tasks drop constraint if exists manpower_tasks_priority_level_check;
+alter table public.manpower_tasks add constraint manpower_tasks_priority_level_check check (priority_level in ('immediately', 'till_time', 'as_you_have_time'));
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v66_team_task_priority.sql >>>
+-- <<< BEGIN supabase/migration_v67_task_resource_handoffs.sql >>>
+create table if not exists public.manpower_task_resources (
+  id text primary key, organization_id text not null references public.organizations(id) on delete cascade,
+  task_id text not null references public.manpower_tasks(id) on delete cascade,
+  item_id text not null references public.inventory_items(id) on delete restrict,
+  location text not null references public.inventory_locations(id) on delete restrict,
+  qty integer not null check (qty > 0), team_leader text not null, received_by text not null default '', received_at timestamptz,
+  returned_good_qty integer not null default 0 check (returned_good_qty >= 0), returned_damaged_qty integer not null default 0 check (returned_damaged_qty >= 0),
+  returned_by text not null default '', returned_at timestamptz, created_by uuid not null default auth.uid() references public.profiles(id), created_at timestamptz not null default now(),
+  check (returned_good_qty + returned_damaged_qty <= qty)
+);
+create index if not exists manpower_task_resources_task_idx on public.manpower_task_resources(organization_id, task_id, created_at);
+alter table public.manpower_task_resources enable row level security;
+drop policy if exists manpower_task_resources_select on public.manpower_task_resources;
+create policy manpower_task_resources_select on public.manpower_task_resources for select using (organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved());
+create or replace function public.manpower_task_add_resource(p_task_id text, p_item_id text, p_location text, p_qty integer) returns text language plpgsql security definer set search_path = public as $$
+declare t public.manpower_tasks%rowtype; lead_name text; item_org text; location_org text; new_id text;
+begin
+  if not public.can_manage_manpower() then raise exception 'You cannot allocate task resources.'; end if;
+  if p_qty is null or p_qty < 1 then raise exception 'Enter a positive whole-number quantity.'; end if;
+  select * into t from public.manpower_tasks where id=p_task_id and organization_id=public.current_organization_id() for update;
+  if not found then raise exception 'Task not found.'; end if;
+  if t.status='complete' then raise exception 'Resources cannot be added after the task is complete.'; end if;
+  select lead into lead_name from public.manpower_teams where organization_id=t.organization_id and lower(trim(name))=lower(trim(t.team));
+  if coalesce(trim(lead_name),'')='' then raise exception 'Assign a team leader before allocating resources.'; end if;
+  select organization_id into item_org from public.inventory_items where id=p_item_id;
+  if item_org is distinct from t.organization_id then raise exception 'Choose an inventory item from this organization.'; end if;
+  select organization_id into location_org from public.inventory_locations where id=p_location;
+  if location_org is distinct from t.organization_id then raise exception 'Choose a valid inventory location.'; end if;
+  new_id := 'task-resource-' || gen_random_uuid()::text;
+  insert into public.manpower_task_resources(id,organization_id,task_id,item_id,location,qty,team_leader,created_by) values(new_id,t.organization_id,t.id,p_item_id,p_location,p_qty,lead_name,auth.uid());
+  return new_id;
+end $$;
+create or replace function public.manpower_task_receive_resource(p_resource_id text) returns void language plpgsql security definer set search_path = public as $$
+declare r public.manpower_task_resources%rowtype; t public.manpower_tasks%rowtype; actor_name text; item_name text;
+begin
+  select name into actor_name from public.profiles where id=auth.uid();
+  select * into r from public.manpower_task_resources where id=p_resource_id and organization_id=public.current_organization_id() for update;
+  if not found then raise exception 'Task resource allocation not found.'; end if;
+  if not public.can_manage_manpower() and lower(trim(coalesce(actor_name,'')))<>lower(trim(r.team_leader)) then raise exception 'Only the assigned team leader can confirm receipt.'; end if;
+  select * into t from public.manpower_tasks where id=r.task_id and organization_id=r.organization_id for update;
+  if t.status='complete' then raise exception 'The task is already complete.'; end if;
+  if r.received_at is not null then raise exception 'Receipt has already been recorded.'; end if;
+  select name into item_name from public.inventory_items where id=r.item_id;
+  insert into public.inventory_movements(id,organization_id,item_id,type,qty,location,given_by,received_by,ref,note,done_by) values('task-issue-'||gen_random_uuid()::text,r.organization_id,r.item_id,'issue',r.qty,r.location,coalesce(actor_name,'Team'),r.team_leader,t.id,'Task resource: '||coalesce(item_name,'item'),coalesce(actor_name,'System'));
+  update public.manpower_task_resources set received_by=r.team_leader,received_at=now() where id=r.id;
+end $$;
+create or replace function public.manpower_task_return_resource(p_resource_id text,p_good_qty integer,p_damaged_qty integer) returns void language plpgsql security definer set search_path = public as $$
+declare r public.manpower_task_resources%rowtype; t public.manpower_tasks%rowtype; actor_name text; item_name text; left_qty integer;
+begin
+  if coalesce(p_good_qty,0)<0 or coalesce(p_damaged_qty,0)<0 or coalesce(p_good_qty,0)+coalesce(p_damaged_qty,0)<1 then raise exception 'Enter a positive returned quantity.'; end if;
+  select name into actor_name from public.profiles where id=auth.uid();
+  select * into r from public.manpower_task_resources where id=p_resource_id and organization_id=public.current_organization_id() for update;
+  if not found then raise exception 'Task resource allocation not found.'; end if;
+  if not public.can_manage_manpower() and lower(trim(coalesce(actor_name,'')))<>lower(trim(r.team_leader)) then raise exception 'Only the assigned team leader can record this return.'; end if;
+  select * into t from public.manpower_tasks where id=r.task_id and organization_id=r.organization_id for update;
+  if t.status<>'complete' then raise exception 'Resources can be returned after the task is complete.'; end if;
+  if r.received_at is null then raise exception 'The team leader has not confirmed receipt.'; end if;
+  left_qty:=r.qty-r.returned_good_qty-r.returned_damaged_qty;
+  if p_good_qty+p_damaged_qty>left_qty then raise exception 'Only % item(s) remain to be returned.',left_qty; end if;
+  select name into item_name from public.inventory_items where id=r.item_id;
+  if p_good_qty>0 then insert into public.inventory_movements(id,organization_id,item_id,type,qty,location,returned_by,ref,note,done_by) values('task-return-'||gen_random_uuid()::text,r.organization_id,r.item_id,'return',p_good_qty,r.location,r.team_leader,t.id,'Task resource returned: '||coalesce(item_name,'item'),coalesce(actor_name,'System')); end if;
+  if p_damaged_qty>0 then insert into public.inventory_movements(id,organization_id,item_id,type,qty,location,returned_by,ref,note,done_by) values('task-return-damaged-'||gen_random_uuid()::text,r.organization_id,r.item_id,'return_damaged',p_damaged_qty,r.location,r.team_leader,t.id,'Task resource returned damaged: '||coalesce(item_name,'item'),coalesce(actor_name,'System')); end if;
+  update public.manpower_task_resources set returned_good_qty=r.returned_good_qty+p_good_qty,returned_damaged_qty=r.returned_damaged_qty+p_damaged_qty,returned_by=r.team_leader,returned_at=case when r.returned_good_qty+p_good_qty+r.returned_damaged_qty+p_damaged_qty=r.qty then now() else null end where id=r.id;
+end $$;
+revoke all on function public.manpower_task_add_resource(text,text,text,integer) from public;
+revoke all on function public.manpower_task_receive_resource(text) from public;
+revoke all on function public.manpower_task_return_resource(text,integer,integer) from public;
+grant execute on function public.manpower_task_add_resource(text,text,text,integer) to authenticated;
+grant execute on function public.manpower_task_receive_resource(text) to authenticated;
+grant execute on function public.manpower_task_return_resource(text,integer,integer) to authenticated;
+do $$ begin begin execute 'alter publication supabase_realtime add table public.manpower_task_resources'; exception when duplicate_object then null; end; end $$;
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v67_task_resource_handoffs.sql >>>
+select pg_notify('pgrst', 'reload schema');
+-- >>> BEGIN supabase/migration_v68_department_feedback_updates.sql >>>
+alter table public.member_issues add column if not exists sub_department text;
+update public.member_issues i set sub_department = p.sub_department
+from public.profiles p where p.id = i.reporter_id and i.sub_department is null;
+create index if not exists member_issues_department_created_idx on public.member_issues (organization_id, sub_department, created_at desc);
+create or replace function public.member_issue_set_department()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  select p.sub_department into new.sub_department from public.profiles p
+  where p.id = auth.uid() and p.organization_id = new.organization_id and p.approved and p.is_active;
+  if not found then raise exception 'An active department account is required to submit feedback.'; end if;
+  return new;
+end $$;
+drop trigger if exists member_issue_department on public.member_issues;
+create trigger member_issue_department before insert on public.member_issues for each row execute function public.member_issue_set_department();
+create or replace function public.member_issue_notify()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare msg_title text;
+begin
+  msg_title := case when new.kind = 'material' then 'Material issue reported' else 'Site/event feedback reported' end;
+  insert into public.notifications (organization_id, user_id, title, message, type, link, ref_id)
+  select new.organization_id, p.id, msg_title,
+    new.reporter_name || ': ' || new.title || case when new.material <> '' then ' · ' || new.material else '' end,
+    'warning', 'issues', new.id::text
+  from public.profiles p where p.organization_id = new.organization_id and p.approved and p.is_active and p.id <> new.reporter_id
+    and (p.level in ('owner','dept_head') or (p.level = 'sub_dept_head' and p.sub_department = new.sub_department));
+  return new;
+end $$;
+drop policy if exists member_issues_select on public.member_issues;
+create policy member_issues_select on public.member_issues for select using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.current_level() in ('owner','dept_head') or sub_department is not distinct from public.current_sub_department())
+);
+drop policy if exists member_issues_insert on public.member_issues;
+create policy member_issues_insert on public.member_issues for insert with check (
+  organization_id = public.current_organization_id() and reporter_id = auth.uid()
+  and public.current_is_active() and public.current_approved() and (kind <> 'material' or length(trim(material)) > 0)
+);
+drop policy if exists member_issues_update on public.member_issues;
+create policy member_issues_update on public.member_issues for update using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and public.current_level() in ('owner','dept_head')
+) with check (organization_id = public.current_organization_id() and public.current_level() in ('owner','dept_head'));
+create table if not exists public.department_updates (
+  id uuid primary key default gen_random_uuid(), organization_id text not null references public.organizations(id) on delete cascade,
+  kind text not null check (kind in ('announcement','lesson')),
+  department text not null check (department in ('all','cctv','wifi','walkie','control','inventory','purchase','accommodation','sewadars')),
+  title text not null check (length(trim(title)) > 0), body text not null check (length(trim(body)) > 0),
+  author_id uuid not null references public.profiles(id) on delete cascade, author_name text not null default '',
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+alter table public.department_updates drop constraint if exists department_updates_department_check;
+alter table public.department_updates add constraint department_updates_department_check check (department in ('all','cctv','wifi','walkie','control','inventory','purchase','accommodation','sewadars'));
+create index if not exists department_updates_audience_created_idx on public.department_updates (organization_id, department, kind, created_at desc);
+grant select, insert, update, delete on public.department_updates to authenticated;
+alter table public.department_updates enable row level security;
+drop policy if exists department_updates_select on public.department_updates;
+create policy department_updates_select on public.department_updates for select using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.current_level() in ('owner','dept_head') or department = 'all' or department = public.current_sub_department())
+);
+drop policy if exists department_updates_insert on public.department_updates;
+create policy department_updates_insert on public.department_updates for insert with check (
+  organization_id = public.current_organization_id() and author_id = auth.uid() and public.current_is_active() and public.current_approved()
+  and public.current_level() in ('owner','dept_head')
+);
+drop policy if exists department_updates_update on public.department_updates;
+create policy department_updates_update on public.department_updates for update using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and public.current_level() in ('owner','dept_head')
+) with check (organization_id = public.current_organization_id() and public.current_level() in ('owner','dept_head'));
+drop policy if exists department_updates_delete on public.department_updates;
+create policy department_updates_delete on public.department_updates for delete using (
+  organization_id = public.current_organization_id() and public.current_level() in ('owner','dept_head')
+);
+create or replace function public.set_member_issue_status(p_id uuid, p_status text)
+returns void language plpgsql security definer set search_path = public as $$
+declare me record; issue public.member_issues%rowtype;
+begin
+  if p_status not in ('open','in_progress','resolved') then raise exception 'Unknown issue status.'; end if;
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active or me.level not in ('owner','dept_head') then raise exception 'Only an administrator can update feedback status.'; end if;
+  update public.member_issues set status = p_status, updated_at = now() where id = p_id and organization_id = me.organization_id returning * into issue;
+  if not found then raise exception 'Feedback not found.'; end if;
+  insert into public.notifications (organization_id, user_id, title, message, type, link, ref_id)
+  values (issue.organization_id, issue.reporter_id, 'Feedback status updated', 'Your report "' || issue.title || '" is now ' || replace(p_status, '_', ' ') || '.',
+    case when p_status = 'resolved' then 'info' else 'warning' end, 'issues', issue.id::text);
+end $$;
+revoke all on function public.set_member_issue_status(uuid, text) from public, anon;
+grant execute on function public.set_member_issue_status(uuid, text) to authenticated;
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v68_department_feedback_updates.sql >>>
+select pg_notify('pgrst', 'reload schema');
+-- >>> BEGIN supabase/migration_v69_accommodation_room_categories.sql >>>
+alter table public.accommodation_rooms
+  add column if not exists category text not null default 'rest_room',
+  add column if not exists responsible_team text not null default '';
+alter table public.accommodation_rooms drop constraint if exists accommodation_rooms_category_check;
+alter table public.accommodation_rooms add constraint accommodation_rooms_category_check check (category in ('rest_room','control_room'));
+alter table public.accommodation_rooms drop constraint if exists accommodation_rooms_control_team_check;
+alter table public.accommodation_rooms add constraint accommodation_rooms_control_team_check check (category <> 'control_room' or length(trim(responsible_team)) > 0);
+create index if not exists accommodation_rooms_org_category_idx on public.accommodation_rooms (organization_id, category);
+create or replace function public.accommodation_update_room_requirements(p_room_id text,p_scope_key text,p_requirements jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+declare me public.profiles%rowtype; room_row public.accommodation_rooms%rowtype; all_ready boolean; all_returned boolean; ready_at text; returned_at text;
+begin
+  select * into me from public.profiles where id=auth.uid();
+  if not found or not me.approved or not me.is_active then raise exception 'An active account is required.'; end if;
+  select * into room_row from public.accommodation_rooms where id=p_room_id and organization_id=me.organization_id for update;
+  if not found then raise exception 'Room not found.'; end if;
+  if p_scope_key<>'normal' and not exists(select 1 from public.event_plans where id=p_scope_key and organization_id=me.organization_id) then raise exception 'Choose a valid event scope.'; end if;
+  if jsonb_typeof(p_requirements) is distinct from 'array' then raise exception 'Room requirements must be a list.'; end if;
+  if not (me.level in ('owner','dept_head') or (room_row.category='rest_room' and me.sub_department='accommodation') or
+    (room_row.category='control_room' and (
+      exists(select 1 from public.manpower_teams t where t.organization_id=me.organization_id and lower(t.name)=lower(room_row.responsible_team) and lower(trim(t.lead))=lower(trim(me.name))) or
+      exists(select 1 from public.accommodation_members m where m.organization_id=me.organization_id and m.team_names @> array[room_row.responsible_team] and lower(trim(m.name))=lower(trim(me.name)))
+    ))) then raise exception 'Only Accommodation members or the room responsible team can update these requirements.'; end if;
+  if exists(select 1 from jsonb_array_elements(p_requirements) as req(item) where jsonb_typeof(item)<>'object' or coalesce(item->>'name','')='' or coalesce(item->>'quantity','') !~ '^[0-9]+$' or coalesce(item->>'readyQuantity','') !~ '^[0-9]+$' or coalesce(item->>'returned','false') not in ('true','false')) then raise exception 'Each requirement needs a name and whole-number quantities.'; end if;
+  select count(*)>0 and bool_and((item->>'quantity')::integer>0 and (item->>'readyQuantity')::integer >= (item->>'quantity')::integer),
+    count(*)>0 and bool_and((item->>'quantity')::integer>0 and (item->>'readyQuantity')::integer >= (item->>'quantity')::integer and coalesce((item->>'returned')::boolean,false))
+    into all_ready,all_returned from jsonb_array_elements(p_requirements) as req(item);
+  ready_at:=case when all_ready then coalesce(nullif(room_row.readiness_by_scope->p_scope_key->>'readyAt',''),now()::text) else '' end;
+  returned_at:=case when all_returned then coalesce(nullif(room_row.readiness_by_scope->p_scope_key->>'returnedAt',''),now()::text) else '' end;
+  update public.accommodation_rooms set requirements_by_scope=coalesce(room_row.requirements_by_scope,'{}'::jsonb)||jsonb_build_object(p_scope_key,p_requirements),
+    readiness_by_scope=coalesce(room_row.readiness_by_scope,'{}'::jsonb)||jsonb_build_object(p_scope_key,jsonb_build_object('readyAt',ready_at,'returnedAt',returned_at)),
+    requirements=case when p_scope_key='normal' then p_requirements else requirements end
+    where id=p_room_id and organization_id=me.organization_id;
+end $$;
+revoke all on function public.accommodation_update_room_requirements(text,text,jsonb) from public,anon;
+grant execute on function public.accommodation_update_room_requirements(text,text,jsonb) to authenticated;
+do $$ begin begin execute 'alter publication supabase_realtime add table public.event_attendance'; exception when duplicate_object then null; end; end $$;
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v69_accommodation_room_categories.sql >>>
+
+-- >>> BEGIN supabase/migration_v70_task_completion_notifications.sql >>>
+create or replace function public.notify_task_creator_on_completion()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare actor_name text; task_link text;
+begin
+  if new.status <> 'complete' or (tg_op = 'UPDATE' and old.status = 'complete') then return new; end if;
+  select nullif(trim(name), '') into actor_name from public.profiles where id = auth.uid();
+  actor_name := coalesce(actor_name, nullif(trim(new.assigned_to), ''), 'A team member');
+  task_link := case when tg_table_name = 'manpower_tasks' then '#/sewadars' else '#/accommodation' end;
+  insert into public.notifications (organization_id,user_id,title,message,type,link,ref_id)
+  select new.organization_id,new.created_by,'Task completed',format('%s completed “%s”.',actor_name,new.title),'info',task_link,new.id
+  where new.created_by is not null and exists (select 1 from public.profiles p where p.id=new.created_by and p.organization_id=new.organization_id and p.approved and p.is_active);
+  return new;
+end $$;
+revoke all on function public.notify_task_creator_on_completion() from public,anon,authenticated;
+drop trigger if exists manpower_task_completion_notification on public.manpower_tasks;
+create trigger manpower_task_completion_notification after insert or update of status on public.manpower_tasks for each row execute function public.notify_task_creator_on_completion();
+drop trigger if exists accommodation_task_completion_notification on public.accommodation_member_tasks;
+create trigger accommodation_task_completion_notification after insert or update of status on public.accommodation_member_tasks for each row execute function public.notify_task_creator_on_completion();
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v70_task_completion_notifications.sql >>>
+
+-- >>> BEGIN supabase/migration_v71_remove_food_ready_for_event.sql >>>
+update public.meal_menu set status='preparing' where status='ready_for_event';
+alter table public.meal_menu drop constraint if exists meal_menu_status_check;
+alter table public.meal_menu add constraint meal_menu_status_check check (status in ('scheduled','preparing','distributing','distributed'));
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v71_remove_food_ready_for_event.sql >>>
+
+-- >>> BEGIN supabase/migration_v72_general_feedback.sql >>>
+alter table public.member_issues drop constraint if exists member_issues_kind_check;
+alter table public.member_issues add constraint member_issues_kind_check check (kind in ('material', 'site_event', 'issue', 'feedback'));
+create or replace function public.member_issue_notify()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare msg_title text;
+begin
+  msg_title := case when new.kind = 'feedback' then 'Feedback received' when new.kind = 'site_event' then 'Site/event issue reported' when new.kind = 'material' then 'Material issue reported' else 'Issue reported' end;
+  insert into public.notifications (organization_id, user_id, title, message, type, link, ref_id)
+  select new.organization_id, p.id, msg_title,
+    new.reporter_name || ': ' || new.title || case when new.material <> '' then ' · ' || new.material else '' end,
+    'warning', 'issues', new.id::text
+  from public.profiles p
+  where p.organization_id = new.organization_id and p.approved and p.is_active and p.id <> new.reporter_id
+    and (p.level in ('owner','dept_head') or (p.level = 'sub_dept_head' and p.sub_department = new.sub_department));
+  return new;
+end $$;
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v72_general_feedback.sql >>>
+
+-- >>> BEGIN supabase/migration_v73_event_linked_reports.sql >>>
+-- Link new issue, complaint, and feedback submissions to an event.
+-- Existing reports remain nullable for backward compatibility.
+alter table public.member_issues
+  add column if not exists event_id text references public.event_plans(id) on delete set null;
+create index if not exists member_issues_event_created_idx
+  on public.member_issues (organization_id, event_id, created_at desc);
+grant update (event_id) on public.member_issues to authenticated;
+
+create or replace function public.member_issue_require_event()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.event_id is null or not exists (
+    select 1 from public.event_plans e
+    where e.id = new.event_id and e.organization_id = new.organization_id
+  ) then
+    raise exception 'Choose an event for this report.';
+  end if;
+  return new;
+end $$;
+drop trigger if exists member_issue_require_event on public.member_issues;
+create trigger member_issue_require_event
+  before insert or update of event_id, organization_id on public.member_issues
+  for each row execute function public.member_issue_require_event();
+
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v73_event_linked_reports.sql <<<
+
+-- >>> BEGIN supabase/migration_v74_wifi_event_usage.sql >>>
+-- Associate issued Wi-Fi access with an event so event usage can be reported.
+-- Run after migration_v73_event_linked_reports.sql.
+
+alter table public.wifi_access_accounts
+  add column if not exists event_id text;
+
+create index if not exists wifi_access_event_usage_idx
+  on public.wifi_access_accounts (organization_id, event_id, created_at desc);
+
+create or replace function public.wifi_access_account_validate_event()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare event_organization_id text;
+begin
+  if new.event_id is null then return new; end if;
+  select organization_id into event_organization_id
+  from public.event_plans where id = new.event_id;
+  if event_organization_id is distinct from new.organization_id then
+    raise exception 'Choose an event in this organization.';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists wifi_access_account_validate_event on public.wifi_access_accounts;
+create trigger wifi_access_account_validate_event
+  before insert or update of event_id, organization_id on public.wifi_access_accounts
+  for each row execute function public.wifi_access_account_validate_event();
+
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v74_wifi_event_usage.sql <<<
+
+-- >>> BEGIN supabase/migration_v75_accommodation_control_room_sync.sql >>>
+-- Link event-specific Control Room records to shared Accommodation rooms so
+-- room requirements and assigned accommodation members appear in both modules.
+
+alter table public.cctv_control_rooms
+  add column if not exists accommodation_room_id text
+  references public.accommodation_rooms(id) on delete set null;
+
+create unique index if not exists cctv_control_rooms_accommodation_link_idx
+  on public.cctv_control_rooms (organization_id, event_scope_key, accommodation_room_id)
+  where accommodation_room_id is not null;
+
+create or replace function public.cctv_control_room_validate_accommodation_link()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.accommodation_room_id is not null and not exists (
+    select 1 from public.accommodation_rooms r
+    where r.id = new.accommodation_room_id
+      and r.organization_id = new.organization_id
+      and r.category = 'control_room'
+  ) then
+    raise exception 'Choose a Control Room from this organization’s Accommodation rooms.';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists cctv_control_room_validate_accommodation_link on public.cctv_control_rooms;
+create trigger cctv_control_room_validate_accommodation_link
+  before insert or update of accommodation_room_id, organization_id on public.cctv_control_rooms
+  for each row execute function public.cctv_control_room_validate_accommodation_link();
+
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v75_accommodation_control_room_sync.sql <<<
+
+-- >>> BEGIN supabase/migration_v76_event_workflow_links.sql >>>
+-- Connect event records to the existing meetings, task, inventory, and report flows.
+-- Run after migration_v75_accommodation_control_room_sync.sql.
+
+alter table public.event_plans
+  add column if not exists owner_department_id text;
+
+alter table public.meetings
+  add column if not exists event_id text references public.event_plans(id) on delete set null;
+create index if not exists meetings_event_idx on public.meetings (organization_id, event_id, starts_at desc);
+
+-- Keep the Meetings workspace open to everyone while protecting meeting data
+-- and its MOM with the selected audience. Organizers retain access to their own.
+drop policy if exists meetings_select on public.meetings;
+create policy meetings_select on public.meetings for select using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (kind = 'emergency' or created_by = auth.uid() or audience_all
+    or public.current_sub_department() = any(audience_depts)
+    or ('it:staff' = any(audience_groups) and public.current_level() in ('staff','sub_dept_head','dept_head'))
+    or exists (
+      select 1 from public.accommodation_members am where am.organization_id = meetings.organization_id and am.profile_id = auth.uid()
+        and ('sewadar:all' = any(audience_groups)
+          or ('sewadar:regular' = any(audience_groups) and am.member_type in ('salary_based','monthly'))
+          or ('sewadar:annual' = any(audience_groups) and am.member_type = 'annual')
+          or exists (select 1 from unnest(audience_groups) g
+            where left(g, 13) = 'sewadar:team:' and (lower(trim(am.team_name)) = lower(trim(substr(g, 14)))
+              or exists (select 1 from unnest(coalesce(am.team_names, '{}'::text[])) as member_teams(name) where lower(trim(member_teams.name)) = lower(trim(substr(g, 14))))))
+        )
+    ))
+);
+
+create or replace function public.meeting_recipients(p_meeting uuid)
+returns setof uuid language sql stable security definer set search_path = public as $$
+  select distinct p.id from public.meetings m
+  join public.profiles p on p.organization_id = m.organization_id
+  where m.id = p_meeting and p.approved and p.is_active and p.id is distinct from m.created_by
+    and (m.kind = 'emergency' or m.audience_all or p.sub_department = any(m.audience_depts)
+      or ('it:staff' = any(m.audience_groups) and p.level in ('staff','sub_dept_head','dept_head'))
+      or exists (select 1 from public.accommodation_members am where am.organization_id = m.organization_id and am.profile_id = p.id
+        and ('sewadar:all' = any(m.audience_groups)
+          or ('sewadar:regular' = any(m.audience_groups) and am.member_type in ('salary_based','monthly'))
+          or ('sewadar:annual' = any(m.audience_groups) and am.member_type = 'annual')
+          or exists (select 1 from unnest(m.audience_groups) g
+            where left(g, 13) = 'sewadar:team:' and (lower(trim(am.team_name)) = lower(trim(substr(g, 14)))
+              or exists (select 1 from unnest(coalesce(am.team_names, '{}'::text[])) as member_teams(name) where lower(trim(member_teams.name)) = lower(trim(substr(g, 14))))))))
+    );
+$$;
+revoke all on function public.meeting_recipients(uuid) from public, anon, authenticated;
+
+-- One meeting remains the source of truth. This wrapper calls the existing,
+-- permission-checked scheduler and attaches the event in the same transaction.
+create or replace function public.create_event_linked_meeting(
+  p_title text, p_agenda text, p_mode text, p_place text, p_link text,
+  p_starts_at timestamptz, p_audience_all boolean, p_audience_depts text[],
+  p_audience_groups text[], p_message text, p_event_id text
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare me public.profiles%rowtype; new_id uuid;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active then raise exception 'Not allowed.'; end if;
+  if p_event_id is null or not exists (
+    select 1 from public.event_plans e where e.id = p_event_id and e.organization_id = me.organization_id
+  ) then raise exception 'Choose an event from your organization.'; end if;
+  new_id := public.create_meeting(
+    'meeting', p_title, p_agenda, p_mode, p_place, p_link, p_starts_at,
+    p_audience_all, p_audience_depts, p_audience_groups, p_message
+  );
+  update public.meetings set event_id = p_event_id
+    where id = new_id and organization_id = me.organization_id;
+  return new_id;
+end $$;
+revoke all on function public.create_event_linked_meeting(text,text,text,text,text,timestamptz,boolean,text[],text[],text,text) from public, anon;
+grant execute on function public.create_event_linked_meeting(text,text,text,text,text,timestamptz,boolean,text[],text[],text,text) to authenticated;
+
+alter table public.event_requirements
+  add column if not exists inventory_item_id text references public.inventory_items(id) on delete set null;
+drop policy if exists event_inventory_requirements_update on public.event_requirements;
+create policy event_inventory_requirements_update on public.event_requirements for update using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and category = 'inventory' and (public.can_manage_events() or public.current_sub_department() = 'inventory')
+) with check (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and category = 'inventory' and (public.can_manage_events() or public.current_sub_department() = 'inventory')
+);
+
+-- Event tasks share the existing Sewadar task board. Parent links make subtasks
+-- and their completion state visible in both Event Planning and team Tasks.
+alter table public.manpower_tasks
+  add column if not exists event_id text references public.event_plans(id) on delete cascade,
+  add column if not exists meeting_id uuid references public.meetings(id) on delete set null,
+  add column if not exists parent_task_id text references public.manpower_tasks(id) on delete cascade,
+  add column if not exists department_id text,
+  add column if not exists resources text not null default '';
+create index if not exists manpower_tasks_event_idx on public.manpower_tasks (organization_id, event_id, due_date, status);
+create index if not exists manpower_tasks_parent_idx on public.manpower_tasks (parent_task_id) where parent_task_id is not null;
+drop policy if exists event_manpower_tasks_insert on public.manpower_tasks;
+create policy event_manpower_tasks_insert on public.manpower_tasks for insert with check (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and created_by = auth.uid() and (event_id is not null or meeting_id is not null)
+  and (public.can_manage_events() or (meeting_id is not null and exists (
+    select 1 from public.meetings m where m.id = public.manpower_tasks.meeting_id and m.organization_id = public.manpower_tasks.organization_id and m.created_by = auth.uid()
+  )))
+);
+drop policy if exists event_manpower_tasks_update on public.manpower_tasks;
+create policy event_manpower_tasks_update on public.manpower_tasks for update using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (event_id is not null or meeting_id is not null) and (public.can_manage_events() or assigned_to = (select name from public.profiles where id = auth.uid()))
+) with check (organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved());
+drop policy if exists event_manpower_tasks_delete on public.manpower_tasks;
+create policy event_manpower_tasks_delete on public.manpower_tasks for delete using (
+  organization_id = public.current_organization_id() and event_id is not null and public.can_manage_events()
+);
+
+create or replace function public.validate_event_task_links()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.event_id is not null and not exists (select 1 from public.event_plans e where e.id = new.event_id and e.organization_id = new.organization_id) then
+    raise exception 'Choose an event from this organization.';
+  end if;
+  if new.meeting_id is not null and not exists (
+    select 1 from public.meetings m where m.id = new.meeting_id and m.organization_id = new.organization_id and m.event_id is not distinct from new.event_id
+  ) then raise exception 'Choose a meeting linked to this event.'; end if;
+  if new.parent_task_id is not null and not exists (
+    select 1 from public.manpower_tasks parent where parent.id = new.parent_task_id and parent.organization_id = new.organization_id and parent.event_id is not distinct from new.event_id
+  ) then raise exception 'A subtask must belong to the same event as its parent.'; end if;
+  return new;
+end $$;
+drop trigger if exists validate_event_task_links on public.manpower_tasks;
+create trigger validate_event_task_links before insert or update of event_id, meeting_id, parent_task_id, organization_id
+  on public.manpower_tasks for each row execute function public.validate_event_task_links();
+revoke all on function public.validate_event_task_links() from public, anon, authenticated;
+
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v76_event_workflow_links.sql <<<
+
+-- >>> BEGIN supabase/migration_v77_meeting_transcripts.sql >>>
+-- Keep the Microsoft Teams onlineMeeting ID so transcripts can be retrieved later.
+alter table public.meetings add column if not exists teams_online_meeting_id text;
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v77_meeting_transcripts.sql <<<

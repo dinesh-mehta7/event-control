@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Server, MapPin, Phone, Users, Boxes, Siren, Check, Plus, X,
   ChevronDown, ChevronUp, Zap, Edit3, Trash2, Monitor, Tv,
@@ -7,7 +7,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { useManpower } from '../../modules/manpower';
 import { useInventory } from '../../modules/inventory';
-import { useStore } from '../../pages/orgData';
+import { useEventScope } from '../../context/EventScopeContext';
 import type { ControlRoom } from '../../types';
 
 // ── Shared style tokens ──────────────────────────────────────────────────────
@@ -134,7 +134,18 @@ export const ControlRoomsApp: React.FC = () => {
     addControlRoom, editControlRoom, deleteControlRoom } = useApp();
   const { sewadars } = useManpower();
   const inv = useInventory();
-  const [ops, setOps] = useStore<Ops>('eitc_cr_ops', EMPTY_OPS);
+  const { scopeFor } = useEventScope();
+  const eventId = scopeFor('control') || 'normal';
+  const opsKey = `eitc_cr_ops:${eventId}`;
+  const [savedOps, setSavedOps] = useState<{ key: string; value: Ops }>(() => {
+    try { return { key: opsKey, value: JSON.parse(localStorage.getItem(opsKey) || (eventId === 'normal' ? localStorage.getItem('eitc_cr_ops') : null) || 'null') || EMPTY_OPS }; } catch { return { key: opsKey, value: EMPTY_OPS }; }
+  });
+  const ops = useMemo<Ops>(() => {
+    if (savedOps.key === opsKey) return savedOps.value;
+    try { return JSON.parse(localStorage.getItem(opsKey) || (eventId === 'normal' ? localStorage.getItem('eitc_cr_ops') : null) || 'null') || EMPTY_OPS; } catch { return EMPTY_OPS; }
+  }, [savedOps, opsKey]);
+  const setOps = (next: Ops | ((current: Ops) => Ops)) => setSavedOps(current => ({ key: opsKey, value: typeof next === 'function' ? next(ops) : next }));
+  useEffect(() => { try { localStorage.setItem(opsKey, JSON.stringify(ops)); } catch { /* storage may be disabled */ } }, [opsKey, ops]);
 
   // UI state
   const [q, setQ] = useState('');
@@ -144,7 +155,7 @@ export const ControlRoomsApp: React.FC = () => {
   const [editRoom, setEditRoom] = useState<ControlRoom | null>(null);
   const [deleteRoom, setDeleteRoom] = useState<ControlRoom | null>(null);
 
-  const patch = (f: (o: Ops) => Ops) => setOps(f(ops));
+  const patch = (f: (o: Ops) => Ops) => setOps(f);
   const person = (id: string) => sewadars.find(s => s.id === id);
   const membersOf = (rid: string) => (ops.members[rid] || []).map(person).filter(Boolean) as typeof sewadars;
   const assignedElsewhere = (rid: string) => new Set(Object.entries(ops.members).filter(([k]) => k !== rid).flatMap(([, v]) => v));
@@ -161,7 +172,7 @@ export const ControlRoomsApp: React.FC = () => {
 
   // Quick counts for temporary IT setups and their assigned resources.
   const operationalCount = controlRooms.filter(r => r.status === 'operational').length;
-  const totalMembers = Object.values(ops.members).reduce((n, ids) => n + ids.length, 0);
+  const totalMembers = Object.values(ops.members).reduce((n, ids: string[]) => n + ids.length, 0);
   const totalMaterial = controlRooms.reduce((n, r) => n + heldAt(r.id).reduce((sum, h) => sum + h.qty, 0) + (ops.extras[r.id] || []).reduce((sum, e) => sum + e.qty, 0), 0);
 
   return (
