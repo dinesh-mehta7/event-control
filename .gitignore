@@ -4,3 +4,6 @@ build
 .env
 .env.example
 .next-preview
+.next
+.next-production
+tsconfig.tsbuildinfo
