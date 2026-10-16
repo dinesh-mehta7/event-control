@@ -27,7 +27,7 @@ export default function EventRadioRequests() {
   const [events, setEvents] = useState([]);
   const [requests, setRequests] = useState([]);
   const [eventId, setEventId] = useState('');
-  const [form, setForm] = useState({ walkies: '1', chargers: '0', earphones: '0' });
+  const [form, setForm] = useState({ walkies: '1', chargers: '0', earphones: '0', collectFrom: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState({});
@@ -74,10 +74,11 @@ export default function EventRadioRequests() {
 
   const submit = async (e) => {
     e.preventDefault(); setBusy(true); setError('');
-    const { error: err } = await supabase.rpc('event_radio_request_submit', { p_event_id: eventId, p_walkies: safeCount(form.walkies), p_chargers: safeCount(form.chargers), p_earphones: safeCount(form.earphones) });
+    if (!form.collectFrom.trim()) { setBusy(false); setError('Choose or enter the unit to collect the radios from.'); return; }
+    const { error: err } = await supabase.rpc('event_radio_request_submit', { p_event_id: eventId, p_walkies: safeCount(form.walkies), p_chargers: safeCount(form.chargers), p_earphones: safeCount(form.earphones), p_collect_from: form.collectFrom.trim() });
     setBusy(false);
-    if (err) { setError(err.message); return; }
-    setForm({ walkies: '1', chargers: '0', earphones: '0' }); addToast('Event radio request sent for approval.'); await load();
+    if (err) { setError(/event_radio_request_submit|p_collect_from|collect_from/i.test(err.message || '') ? 'Walkie-Talkie collection units need supabase/migration_v82_event_radio_collection_unit.sql. Apply it, then reload this page.' : err.message); return; }
+    setForm({ walkies: '1', chargers: '0', earphones: '0', collectFrom: '' }); addToast('Event radio request sent for approval.'); await load();
   };
 
   const decide = async (r, approve) => {
@@ -194,7 +195,8 @@ export default function EventRadioRequests() {
     </div>
     {ownDept && currentUser?.level !== 'owner' && canRequest && <form onSubmit={submit} className={panel}>
       <h2 className="text-sm font-semibold">Request for {ownDept.name}</h2><p className="mt-1 text-xs text-mute">No reason or extra items are required. The request goes to your department owner or Super Admin for approval.</p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="text-xs text-mute">From unit<input required list="walkie-collection-units" className={`${input} mt-1`} placeholder="e.g. Main Control Room" value={form.collectFrom} onChange={e => setForm(v => ({ ...v, collectFrom: e.target.value }))} /><datalist id="walkie-collection-units"><option value="Main Control Room"/><option value="Walkie-Talkie Store"/><option value="IT Office"/><option value="Control Room"/></datalist></label>
         {[['walkies','Walkies',1],['chargers','Chargers',0],['earphones','Earphones',0]].map(([key,label,min]) => <label key={key} className="text-xs text-mute">{label}<input className={`${input} mt-1`} type="number" min={min} step="1" value={form[key]} onChange={e => setForm(v => ({ ...v, [key]: e.target.value }))} /></label>)}
       </div>
       <button disabled={busy || !eventId} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"><Send size={14} />Send request</button>
@@ -220,7 +222,7 @@ export default function EventRadioRequests() {
       const qty = returnCounts[r.id] || { walkies: '', chargers: '', earphones: '' };
       const allocatedIds = Array.isArray(r.allocated_walkie_ids) ? r.allocated_walkie_ids : [];
       return <article key={r.id} className="rounded-lg border border-line bg-raised/30 p-3">
-        <div className="flex flex-wrap items-start justify-between gap-2"><div><div className="text-sm font-medium">{r.department_name}<span className="ml-2 text-xs text-mute">{r.requester_name}</span></div><div className="mt-1 text-xs text-mute">{r.walkie_count} walkies · {r.charger_count} chargers · {r.earphone_count} earphones</div><div className="mt-1 text-[11px] text-mute">{new Date(r.created_at).toLocaleString('en-IN')}{r.approval_note ? ` · ${r.approval_note}` : ''}</div></div><span className={`rounded-full px-2 py-1 text-[11px] ${statusTone[r.status]}`}>{statusLabels[r.status]}</span></div>
+        <div className="flex flex-wrap items-start justify-between gap-2"><div><div className="text-sm font-medium">{r.department_name}<span className="ml-2 text-xs text-mute">{r.requester_name}</span></div><div className="mt-1 text-xs text-mute">{r.walkie_count} walkies · {r.charger_count} chargers · {r.earphone_count} earphones</div><div className="mt-1 text-[11px] text-mute">Collect from · {r.collect_from || 'Not specified'}</div><div className="mt-1 text-[11px] text-mute">{new Date(r.created_at).toLocaleString('en-IN')}{r.approval_note ? ` · ${r.approval_note}` : ''}</div></div><span className={`rounded-full px-2 py-1 text-[11px] ${statusTone[r.status]}`}>{statusLabels[r.status]}</span></div>
         {mayDecide && <div className="mt-3 flex gap-2"><button disabled={busy} onClick={() => void decide(r,true)} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs text-white disabled:opacity-50"><Check size={13}/>Approve</button><button disabled={busy} onClick={() => void decide(r,false)} className="inline-flex items-center gap-1 rounded-md border border-line px-2.5 py-1.5 text-xs hover:bg-raised disabled:opacity-50"><X size={13}/>Decline</button></div>}
         {canFulfil && r.status === 'ready' && <div className="mt-3 flex flex-wrap items-end gap-2"><label className="text-xs text-mute">Received by<input className={`${input} mt-1 max-w-xs`} value={signers[r.id] || ''} onChange={e => setSigners(s => ({ ...s, [r.id]: e.target.value }))} /></label><button disabled={busy} onClick={() => void markDelivered(r)} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-2 text-xs text-white disabled:opacity-50"><PackageCheck size={13}/>Mark delivered</button><span className="text-[11px] text-mute">{allocatedIds.length} named radios: {allocatedIds.slice(0,3).join(', ')}{allocatedIds.length > 3 ? '…' : ''}</span></div>}
         {canReturn && <div className="mt-3 grid gap-2 sm:grid-cols-4"><label className="text-[11px] text-mute">Walkies received<input className={`${input} mt-1`} type="number" min="0" max={r.delivered_walkies-r.returned_walkies} value={qty.walkies} onChange={e => setReturnCounts(v => ({ ...v, [r.id]: { ...qty, walkies: e.target.value } }))}/></label><label className="text-[11px] text-mute">Chargers<input className={`${input} mt-1`} type="number" min="0" max={r.delivered_chargers-r.returned_chargers} value={qty.chargers} onChange={e => setReturnCounts(v => ({ ...v, [r.id]: { ...qty, chargers: e.target.value } }))}/></label><label className="text-[11px] text-mute">Earphones<input className={`${input} mt-1`} type="number" min="0" max={r.delivered_earphones-r.returned_earphones} value={qty.earphones} onChange={e => setReturnCounts(v => ({ ...v, [r.id]: { ...qty, earphones: e.target.value } }))}/></label><button disabled={busy || !(feedback[r.id] || '').trim()} onClick={() => void submitReturn(r)} className="mt-auto inline-flex items-center justify-center gap-1 rounded-md bg-emerald-600 px-2.5 py-2 text-xs text-white disabled:opacity-50"><RotateCcw size={13}/>Record return</button><label className="text-[11px] text-mute sm:col-span-4">Department feedback <span className="text-rose-400">*</span><textarea required className={`${input} mt-1`} rows="2" value={feedback[r.id] || ''} onChange={e => setFeedback(s => ({ ...s, [r.id]: e.target.value }))} placeholder="Ask the department for return feedback: condition, missing items, or experience"/></label></div>}

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowRightLeft, MapPin, Tag, ChevronLeft, ChevronRight, ClipboardList, Download, Edit3, History, LayoutDashboard, Package, Plus, RotateCcw, Search, Send, Trash2, Upload, Wrench } from 'lucide-react';
+import { ArrowRightLeft, MapPin, Tag, ChevronLeft, ChevronRight, ClipboardList, Download, Edit3, History, LayoutDashboard, Package, Plus, RotateCcw, Search, Send, Trash2, Upload, Wrench, LockKeyhole } from 'lucide-react';
 import { Modal, ConfirmModal, btnGhost, cx, inputCls, labelCls } from '../accommodation/ui';
 import { useInventory } from './InventoryContext';
 import type { Loc, ItemInput } from './InventoryContext';
@@ -21,7 +21,7 @@ const TONE: Record<string, string> = {
   info: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
   mute: 'bg-raised text-mute border-line-strong',
 };
-const amber = 'inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-600 hover:bg-amber-500 text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:opacity-50 disabled:cursor-not-allowed';
+const primary = 'inline-flex items-center justify-center gap-1.5 rounded-lg border border-blue-400/30 bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 disabled:cursor-not-allowed disabled:opacity-50';
 const SUB: Record<string, string> = {
   dashboard: 'Stock at a glance: what to restock, who holds what, latest activity.',
   items: 'Add, edit, delete and count every item in the store.',
@@ -57,9 +57,9 @@ const when = (s: string) => new Date(s).toLocaleString('en-IN', { day: 'numeric'
 
 // ---- small shared pieces ---------------------------------------------------
 const Stat: React.FC<{ label: string; value: number; dot?: string; onClick?: () => void }> = ({ label, value, dot, onClick }) => (
-  <button onClick={onClick} className={cx(panel, 'px-4 py-3.5 text-left hover:bg-raised/40 transition-colors')}>
+  <button type="button" onClick={onClick} disabled={!onClick} className={cx(panel, 'px-4 py-3.5 text-left transition-colors disabled:cursor-default enabled:hover:border-line-strong enabled:hover:bg-raised/40')}>
     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-mute">{dot && <span className={cx('w-2 h-2 rounded-full', dot)} />}{label}</div>
-    <div className="text-2xl font-bold mt-1 tabular-nums">{value}</div>
+    <div className="mt-1 text-xl font-semibold tabular-nums text-ink">{value}</div>
   </button>
 );
 const Section: React.FC<{ title: string; action?: React.ReactNode; children: React.ReactNode }> = ({ title, action, children }) => (
@@ -208,18 +208,18 @@ const ItemsView: React.FC<{ stage: Stage; setStage: (s: Stage) => void; openMove
   ];
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-1.5 justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-sm font-semibold text-ink">Inventory items</h2><p className="mt-0.5 text-[11px] text-mute">Search, reconcile and maintain the organization catalogue.</p></div><div className="flex flex-wrap gap-1.5">
         <button className={btnGhost(D)} onClick={exportCSV}><Download className="w-4 h-4" />Export</button>
         {canManage && <button className={btnGhost(D)} onClick={onCategories}><Tag className="w-4 h-4" />Categories</button>}
         {canManage && <button className={btnGhost(D)} onClick={onImport}><Upload className="w-4 h-4" />Import list</button>}
-        {canManage && <button className={amber} onClick={() => onEdit('new')}><Plus className="w-4 h-4" />Add item</button>}
-      </div>
+        {canManage && <button className={primary} onClick={() => onEdit('new')}><Plus className="w-4 h-4" />Add item</button>}
+      </div></div>
       <section className={cx(panel, 'overflow-hidden')}>
         <div className="flex flex-wrap items-center gap-1.5 px-2.5 py-2">
           <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-faint">Filter</span>
           {tabs.map(t => (
             <button key={t.key} onClick={() => setStage(t.key)} aria-pressed={stage === t.key}
-              className={cx('inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition-colors', stage === t.key ? 'border-amber-500/40 bg-amber-500/10 text-amber-200' : 'border-transparent text-mute hover:border-line hover:bg-raised hover:text-ink')}>
+              className={cx('inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition-colors', stage === t.key ? 'border-blue-500/40 bg-blue-500/10 text-blue-200' : 'border-transparent text-mute hover:border-line hover:bg-raised hover:text-ink')}>
               {t.dot && <span className={cx('w-1.5 h-1.5 rounded-full', t.dot)} />}{t.label}<span className="font-semibold tabular-nums">{t.n}</span>
             </button>
           ))}
@@ -307,7 +307,7 @@ const LocationsView: React.FC<{ openMove: OpenMove }> = ({ openMove }) => {
   }, [holdings, locations]);
   return (
     <div className="space-y-5">
-      <div className="flex justify-end">{canManage && <button className={amber} onClick={() => setForm('new')}><Plus className="w-4 h-4" />Add location</button>}</div>
+      <div className="flex justify-end">{canManage && <button className={primary} onClick={() => setForm('new')}><Plus className="w-4 h-4" />Add location</button>}</div>
       {ids.length === 0 && <Section title="Locations"><Empty>No locations yet. A location is created automatically the first time you issue stock to it, or add one here.</Empty></Section>}
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
         {ids.map(d => {
@@ -354,7 +354,7 @@ const LocationForm: React.FC<{ initial: Loc | null; onClose: () => void; onSave:
     <Modal title={initial ? 'Rename location' : 'Add location'} dark={D} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <div><label className={labelCls(D)} htmlFor="lc-n">Location name</label><input id="lc-n" autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Gate 3 · Main Stage · Control Room A" className={inputCls(D)} /></div>
-        <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className={btnGhost(D)}>Cancel</button><button type="submit" disabled={busy || !name.trim()} className={amber}>{busy ? 'Saving…' : 'Save'}</button></div>
+        <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className={btnGhost(D)}>Cancel</button><button type="submit" disabled={busy || !name.trim()} className={primary}>{busy ? 'Saving…' : 'Save'}</button></div>
       </form>
     </Modal>
   );
@@ -373,7 +373,7 @@ const CategoryManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     <Modal title="Categories" dark={D} onClose={onClose} wide>
       <form onSubmit={add} className="flex gap-2 mb-4">
         <input aria-label="New category" value={name} onChange={e => setName(e.target.value)} placeholder="New category name" className={inputCls(D)} />
-        <button type="submit" disabled={!name.trim()} className={amber}><Plus className="w-4 h-4" />Add</button>
+        <button type="submit" disabled={!name.trim()} className={primary}><Plus className="w-4 h-4" />Add</button>
       </form>
       <ul className="divide-y divide-line max-h-80 overflow-y-auto">
         {categories.map(c => (
@@ -407,7 +407,7 @@ const AllocationsView: React.FC<{ openMove: OpenMove }> = ({ openMove }) => {
   const recent = useRecent(['issue'], 100);
   return (
     <div className="space-y-5">
-      <div className="flex justify-end">{canManage && <button className={amber} onClick={() => openMove('issue', items[0]?.id)} disabled={!items.length}><Send className="w-4 h-4" />Issue stock</button>}</div>
+      <div className="flex justify-end">{canManage && <button className={primary} onClick={() => openMove('issue', items[0]?.id)} disabled={!items.length}><Send className="w-4 h-4" />Issue stock</button>}</div>
       <Section title={`Currently out at locations (${out.length})`}>
         {out.length === 0 ? <Empty>Nothing is issued right now.</Empty> : (
           <ul className="divide-y divide-line/70">
@@ -433,7 +433,7 @@ const ReturnsView: React.FC<{ openMove: OpenMove }> = ({ openMove }) => {
     <div className="space-y-5">
       <div className="flex flex-wrap justify-end gap-2">
         {canManage && <button className={btnGhost(D)} onClick={() => openMove('return_damaged', items.find(i => i.issued > 0)?.id)} disabled={!items.some(i => i.issued > 0)}>Return · damaged</button>}
-        {canManage && <button className={amber} onClick={() => openMove('return', items.find(i => i.issued > 0)?.id)} disabled={!items.some(i => i.issued > 0)}><RotateCcw className="w-4 h-4" />Record return</button>}
+        {canManage && <button className={primary} onClick={() => openMove('return', items.find(i => i.issued > 0)?.id)} disabled={!items.some(i => i.issued > 0)}><RotateCcw className="w-4 h-4" />Record return</button>}
       </div>
       <Section title="Recent returns"><MoveList rows={recent} empty="No returns recorded yet." /></Section>
     </div>
@@ -509,14 +509,14 @@ export const InventoryApp: React.FC = () => {
   const cur = NAV.find(n => n.id === tab) || NAV[0];
 
   return (
-    <div className="space-y-4">
-        <div className="text-xs text-mute">{SUB[tab]}</div>
-        <nav className="flex gap-1 overflow-x-auto border-b border-line" aria-label="Inventory sections">
+    <div className="space-y-3">
+        <header className={cx(panel, 'flex flex-wrap items-center justify-between gap-3 px-4 py-3')}><div className="flex min-w-0 items-center gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-blue-400/20 bg-blue-500/10 text-blue-300"><Package className="h-4 w-4" /></span><div className="min-w-0"><h1 className="text-sm font-semibold text-ink">Inventory control · {cur.label}</h1><p className="mt-0.5 truncate text-[11px] text-mute">{SUB[tab]}</p></div></div><div className="rounded-md border border-line bg-raised/50 px-2.5 py-1.5 text-[10px] text-mute"><span className="font-semibold tabular-nums text-ink">{items.length}</span> catalogue items</div></header>
+        <nav className="flex gap-1 overflow-x-auto rounded-lg border border-line bg-surface/50 p-1" aria-label="Inventory sections">
           {NAV.map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => go(id)} className={cx('inline-flex items-center gap-2 px-3 py-2.5 border-b-2 text-xs font-medium whitespace-nowrap', tab === id ? 'border-blue-600 text-blue-500' : 'border-transparent text-mute hover:text-ink')}><Icon className="w-4 h-4" />{label}</button>
+            <button type="button" key={id} aria-current={tab === id ? 'page' : undefined} onClick={() => go(id)} className={cx('inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors', tab === id ? 'bg-blue-500/10 text-blue-300 ring-1 ring-inset ring-blue-400/20' : 'text-mute hover:bg-raised hover:text-ink')}><Icon className="w-4 h-4" />{label}</button>
           ))}
         </nav>
-          {!canManage && <div className="mb-5 p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-xl text-xs">🔒 You can view the inventory but not change it.</div>}
+          {!canManage && <div className="flex items-center gap-2 rounded-lg border border-line bg-surface/60 p-3 text-xs text-mute"><LockKeyhole className="h-4 w-4 shrink-0 text-blue-300" />Read-only access · Inventory changes are restricted to authorized staff.</div>}
           {loadError && <div role="alert" className="mb-5 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-400 text-sm p-3">Could not load inventory: {loadError}</div>}
           {tab === 'dashboard' && <DashboardView go={go} openMove={openMove} />}
           {tab === 'items' && <ItemsView stage={stage} setStage={setStage} openMove={openMove} onEdit={setEditing} onHistory={setHistory} onImport={() => setImporting(true)} onCategories={() => setCats(true)} onDelete={setDeleting} />}
@@ -601,7 +601,7 @@ const ItemForm: React.FC<{ initial: Item | null; onClose: () => void; onSave: (i
         {initial && <p className="text-xs text-faint">Quantities change only through Issue / Receive / Return, so the history stays accurate.</p>}
         <div className="flex items-center justify-between gap-2 pt-1">
           {onDelete ? <button type="button" className={cx(btnGhost(D), 'text-rose-400')} onClick={() => setDel(true)}><Trash2 className="w-3.5 h-3.5" />Delete</button> : <span />}
-          <div className="flex gap-2"><button type="button" onClick={onClose} className={btnGhost(D)}>Cancel</button><button type="submit" disabled={busy} className={amber}>{busy ? 'Saving…' : 'Save'}</button></div>
+          <div className="flex gap-2"><button type="button" onClick={onClose} className={btnGhost(D)}>Cancel</button><button type="submit" disabled={busy} className={primary}>{busy ? 'Saving…' : 'Save'}</button></div>
         </div>
       </form>
       {del && onDelete && <ConfirmModal dark={D} title={`Delete ${initial?.name}?`} body="The item, its location holdings and its whole history will be removed." confirmLabel="Delete" onConfirm={async () => { if (await onDelete()) onClose(); }} onClose={() => setDel(false)} />}
@@ -718,7 +718,7 @@ const MoveModal: React.FC<{ start: { itemId: string; type: MoveType }; onClose: 
           </div>
         )}
         {problem && <p role="alert" className="text-xs text-rose-400">{problem}</p>}
-        <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className={btnGhost(D)}>Cancel</button><button type="submit" disabled={!can || busy} className={amber}>{busy ? 'Saving…' : 'Record'}</button></div>
+        <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className={btnGhost(D)}>Cancel</button><button type="submit" disabled={!can || busy} className={primary}>{busy ? 'Saving…' : 'Record'}</button></div>
       </form>
     </Modal>
   );
@@ -775,7 +775,7 @@ const ImportModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       <textarea rows={9} autoFocus value={text} onChange={e => setText(e.target.value)} placeholder={'Cat6 Cable, 12, drum, Cables & Fiber, Warehouse A, 5\nWalkie Charger, 40, pcs, Radios & Comms'} className={cx(inputCls(D), 'font-mono text-xs')} />
       <div className="flex items-center justify-between mt-4">
         <span className="text-xs text-mute">{parsed.length} ready to import</span>
-        <div className="flex gap-2"><button className={btnGhost(D)} onClick={onClose}>Cancel</button><button className={amber} disabled={!parsed.length || busy} onClick={go}>{busy ? 'Importing…' : `Import ${parsed.length}`}</button></div>
+        <div className="flex gap-2"><button className={btnGhost(D)} onClick={onClose}>Cancel</button><button className={primary} disabled={!parsed.length || busy} onClick={go}>{busy ? 'Importing…' : `Import ${parsed.length}`}</button></div>
       </div>
     </Modal>
   );

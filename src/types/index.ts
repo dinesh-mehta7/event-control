@@ -5,6 +5,7 @@ export type SubDepartmentId =
   | 'control'
   | 'inventory'
   | 'purchase'
+  | 'accounts'
   | 'accommodation'
   | 'sewadars';
 
@@ -71,6 +72,8 @@ export interface WiFiAccessPoint {
   bandwidthUsageMbps: number;
   status: 'online' | 'offline' | 'high_latency';
   switchPort: string;
+  switchLocation: string;
+  portNumber: string;
   uptimeHours: number;
 }
 

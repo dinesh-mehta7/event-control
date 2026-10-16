@@ -8,6 +8,7 @@ import { useApp } from '../../context/AppContext';
 import { useManpower } from '../../modules/manpower';
 import { useInventory } from '../../modules/inventory';
 import { useEventScope } from '../../context/EventScopeContext';
+import { useAccommodation } from '../../modules/accommodation';
 import type { ControlRoom } from '../../types';
 
 // ── Shared style tokens ──────────────────────────────────────────────────────
@@ -134,8 +135,13 @@ export const ControlRoomsApp: React.FC = () => {
     addControlRoom, editControlRoom, deleteControlRoom } = useApp();
   const { sewadars } = useManpower();
   const inv = useInventory();
-  const { scopeFor } = useEventScope();
+  const eventScope = useEventScope();
+  const { scopeFor, setScopeFor } = eventScope;
   const eventId = scopeFor('control') || 'normal';
+  const accommodation = useAccommodation();
+  const eventRooms = accommodation.rooms.filter(room => room.category === 'control_room' && room.eventId === (eventId === 'normal' ? null : eventId));
+  const activeEventName = eventScope.events.find(event => event.id === eventId)?.name;
+  useEffect(() => { const accommodationEventId = eventId === 'normal' ? '' : eventId; if (scopeFor('accommodation') !== accommodationEventId) setScopeFor('accommodation', accommodationEventId); }, [eventId, scopeFor, setScopeFor]);
   const opsKey = `eitc_cr_ops:${eventId}`;
   const [savedOps, setSavedOps] = useState<{ key: string; value: Ops }>(() => {
     try { return { key: opsKey, value: JSON.parse(localStorage.getItem(opsKey) || (eventId === 'normal' ? localStorage.getItem('eitc_cr_ops') : null) || 'null') || EMPTY_OPS }; } catch { return { key: opsKey, value: EMPTY_OPS }; }
@@ -187,6 +193,11 @@ export const ControlRoomsApp: React.FC = () => {
           <Plus size={16} /> Add Room
         </button>
       </div>
+
+      {eventId !== 'normal' && <section className="space-y-3 rounded-xl border border-line bg-surface p-4">
+        <div><h3 className="text-sm font-semibold text-ink">Event control rooms · {activeEventName || 'Selected event'}</h3><p className="mt-1 text-xs text-mute">Rooms added under Event Planning → Requirement Management appear here. Rest rooms stay in Accommodation.</p></div>
+        {eventRooms.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{eventRooms.map(room => <article key={room.id} className="rounded-lg border border-line bg-raised/30 p-3"><div className="flex items-start justify-between gap-2"><div><h4 className="text-sm font-semibold text-ink">{room.name}</h4><p className="mt-1 text-xs text-mute">{room.block || 'Location not set'} · Capacity {room.capacity}{room.responsibleTeam ? ` · ${room.responsibleTeam}` : ''}</p></div><span className="rounded-full bg-blue-500/10 px-2 py-1 text-[10px] font-medium text-blue-300">Event room</span></div><div className="mt-3 border-t border-line pt-2">{room.requirements.length ? <ul className="space-y-1">{room.requirements.map((item,index)=><li key={`${item.name}-${index}`} className="flex justify-between gap-2 text-xs"><span className="text-ink-soft">{item.name}</span><span className="text-mute">{item.readyQuantity}/{item.quantity} ready</span></li>)}</ul> : <p className="text-xs text-mute">No necessities added yet.</p>}</div></article>)}</div> : <p className="rounded-lg border border-dashed border-line p-5 text-center text-xs text-mute">No control rooms added for this event yet.</p>}
+      </section>}
 
       {/* ── KPI strip ───────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-2">

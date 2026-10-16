@@ -3,6 +3,7 @@ export type MealStatus = 'scheduled' | 'preparing' | 'distributing' | 'distribut
 
 export interface Room {
   id: string;
+  eventId?: string | null;
   name: string;
   category: 'rest_room' | 'control_room';
   block: string;

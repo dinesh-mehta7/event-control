@@ -10,5 +10,5 @@ export const inr = (n: number) => '₹' + new Intl.NumberFormat('en-IN').format(
 
 export const DEPTS: Record<SubDepartmentId, string> = {
   cctv: 'CCTV', wifi: 'WiFi', walkie: 'Walkie-Talkie', control: 'Control Rooms',
-  inventory: 'Inventory', purchase: 'Purchase', accommodation: 'Accommodation', sewadars: 'Sewadars',
+  inventory: 'Inventory', purchase: 'Purchase', accounts: 'Accounts', accommodation: 'Accommodation', sewadars: 'Sewadars',
 };

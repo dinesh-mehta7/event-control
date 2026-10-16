@@ -1,7 +1,7 @@
 export type POStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'ordered' | 'partial' | 'received' | 'cancelled';
 export type VendorMode = 'online' | 'offline';
 
-export interface Vendor { id: string; name: string; vendorMode: VendorMode | null; contact: string; phone: string; email: string; address: string; notes: string }
+export interface Vendor { id: string; name: string; vendorMode: VendorMode | null; contact: string; phone: string; email: string; address: string; accountHolder: string; bankName: string; accountNumber: string; ifsc: string; bankBranch: string; upiId: string; notes: string }
 export interface POItem { id: string; inventoryItemId: string | null; name: string; unit: string; qtyOrdered: number; qtyReceived: number; rate: number; requestId: string | null; requestNumber: string }
 export interface PurchaseTracking { id: string; poId: string; purchaseItemId: string; marketplace: string; marketplaceOrderNumber: string; trackingNumber: string; courierSlug: string; status: string; subStatus: string; trackingUrl: string; estimatedDelivery: string; checkpoints: { checkpoint_time?: string; message?: string; location?: string; tag?: string }[]; updatedAt: string }
 export interface PO {
@@ -10,7 +10,7 @@ export interface PO {
 }
 // A delivery against an order line (goods received note).
 export interface Receipt { id: string; poId: string; itemId: string; qty: number; location: string; givenBy: string; receivedBy: string; challan: string; note: string; doneBy: string; doneAt: string }
-export interface Payment { id: string; poId: string; amount: number; mode: string; ref: string; paidBy: string; note: string; doneBy: string; doneAt: string }
+export interface Payment { id: string; poId: string; amount: number; mode: string; ref: string; paidBy: string; note: string; billPath: string; proofPath: string; doneBy: string; doneAt: string }
 
 export const STATUS: Record<POStatus, { label: string; tone: 'ok' | 'warn' | 'bad' | 'info' | 'mute' }> = {
   draft: { label: 'Draft', tone: 'mute' },

@@ -1130,7 +1130,6 @@ end $$;
 -- 4. Reload the API schema cache (this is what clears the charger_count error)
 notify pgrst, 'reload schema';
 
-
 -- ============================================================================
 -- Included from migration_v7_accommodation.sql
 -- ============================================================================
@@ -7902,3 +7901,326 @@ notify pgrst, 'reload schema';
 alter table public.meetings add column if not exists teams_online_meeting_id text;
 notify pgrst, 'reload schema';
 -- <<< END supabase/migration_v77_meeting_transcripts.sql <<<
+
+-- >>> BEGIN supabase/migration_v80_wifi_register_fields.sql >>>
+alter table public.wifi_access_points
+  add column if not exists switch_location text not null default '',
+  add column if not exists port_number text not null default '';
+alter table public.wifi_access_accounts
+  add column if not exists source text not null default '',
+  add column if not exists contact text not null default '',
+  add column if not exists device_model text not null default '';
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v80_wifi_register_fields.sql <<<
+
+
+-- ============================================================================
+-- Included from migration_v81_accounts_vendor_payment_docs.sql
+-- ============================================================================
+-- Add an Accounts department and secure offline vendor/payment records.
+alter table public.profiles drop constraint if exists profiles_sub_department_check;
+alter table public.profiles add constraint profiles_sub_department_check
+  check (sub_department is null or sub_department in ('cctv','wifi','walkie','control','inventory','purchase','accounts','accommodation','sewadars'));
+
+alter table public.profiles drop constraint if exists profiles_requested_sub_department_check;
+alter table public.profiles add constraint profiles_requested_sub_department_check
+  check (requested_sub_department is null or requested_sub_department in ('cctv','wifi','walkie','control','inventory','purchase','accounts','accommodation','sewadars'));
+
+alter table public.department_codes drop constraint if exists department_codes_sub_department_check;
+alter table public.department_codes add constraint department_codes_sub_department_check
+  check (sub_department in ('cctv','wifi','walkie','control','inventory','purchase','accounts','accommodation','sewadars'));
+
+create or replace function public.make_department_code(p_sub text)
+returns text language plpgsql security definer set search_path = public as $$
+declare prefix text; c text; tries int := 0;
+begin
+  prefix := case p_sub when 'cctv' then 'CCTV' when 'wifi' then 'WIFI' when 'walkie' then 'WALK'
+            when 'control' then 'CTRL' when 'inventory' then 'INVT' when 'purchase' then 'PURC'
+            when 'accounts' then 'ACCT' when 'accommodation' then 'ACCO' else 'MANP' end;
+  loop
+    c := prefix || '-' || upper(substr(md5(random()::text || clock_timestamp()::text || p_sub), 1, 6));
+    exit when not exists (select 1 from public.department_codes where code = c);
+    tries := tries + 1;
+    exit when tries > 20;
+  end loop;
+  return c;
+end $$;
+
+create or replace function public.ensure_department_codes(p_org text)
+returns void language plpgsql security definer set search_path = public as $$
+declare s text;
+begin
+  foreach s in array array['cctv','wifi','walkie','control','inventory','purchase','accounts','accommodation','sewadars'] loop
+    insert into public.department_codes (organization_id, sub_department, code)
+    values (p_org, s, public.make_department_code(s))
+    on conflict (organization_id, sub_department) do nothing;
+  end loop;
+end $$;
+
+insert into public.department_codes (organization_id, sub_department, code)
+select o.id, 'accounts', public.make_department_code('accounts')
+from public.organizations o
+on conflict (organization_id, sub_department) do nothing;
+
+-- Accounts can review order, vendor, and payment context, while write access
+-- remains with Purchase and the payment RPC below remains Accounts-only.
+create or replace function public.can_view_purchase()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select approved and is_active and (level in ('owner','dept_head') or sub_department in ('purchase','inventory','accounts'))
+                   from public.profiles where id = auth.uid()), false);
+$$;
+
+drop policy if exists "purchase_payment_requests_select" on public.purchase_payment_requests;
+create policy "purchase_payment_requests_select" on public.purchase_payment_requests for select
+  using (organization_id = public.current_organization_id() and (public.can_manage_purchase() or exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.approved and p.is_active and p.sub_department = 'accounts'
+  )));
+
+drop policy if exists "purchase_payments_select" on public.purchase_payments;
+create policy "purchase_payments_select" on public.purchase_payments for select
+  using (organization_id = public.current_organization_id() and (public.can_manage_purchase() or exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.approved and p.is_active and p.sub_department = 'accounts'
+  )));
+
+alter table public.purchase_vendors add column if not exists account_holder text not null default '';
+alter table public.purchase_vendors add column if not exists bank_name text not null default '';
+alter table public.purchase_vendors add column if not exists account_number text not null default '';
+alter table public.purchase_vendors add column if not exists ifsc_code text not null default '';
+alter table public.purchase_vendors add column if not exists bank_branch text not null default '';
+alter table public.purchase_vendors add column if not exists upi_id text not null default '';
+alter table public.purchase_vendors drop constraint if exists purchase_vendors_offline_bank_details_check;
+alter table public.purchase_vendors add constraint purchase_vendors_offline_bank_details_check check (
+  vendor_mode is distinct from 'offline' or (
+    length(trim(contact_person)) > 0 and length(trim(phone)) > 0 and length(trim(address)) > 0
+    and length(trim(account_holder)) > 0 and length(trim(bank_name)) > 0 and length(trim(account_number)) > 0
+    and length(trim(ifsc_code)) > 0 and length(trim(bank_branch)) > 0
+  )
+) not valid;
+
+alter table public.purchase_payments add column if not exists bill_path text;
+alter table public.purchase_payments add column if not exists proof_path text;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('purchase-payment-documents', 'purchase-payment-documents', false, 10485760, array['application/pdf','image/jpeg','image/png','image/webp'])
+on conflict (id) do update set public = false, file_size_limit = 10485760, allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "purchase_payment_docs_read" on storage.objects;
+create policy "purchase_payment_docs_read" on storage.objects for select to authenticated
+using (
+  bucket_id = 'purchase-payment-documents'
+  and exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.approved and p.is_active
+      and p.organization_id::text = (storage.foldername(name))[1]
+      and (p.level in ('owner','dept_head') or p.sub_department in ('purchase','accounts'))
+  )
+);
+drop policy if exists "purchase_payment_docs_accounts_insert" on storage.objects;
+create policy "purchase_payment_docs_accounts_insert" on storage.objects for insert to authenticated
+with check (
+  bucket_id = 'purchase-payment-documents'
+  and exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.approved and p.is_active and p.sub_department = 'accounts'
+      and p.organization_id::text = (storage.foldername(name))[1]
+  )
+);
+drop policy if exists "purchase_payment_docs_accounts_delete" on storage.objects;
+create policy "purchase_payment_docs_accounts_delete" on storage.objects for delete to authenticated
+using (
+  bucket_id = 'purchase-payment-documents'
+  and exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.approved and p.is_active and p.sub_department = 'accounts'
+      and p.organization_id::text = (storage.foldername(name))[1]
+  )
+);
+
+drop function if exists public.payment_request_pay(text, text, text, text, text);
+create or replace function public.payment_request_pay(
+  p_id text, p_mode text, p_ref text, p_paid_by text, p_note text, p_bill_path text default null, p_proof_path text default null
+)
+returns void language plpgsql security definer set search_path = public as $$
+declare me record; pr record; po record; pay_id text; org_prefix text;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active or me.level = 'owner' or me.sub_department is distinct from 'accounts' then
+    raise exception 'Only the Accounts team can make a payment.';
+  end if;
+  select * into pr from public.purchase_payment_requests where id = p_id for update;
+  if not found or pr.organization_id <> me.organization_id then raise exception 'Payment request not found.'; end if;
+  if pr.status <> 'approved' then raise exception 'This payment is not approved yet.'; end if;
+  org_prefix := me.organization_id::text || '/' || p_id || '/';
+  if (p_bill_path is not null and p_bill_path not like org_prefix || '%') or (p_proof_path is not null and p_proof_path not like org_prefix || '%') then
+    raise exception 'Payment attachments must belong to this organization and request.';
+  end if;
+  select * into po from public.purchase_orders where id = pr.po_id;
+  pay_id := 'pay-' || substr(md5(random()::text || clock_timestamp()::text), 1, 16);
+  perform set_config('app.pay_internal', '1', true);
+  insert into public.purchase_payments (id, organization_id, po_id, amount, mode, ref, paid_by, note, bill_path, proof_path)
+  values (pay_id, pr.organization_id, pr.po_id, pr.amount, coalesce(nullif(trim(p_mode), ''), 'bank'), trim(coalesce(p_ref, '')),
+          coalesce(nullif(trim(p_paid_by), ''), me.name), trim(coalesce(p_note, '')), p_bill_path, p_proof_path);
+  perform set_config('app.pay_internal', '', true);
+  update public.purchase_payment_requests set status = 'paid', payment_id = pay_id, paid_at = now() where id = p_id;
+  perform public._org_notify(pr.organization_id, 'owner', 'Payment made: ' || po.po_number, 'Rs ' || to_char(pr.amount, 'FM99,99,99,990.00') || ' paid by ' || me.name, 'info', 'requests/payments', pr.id);
+end $$;
+revoke all on function public.payment_request_pay(text, text, text, text, text, text, text) from public, anon;
+grant execute on function public.payment_request_pay(text, text, text, text, text, text, text) to authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ============================================================================
+-- Included from migration_v82_event_radio_collection_unit.sql
+-- ============================================================================
+-- Add a required collection source unit to the shared event radio request flow.
+alter table public.event_radio_requests
+  add column if not exists collect_from text not null default '';
+
+drop function if exists public.event_radio_request_submit(text, integer, integer, integer);
+create function public.event_radio_request_submit(
+  p_event_id text,
+  p_walkies integer,
+  p_chargers integer,
+  p_earphones integer,
+  p_collect_from text
+)
+returns text language plpgsql security definer set search_path = public as $$
+declare p public.profiles%rowtype; d public.departments%rowtype; ev public.event_plans%rowtype; rid text;
+begin
+  select * into p from public.profiles where id = auth.uid() and organization_id = public.current_organization_id() and is_active and approved;
+  if not found or p.role = 'Client' or p.level not in ('dept_head','sub_dept_head','owner') then raise exception 'Only department leads and admins can request event radios.'; end if;
+  if p.department_id is null and p.level <> 'owner' then raise exception 'Ask an admin to assign your department first.'; end if;
+  if p_walkies <= 0 or p_chargers < 0 or p_earphones < 0 then raise exception 'Enter valid whole-number quantities.'; end if;
+  if length(trim(coalesce(p_collect_from, ''))) = 0 then raise exception 'Choose the unit where these radios will be collected.'; end if;
+  if p.level = 'owner' and p.department_id is null then raise exception 'Select the department this request is for.'; end if;
+  select * into d from public.departments where id = p.department_id and organization_id = p.organization_id;
+  if not found then raise exception 'Your assigned department could not be found.'; end if;
+  select * into ev from public.event_plans where id = p_event_id and organization_id = p.organization_id and status <> 'cancelled';
+  if not found then raise exception 'Select an active event.'; end if;
+  rid := 'radio-' || gen_random_uuid()::text;
+  insert into public.event_radio_requests(id,organization_id,event_id,department_id,department_name,requester_id,requester_name,walkie_count,charger_count,earphone_count,collect_from)
+  values(rid,p.organization_id,p_event_id,d.id,d.name,p.id,p.name,p_walkies,p_chargers,p_earphones,trim(p_collect_from));
+  return rid;
+end $$;
+revoke all on function public.event_radio_request_submit(text,integer,integer,integer,text) from public, anon;
+grant execute on function public.event_radio_request_submit(text,integer,integer,integer,text) to authenticated;
+notify pgrst, 'reload schema';
+
+-- <<< BEGIN supabase/migration_v83_manpower_task_assignment_access.sql >>>
+create or replace function public.can_manage_manpower()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((
+    select approved and is_active
+      and (level in ('owner','dept_head') or sub_department in ('sewadars','accommodation'))
+    from public.profiles where id = auth.uid()
+  ), false);
+$$;
+notify pgrst, 'reload schema';
+create or replace function public.manpower_task_add_resource(p_task_id text, p_item_id text, p_location text, p_qty integer)
+returns text language plpgsql security definer set search_path = public as $$
+declare t public.manpower_tasks%rowtype; lead_name text; item_org text; location_org text; new_id text;
+begin
+  if not public.can_manage_manpower() then raise exception 'You cannot allocate task resources.'; end if;
+  if p_qty is null or p_qty < 1 then raise exception 'Enter a positive whole-number quantity.'; end if;
+  select * into t from public.manpower_tasks where id=p_task_id and organization_id=public.current_organization_id() for update;
+  if not found then raise exception 'Task not found.'; end if;
+  if t.status='complete' then raise exception 'Resources cannot be added after the task is complete.'; end if;
+  select lead into lead_name from public.manpower_teams where organization_id=t.organization_id and lower(trim(name))=lower(trim(t.team));
+  if coalesce(trim(lead_name),'')='' then
+    select m.name into lead_name from public.manpower_task_members tm join public.accommodation_members m on m.id=tm.member_id
+    where tm.organization_id=t.organization_id and tm.task_id=t.id order by tm.created_at asc limit 1;
+  end if;
+  lead_name := coalesce(nullif(trim(lead_name),''), nullif(trim(t.assigned_to),''));
+  if coalesce(trim(lead_name),'')='' then raise exception 'Assign a team lead, Sewadar, or task owner before allocating resources.'; end if;
+  select organization_id into item_org from public.inventory_items where id=p_item_id;
+  if item_org is distinct from t.organization_id then raise exception 'Choose an inventory item from this organization.'; end if;
+  select organization_id into location_org from public.inventory_locations where id=p_location;
+  if location_org is distinct from t.organization_id then raise exception 'Choose a valid inventory location.'; end if;
+  new_id := 'task-resource-' || gen_random_uuid()::text;
+  insert into public.manpower_task_resources(id,organization_id,task_id,item_id,location,qty,team_leader,created_by)
+  values(new_id,t.organization_id,t.id,p_item_id,p_location,p_qty,lead_name,auth.uid());
+  return new_id;
+end $$;
+revoke all on function public.manpower_task_add_resource(text,text,text,integer) from public;
+grant execute on function public.manpower_task_add_resource(text,text,text,integer) to authenticated;
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v83_manpower_task_assignment_access.sql >>>
+-- >>> BEGIN supabase/migration_v84_task_team_links.sql >>>
+-- Persist task-to-team assignment as a real team relation while keeping the
+-- legacy team label readable by older clients.
+alter table public.manpower_tasks
+  add column if not exists team_id text;
+
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.manpower_tasks'::regclass
+      and conname = 'manpower_tasks_team_id_fkey'
+  ) then
+    alter table public.manpower_tasks
+      add constraint manpower_tasks_team_id_fkey
+      foreign key (team_id) references public.manpower_teams(id) on delete set null;
+  end if;
+end $$;
+
+create index if not exists manpower_tasks_team_id_idx
+  on public.manpower_tasks (organization_id, team_id)
+  where team_id is not null;
+
+-- This is a controlled schema backfill; the app's row-level task guard should
+-- not block linking legacy assignments owned by other users.
+do $$ begin
+  execute 'alter table public.manpower_tasks disable trigger manpower_tasks_guard';
+  begin
+    update public.manpower_tasks task
+    set team_id = team.id,
+        team = team.name
+    from public.manpower_teams team
+    where task.organization_id = team.organization_id
+      and task.team_id is null
+      and lower(trim(coalesce(task.team, ''))) = lower(trim(team.name));
+  exception when others then
+    execute 'alter table public.manpower_tasks enable trigger manpower_tasks_guard';
+    raise;
+  end;
+  execute 'alter table public.manpower_tasks enable trigger manpower_tasks_guard';
+end $$;
+
+create or replace function public.sync_manpower_task_team_link()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare linked_id text; linked_name text;
+begin
+  if new.team_id is not null then
+    select team.id, team.name into linked_id, linked_name
+    from public.manpower_teams team
+    where team.id = new.team_id and team.organization_id = new.organization_id;
+    if linked_id is null then
+      raise exception 'Choose a team from this organization.';
+    end if;
+    new.team_id := linked_id;
+    new.team := linked_name;
+  elsif coalesce(trim(new.team), '') <> '' then
+    select team.id, team.name into linked_id, linked_name
+    from public.manpower_teams team
+    where team.organization_id = new.organization_id
+      and lower(trim(team.name)) = lower(trim(new.team))
+    limit 1;
+    if linked_id is not null then
+      new.team_id := linked_id;
+      new.team := linked_name;
+    end if;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists manpower_tasks_sync_team_link on public.manpower_tasks;
+create trigger manpower_tasks_sync_team_link
+before insert or update on public.manpower_tasks
+for each row execute function public.sync_manpower_task_team_link();
+
+notify pgrst, 'reload schema';
+-- <<< END supabase/migration_v84_task_team_links.sql >>>

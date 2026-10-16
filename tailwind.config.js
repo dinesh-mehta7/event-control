@@ -89,16 +89,16 @@ module.exports = {
   theme: {
     extend: {
       colors: { ...hueColors, slate, ...tokenColors },
-      // Compact, premium type scale (was 12/14/16/18/24px). Everything using text-xs..text-4xl shrinks together.
+      // Compact global type scale. Keep a clear hierarchy without oversized body text.
       fontSize: {
-        xs:   ['0.6875rem', { lineHeight: '1rem' }],      // 11px
-        sm:   ['0.78125rem', { lineHeight: '1.15rem' }],  // 12.5px
-        base: ['0.84375rem', { lineHeight: '1.3rem' }],   // 13.5px
-        lg:   ['0.9375rem', { lineHeight: '1.35rem' }],   // 15px
-        xl:   ['1.0625rem', { lineHeight: '1.5rem' }],    // 17px
-        '2xl':['1.25rem',   { lineHeight: '1.6rem', letterSpacing: '-0.015em' }], // 20px
-        '3xl':['1.5rem',    { lineHeight: '1.9rem', letterSpacing: '-0.02em' }],  // 24px
-        '4xl':['1.75rem',   { lineHeight: '2.1rem', letterSpacing: '-0.02em' }],  // 28px
+        xs:   ['0.625rem',  { lineHeight: '0.875rem' }], // 10px
+        sm:   ['0.71875rem',{ lineHeight: '1rem' }],     // 11.5px
+        base: ['0.78125rem',{ lineHeight: '1.125rem' }], // 12.5px
+        lg:   ['0.875rem',  { lineHeight: '1.25rem' }],  // 14px
+        xl:   ['1rem',      { lineHeight: '1.375rem' }], // 16px
+        '2xl':['1.125rem',  { lineHeight: '1.5rem', letterSpacing: '-0.015em' }], // 18px
+        '3xl':['1.3125rem', { lineHeight: '1.75rem', letterSpacing: '-0.02em' }],  // 21px
+        '4xl':['1.5rem',    { lineHeight: '2rem', letterSpacing: '-0.02em' }],     // 24px
       },
       fontFamily: {
         sans: ['Inter', '"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],

@@ -5,7 +5,7 @@ import { todayStr } from '../accommodation/dates';
 import { INCOMING, PAYABLE, poDue } from './types';
 import type { PO, POItem, POStatus, Payment, PaymentRequest, PayReqStatus, PurchaseTracking, Receipt, Vendor, VendorMode } from './types';
 
-const mapVendor = (r: any): Vendor => ({ id: r.id, name: r.name, vendorMode: r.vendor_mode || null, contact: r.contact_person || '', phone: r.phone || '', email: r.email || '', address: r.address || '', notes: r.notes || '' });
+const mapVendor = (r: any): Vendor => ({ id: r.id, name: r.name, vendorMode: r.vendor_mode || null, contact: r.contact_person || '', phone: r.phone || '', email: r.email || '', address: r.address || '', accountHolder: r.account_holder || '', bankName: r.bank_name || '', accountNumber: r.account_number || '', ifsc: r.ifsc_code || '', bankBranch: r.bank_branch || '', upiId: r.upi_id || '', notes: r.notes || '' });
 const mapItem = (r: any): POItem => ({ id: r.id, inventoryItemId: r.inventory_item_id || null, name: r.name, unit: r.unit || 'pcs', qtyOrdered: r.qty_ordered, qtyReceived: r.qty_received, requestId: r.request_id || null, requestNumber: r.request_number || '', rate: Number(r.rate) || 0 });
 const mapPO = (r: any, items: POItem[]): PO => ({
   id: r.id, number: r.po_number || '', vendorId: r.vendor_id || null, vendorMode: r.vendor_mode || null, title: r.title, requestedBy: r.requested_by || '', deliverTo: r.deliver_to || '',
@@ -17,7 +17,7 @@ const mapPayReq = (r: any): PaymentRequest => ({
   requestedAt: r.requested_at, decidedBy: r.decided_by || '', decidedAt: r.decided_at || '', decisionNote: r.decision_note || '', paymentId: r.payment_id || null, paidAt: r.paid_at || '',
 });
 const mapReceipt = (r: any): Receipt => ({ id: r.id, poId: r.po_id, itemId: r.item_id, qty: r.qty, location: r.location || '', givenBy: r.given_by || '', receivedBy: r.received_by || '', challan: r.challan || '', note: r.note || '', doneBy: r.done_by || '', doneAt: r.done_at });
-const mapPayment = (r: any): Payment => ({ id: r.id, poId: r.po_id, amount: Number(r.amount) || 0, mode: r.mode || '', ref: r.ref || '', paidBy: r.paid_by || '', note: r.note || '', doneBy: r.done_by || '', doneAt: r.done_at });
+const mapPayment = (r: any): Payment => ({ id: r.id, poId: r.po_id, amount: Number(r.amount) || 0, mode: r.mode || '', ref: r.ref || '', paidBy: r.paid_by || '', note: r.note || '', billPath: r.bill_path || '', proofPath: r.proof_path || '', doneBy: r.done_by || '', doneAt: r.done_at });
 const mapTracking = (r: any): PurchaseTracking => ({ id: r.id, poId: r.po_id, purchaseItemId: r.purchase_item_id, marketplace: r.marketplace, marketplaceOrderNumber: r.marketplace_order_number || '', trackingNumber: r.tracking_number, courierSlug: r.courier_slug || '', status: r.status || 'Pending', subStatus: r.sub_status || '', trackingUrl: r.tracking_url || '', estimatedDelivery: r.estimated_delivery || '', checkpoints: Array.isArray(r.checkpoints) ? r.checkpoints : [], updatedAt: r.updated_at });
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -30,20 +30,21 @@ const friendlyError = (error: any): string => {
   if (error?.code === '23505' || /duplicate key/i.test(msg)) return 'That name already exists.';
   if (/vendor_mode.*purchase_orders|purchase_orders.*vendor_mode/i.test(msg)) return `${msg} — run supabase/migration_v51_vendor_order_mode.sql after v50, then reload.`;
   if (/vendor_mode.*purchase_vendors|purchase_vendors.*vendor_mode/i.test(msg)) return `${msg} — run supabase/migration_v52_vendor_categories.sql after the purchase schema is installed, then reload.`;
+  if (/account_holder|account_number|ifsc_code|bank_branch|bill_path|proof_path|payment_request_pay/i.test(msg)) return `${msg} — run supabase/migration_v81_accounts_vendor_payment_docs.sql, then reload the schema.`;
   if (/schema cache|does not exist|could not find/i.test(msg)) return `${msg} — check that this project's required Supabase migrations are applied, then reload the schema.`;
   return msg;
 };
 
-export interface VendorInput { name: string; vendorMode: VendorMode | ''; contact: string; phone: string; email: string; address: string; notes: string }
+export interface VendorInput { name: string; vendorMode: VendorMode | ''; contact: string; phone: string; email: string; address: string; accountHolder: string; bankName: string; accountNumber: string; ifsc: string; bankBranch: string; upiId: string; notes: string }
 // What can still be edited on an order: the vendor, the date, a note and the rate of every line. Lines come from requests.
 export interface DraftInput { vendorId: string; vendorMode: VendorMode | ''; expectedDate: string; notes: string; miscAmount: number; rates: Record<string, number> }
 export interface ReceiveMeta { location: string; givenBy: string; receivedBy: string; challan: string; note: string }
-export interface PayInput { mode: string; ref: string; paidBy: string; note: string }
+export interface PayInput { mode: string; ref: string; paidBy: string; note: string; billPath?: string; proofPath?: string }
 export interface PStats { awaiting: number; open: number; toReceive: number; overdue: number; due: number; orders: number }
 
 interface Ctx {
   vendors: Vendor[]; orders: PO[]; payRequests: PaymentRequest[]; trackings: PurchaseTracking[]; loading: boolean; loadError: string; stats: PStats; userName: string;
-  canManage: boolean; canReceive: boolean;
+  canManage: boolean; canReceive: boolean; canPay: boolean;
   vendorName: (id: string | null) => string;
   addVendor: (v: VendorInput) => Promise<boolean>;
   updateVendor: (id: string, v: VendorInput) => Promise<boolean>;
@@ -71,6 +72,7 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const ready = !!user && user.approved !== false && user.isActive !== false && !!orgId;
   const exec = ready && (user.level === 'owner' || user.level === 'dept_head');
   const canManage = exec || (ready && user.subDepartment === 'purchase');
+  const canPay = ready && user.level !== 'owner' && user.subDepartment === 'accounts';
   const canReceive = canManage || (ready && user.subDepartment === 'inventory');
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -100,7 +102,7 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!ready) return;
     setLoading(true);
     const [v, o, i, tr] = await Promise.all([fetchAll('purchase_vendors', 'created_at'), fetchAll('purchase_orders', 'created_at'), fetchAll('purchase_items', 'position'), fetchAll('purchase_trackings', 'updated_at')]);
-    const pr = canManage ? await fetchAll('purchase_payment_requests', 'requested_at') : { data: [] as any[], error: null };
+    const pr = canManage || canPay ? await fetchAll('purchase_payment_requests', 'requested_at') : { data: [] as any[], error: null };
     const err = v.error || o.error || i.error;
     if (err) setLoadError(friendlyError(err));
     else {
@@ -113,7 +115,7 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setPayRequests(pr.error ? [] : pr.data.map(mapPayReq).sort((a: PaymentRequest, b: PaymentRequest) => (a.requestedAt < b.requestedAt ? 1 : -1)));
     }
     setLoading(false);
-  }, [ready, canManage]);
+  }, [ready, canManage, canPay]);
 
   useEffect(() => { if (!ready) { setVendors([]); setOrders([]); setPayRequests([]); setTrackings([]); setLoadError(''); return; } load(); }, [ready, orgId, canManage]); // eslint-disable-line
 
@@ -138,11 +140,13 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const vendorName = useCallback((id: string | null) => (id ? vendors.find(v => v.id === id)?.name || 'Removed vendor' : '—'), [vendors]);
 
   // ---- vendors --------------------------------------------------------------
-  const vbody = (v: VendorInput) => ({ name: v.name.trim(), vendor_mode: v.vendorMode || null, contact_person: v.contact.trim(), phone: v.phone.trim(), email: v.email.trim(), address: v.address.trim(), notes: v.notes.trim() });
+  const vbody = (v: VendorInput) => ({ name: v.name.trim(), vendor_mode: v.vendorMode || null, contact_person: v.contact.trim(), phone: v.phone.trim(), email: v.email.trim(), address: v.address.trim(), account_holder: v.accountHolder.trim(), bank_name: v.bankName.trim(), account_number: v.accountNumber.trim(), ifsc_code: v.ifsc.trim().toUpperCase(), bank_branch: v.bankBranch.trim(), upi_id: v.upiId.trim(), notes: v.notes.trim() });
+  const offlineVendorComplete = (v: VendorInput) => v.vendorMode !== 'offline' || [v.contact, v.phone, v.address, v.accountHolder, v.bankName, v.accountNumber, v.ifsc, v.bankBranch].every(value => value.trim());
   const addVendor: Ctx['addVendor'] = async (v) => {
     if (!canManage) return deny();
     if (!v.name.trim()) { toast('Vendor name is required.', 'error'); return false; }
     if (!v.vendorMode) { toast('Choose whether this vendor is Online or Offline.', 'error'); return false; }
+    if (!offlineVendorComplete(v)) { toast('Complete the offline vendor contact, address, and bank account details.', 'error'); return false; }
     const { error } = await supabase.from('purchase_vendors').insert({ id: uid('ven'), organization_id: orgId, ...vbody(v) });
     if (error) { toast(error.code === '23505' ? 'A vendor with that name already exists.' : friendlyError(error), 'error'); return false; }
     await load(); toast(`${v.name.trim()} added.`);
@@ -152,6 +156,7 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!canManage) return deny();
     if (!v.name.trim()) { toast('Vendor name is required.', 'error'); return false; }
     if (!v.vendorMode) { toast('Choose whether this vendor is Online or Offline.', 'error'); return false; }
+    if (!offlineVendorComplete(v)) { toast('Complete the offline vendor contact, address, and bank account details.', 'error'); return false; }
     const { error } = await supabase.from('purchase_vendors').update(vbody(v)).eq('id', id);
     if (error) { toast(error.code === '23505' ? 'A vendor with that name already exists.' : friendlyError(error), 'error'); return false; }
     await load(); toast('Saved.');
@@ -282,8 +287,8 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return true;
   };
   const payNow: Ctx['payNow'] = async (id, p) => {
-    if (!canManage) return deny();
-    const { error } = await supabase.rpc('payment_request_pay', { p_id: id, p_mode: p.mode, p_ref: p.ref.trim(), p_paid_by: p.paidBy.trim(), p_note: p.note.trim() });
+    if (!canPay) { toast('Only the Accounts team can record payments.', 'error'); return false; }
+    const { error } = await supabase.rpc('payment_request_pay', { p_id: id, p_mode: p.mode, p_ref: p.ref.trim(), p_paid_by: p.paidBy.trim(), p_note: p.note.trim(), p_bill_path: p.billPath || null, p_proof_path: p.proofPath || null });
     if (error) { toast(friendlyError(error), 'error'); return false; }
     await load(); log('Purchase Payment', `${user.name} recorded a payment`, 'info'); toast('Payment recorded.');
     return true;
@@ -323,6 +328,6 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return s;
   }, [orders]);
 
-  const value: Ctx = { vendors, orders, payRequests, trackings, loading, loadError, stats, userName: user?.name || '', canManage, canReceive, vendorName, addVendor, updateVendor, deleteVendor, createOrder, saveDraft, setStatus, deleteOrder, receive, registerTracking, askPayment, payNow, withdrawPayment, fetchReceipts, fetchPayments, refresh: load };
+  const value: Ctx = { vendors, orders, payRequests, trackings, loading, loadError, stats, userName: user?.name || '', canManage, canReceive, canPay, vendorName, addVendor, updateVendor, deleteVendor, createOrder, saveDraft, setStatus, deleteOrder, receive, registerTracking, askPayment, payNow, withdrawPayment, fetchReceipts, fetchPayments, refresh: load };
   return <C.Provider value={value}>{children}</C.Provider>;
 };

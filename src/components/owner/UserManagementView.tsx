@@ -32,7 +32,7 @@ const MemberRow: React.FC<{ m: Member; canEdit: boolean }> = ({ m, canEdit }) =>
       <td className="px-4 py-2.5"><Pill c={LEVEL_TONE[m.level] || LEVEL_TONE.other}>{LEVEL_LABEL[m.level] || m.level}</Pill></td>
       <td className="px-4 py-2.5">{!m.approved ? <Pill c="bg-amber-500/15 text-amber-300">Waiting</Pill> : m.isActive ? <Pill c="bg-emerald-500/15 text-emerald-300">Active</Pill> : <Pill c="bg-red-500/15 text-red-300">Disabled</Pill>}</td>
       <td className="px-4 py-2.5 text-right">
-        {canEdit && m.level !== 'owner' && m.approved && !edit && <button className="text-xs font-medium text-blue-400 hover:underline" onClick={() => setEdit(true)}>Change role</button>}
+        {canEdit && m.level !== 'owner' && m.approved && !edit && <button type="button" className={btnGhost + ' !px-2.5 !py-1.5 !text-xs text-blue-300 hover:text-blue-200'} onClick={() => setEdit(true)}>Change role</button>}
         {edit && (
           <div className="flex flex-wrap items-center justify-end gap-2">
             <select className={inputCls + ' !w-44'} aria-label="Role" value={level} onChange={e => setLevel(e.target.value as GrantLevel)}>

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, ClipboardList, Download, Edit3, ExternalLink, FileSpreadsheet, History, Laptop, ListTodo, LoaderCircle, Package, Phone, PhoneCall, Play, Plus, Radio, Search, Smartphone, Tablet, Trash2, Upload, Users, UserPlus, UserMinus } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, ClipboardList, Download, Edit3, ExternalLink, FileSpreadsheet, History, Laptop, ListTodo, LoaderCircle, Package, Phone, PhoneCall, Play, Plus, Radio, Search, Smartphone, Tablet, Trash2, Upload, Users, UserPlus, UserMinus, CalendarDays } from 'lucide-react';
 import { useWalkie } from '../walkie';
 import { supabase } from '../walkie/lib/supabaseClient';
 import { DEPT_LABEL, DEPT_OPTIONS } from '../accommodation/types';
@@ -23,10 +24,23 @@ const TONE: Record<string, string> = {
 };
 const DEVICE_ICON: Record<DeviceType, any> = { none: null, walkie: Radio, phone: Smartphone, laptop: Laptop, tablet: Tablet, other: Package };
 const clock = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : '');
+const taskDateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+const excelDate = (value: unknown): Date | '' => {
+  if (!value) return '';
+  const raw = String(value);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? new Date(Number(raw.slice(0, 4)), Number(raw.slice(5, 7)) - 1, Number(raw.slice(8, 10)))
+    : new Date(raw);
+  return Number.isNaN(date.getTime()) ? '' : date;
+};
+const displayTaskDate = (value: unknown) => {
+  const date = excelDate(value);
+  return date ? date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Not scheduled';
+};
 
 type Stage = 'all' | 'toCall' | 'awaiting' | 'arrived' | 'badge' | 'notComing' | 'overdue';
 type MemberSection = 'general' | 'calling';
-type TaskFilter = 'all' | 'active' | 'completed';
+type TaskFilter = 'all' | 'pending' | 'today' | 'upcoming' | 'overdue' | 'completed';
 const inStage = (s: Sewadar, st: Stage) => {
   switch (st) {
     case 'toCall': return s.arrival === 'pending' && s.callCount === 0;
@@ -68,6 +82,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
   }, [initialSection]);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDetails, setTaskDetails] = useState('');
+  const [taskChecklist, setTaskChecklist] = useState('');
   const [taskTeam, setTaskTeam] = useState('');
   const [taskAssignee, setTaskAssignee] = useState('');
   const [taskMembers, setTaskMembers] = useState<string[]>([]);
@@ -84,6 +99,12 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
   const [teamMemberSelection, setTeamMemberSelection] = useState<string[]>([]);
   const [teamMemberQuery, setTeamMemberQuery] = useState('');
   const [taskDue, setTaskDue] = useState('');
+  const [taskDepartment, setTaskDepartment] = useState('');
+  const [taskEventId, setTaskEventId] = useState('');
+  const [taskEventFilter, setTaskEventFilter] = useState('all');
+  const [taskDepartmentFilter, setTaskDepartmentFilter] = useState('all');
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [taskSelectedDate, setTaskSelectedDate] = useState(() => taskDateKey(new Date()));
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<any | null>(null);
@@ -112,7 +133,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
   const [arrivalDrafts, setArrivalDrafts] = useState<Record<string, { date: string; period: ArrivalTimeOfDay }>>({});
   const [importing, setImporting] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
-  useEffect(() => setArrivalDrafts({}), [scopedEventId]);
+  useEffect(() => { setArrivalDrafts({}); if (scopedEventId) setTaskEventId(scopedEventId); }, [scopedEventId]);
   const [arrivalClock, setArrivalClock] = useState(0);
   useEffect(() => {
     const timer = window.setInterval(() => setArrivalClock(value => value + 1), 60_000);
@@ -121,7 +142,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
 
   const rosterBase = workspace === 'permanent' ? sewadars.filter(s => s.memberType === 'salary_based') : sewadars.filter(s => s.memberType !== 'salary_based' && (workspace !== 'members' || memberSection !== 'calling' || !callingEvent || callingEvent.event_type === 'annual' || !callingEvent.event_type || (callingEvent.event_type === 'monthly' && s.memberType === 'monthly') || (callingEvent.event_type === 'special' && (callingEvent.special_member_ids || []).includes(s.id))));
   const isRosterWorkspace = workspace === 'members' || workspace === 'permanent';
-  const showExpectedArrival = workspace !== 'permanent';
+  const showExpectedArrival = workspace === 'members' && memberSection === 'calling';
   const rows = useMemo(() => {
     const t = q.trim().toLowerCase();
     return rosterBase.filter(s => inStage(s, stage)
@@ -146,10 +167,92 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
   const eligibleTeamMembers = activeTeam ? sewadars.filter(person => person.arrival === 'arrived' && isFreeForAssignment(person) && (!teamLeaderNames.has(normalizeName(person.name)) || normalizeName(activeTeam.lead) === normalizeName(person.name)) && !(person.teams || []).some(name => name.toLowerCase() === activeTeam.name.toLowerCase())) : [];
   const visibleTeamMembers = eligibleTeamMembers.filter(person => person.name.toLowerCase().includes(teamMemberQuery.trim().toLowerCase()));
   const unassignedSewadars = sewadars.filter(s => s.arrival === 'arrived' && !teamLeaderNames.has(normalizeName(s.name)) && !(s.teams || []).length);
-  const activeTaskCount = tasks.filter(t => t.status !== 'complete').length;
-  const completedTaskCount = tasks.filter(t => t.status === 'complete').length;
   const priorityRank: Record<string, number> = { immediately: 0, till_time: 1, as_you_have_time: 2 };
-  const visibleTasks = tasks.filter(t => taskFilter === 'all' || (taskFilter === 'active' ? t.status !== 'complete' : t.status === 'complete')).sort((a, b) => Number(a.status === 'complete') - Number(b.status === 'complete') || (priorityRank[a.priority_level] ?? 2) - (priorityRank[b.priority_level] ?? 2) || String(a.priority_until || '').localeCompare(String(b.priority_until || '')) || String(b.created_at).localeCompare(String(a.created_at)));
+  const scopedTasks = tasks.filter(task => (taskEventFilter === 'all' || task.event_id === taskEventFilter) && (taskDepartmentFilter === 'all' || (taskDepartmentFilter === 'none' ? !task.department_id : task.department_id === taskDepartmentFilter)));
+  const todayTaskKey = taskDateKey(new Date());
+  const pendingTaskCount = scopedTasks.filter(t => t.status !== 'complete').length;
+  const todayTaskCount = scopedTasks.filter(t => t.status !== 'complete' && String(t.due_date || '').slice(0, 10) === todayTaskKey).length;
+  const upcomingTaskCount = scopedTasks.filter(t => t.status !== 'complete' && String(t.due_date || '').slice(0, 10) > todayTaskKey).length;
+  const overdueTaskCount = scopedTasks.filter(t => t.status !== 'complete' && !!t.due_date && String(t.due_date).slice(0, 10) < todayTaskKey).length;
+  const completedTaskCount = scopedTasks.filter(t => t.status === 'complete').length;
+  const visibleTasks = scopedTasks.filter(t => {
+    const due = String(t.due_date || '').slice(0, 10);
+    if (taskFilter === 'pending') return t.status !== 'complete';
+    if (taskFilter === 'today') return t.status !== 'complete' && due === todayTaskKey;
+    if (taskFilter === 'upcoming') return t.status !== 'complete' && due > todayTaskKey;
+    if (taskFilter === 'overdue') return t.status !== 'complete' && !!due && due < todayTaskKey;
+    if (taskFilter === 'completed') return t.status === 'complete';
+    return true;
+  }).sort((a, b) => Number(a.status === 'complete') - Number(b.status === 'complete') || (priorityRank[a.priority_level] ?? 2) - (priorityRank[b.priority_level] ?? 2) || String(a.priority_until || '').localeCompare(String(b.priority_until || '')) || String(a.due_date || '9999').localeCompare(String(b.due_date || '9999')) || String(b.created_at).localeCompare(String(a.created_at)));
+  const calendarDates = useMemo(() => {
+    const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+    const mondayOffset = (first.getDay() + 6) % 7;
+    const cellCount = Math.ceil((mondayOffset + new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate()) / 7) * 7;
+    return Array.from({ length: cellCount }, (_, index) => new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), index - mondayOffset + 1));
+  }, [calendarMonth]);
+  const calendarTasks = useMemo(() => scopedTasks.filter(task => task.due_date), [scopedTasks]);
+  const selectedDayTasks = scopedTasks.filter(task => String(task.due_date || '').slice(0, 10) === taskSelectedDate);
+  const startTaskCreation = (date = '') => {
+    setTaskTitle(''); setTaskDetails(''); setTaskChecklist(''); setTaskTeam(''); setTaskAssignee(''); setTaskMembers([]);
+    setTaskDue(date); setTaskPriority('as_you_have_time'); setTaskPriorityUntil('');
+    setTaskEventId(taskEventFilter !== 'all' ? taskEventFilter : scopedEventId || '');
+    setTaskDepartment(taskDepartmentFilter !== 'all' && taskDepartmentFilter !== 'none' ? taskDepartmentFilter : '');
+    setTaskMemberQuery(''); setTaskPickerOpen(false); setTaskDialogOpen(true);
+  };
+  const exportTasksToExcel = () => {
+    const workbook = XLSX.utils.book_new();
+    const taskRows = visibleTasks.map(task => ({
+      'Task ID': task.id,
+      Task: task.title,
+      'Task type': task.parent_task_id ? 'Checklist step' : 'Task',
+      'Parent task': scopedTasks.find(parent => parent.id === task.parent_task_id)?.title || '',
+      Event: eventScope.events.find(event => event.id === task.event_id)?.name || 'General',
+      Department: DEPT_LABEL[task.department_id] || task.department_id || '',
+      Team: task.team || '',
+      'Team ID': task.team_id || '',
+      'Team lead': teamGroups.find(team => normalizeName(team.name) === normalizeName(task.team || ''))?.lead || '',
+      'Assigned Sewadars': (task.sewadar_names || []).join(', '),
+      Owner: task.assigned_to || '',
+      Status: String(task.status || '').replace('_', ' '),
+      Priority: task.priority_level === 'immediately' ? 'Immediate' : task.priority_level === 'till_time' ? 'Due by time' : 'As time allows',
+      'Priority deadline': excelDate(task.priority_until),
+      'Due date': excelDate(task.due_date),
+      Details: task.details || '',
+      Resources: resourcesForTask(task.id).map(resource => `${resource.inventory_items?.name || 'Item'} × ${resource.qty}`).join('; '),
+      Created: excelDate(task.created_at),
+    }));
+    const resourceRows = visibleTasks.flatMap(task => resourcesForTask(task.id).map(resource => ({
+      Task: task.title,
+      Team: task.team || '',
+      'Team lead': resource.team_leader || '',
+      Resource: resource.inventory_items?.name || resource.item_id,
+      Quantity: resource.qty,
+      Location: inventory.locationLabel(resource.location),
+      'Received by': resource.received_by || '',
+      'Received at': resource.received_at || '',
+      'Returned good': resource.returned_good_qty || 0,
+      'Returned damaged': resource.returned_damaged_qty || 0,
+      'Return status': resource.returned_at ? 'Returned' : resource.received_at ? 'Return pending' : 'Awaiting receipt',
+    })));
+    const taskSheet = XLSX.utils.json_to_sheet(taskRows.length ? taskRows : [{ Note: 'No tasks match the current filters.' }]);
+    taskSheet['!cols'] = [{ wch: 25 }, { wch: 34 }, { wch: 16 }, { wch: 28 }, { wch: 24 }, { wch: 20 }, { wch: 24 }, { wch: 32 }, { wch: 28 }, { wch: 32 }, { wch: 24 }, { wch: 16 }, { wch: 18 }, { wch: 22 }, { wch: 16 }, { wch: 48 }, { wch: 42 }, { wch: 20 }];
+    taskSheet['!autofilter'] = { ref: taskSheet['!ref'] || 'A1' };
+    const taskHeader = taskRows.length ? Object.keys(taskRows[0]) : [];
+    ['Priority deadline', 'Due date', 'Created'].forEach(name => {
+      const col = taskHeader.indexOf(name);
+      const range = XLSX.utils.decode_range(taskSheet['!ref'] || 'A1');
+      for (let row = 1; row <= range.e.r; row += 1) {
+        const cell = taskSheet[XLSX.utils.encode_cell({ r: row, c: col })];
+        if (cell && cell.v !== '') cell.z = name === 'Due date' ? 'dd-mmm-yyyy' : 'dd-mmm-yyyy hh:mm';
+      }
+    });
+    const resourceSheet = XLSX.utils.json_to_sheet(resourceRows.length ? resourceRows : [{ Note: 'No resources allocated to matching tasks.' }]);
+    resourceSheet['!cols'] = [{ wch: 32 }, { wch: 24 }, { wch: 24 }, { wch: 28 }, { wch: 12 }, { wch: 24 }, { wch: 24 }, { wch: 22 }, { wch: 16 }, { wch: 18 }, { wch: 20 }];
+    resourceSheet['!autofilter'] = { ref: resourceSheet['!ref'] || 'A1' };
+    XLSX.utils.book_append_sheet(workbook, taskSheet, 'Tasks');
+    XLSX.utils.book_append_sheet(workbook, resourceSheet, 'Task resources');
+    XLSX.writeFile(workbook, `task-register-${taskDateKey(new Date())}.xlsx`);
+  };
   const resourcesForTask = (taskId: string) => taskResourceRows.filter(resource => resource.task_id === taskId);
   const canHandleTaskResources = (task: any) => canManage || !!teamGroups.find(team => normalizeName(team.name) === normalizeName(task.team || '') && normalizeName(team.lead) === normalizeName(auth.currentUser?.name || ''));
   const reloadTaskResources = async () => {
@@ -191,8 +294,8 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
     e.preventDefault();
     if (!taskTitle.trim() || !orgId) return;
     if (taskPriority === 'till_time' && !taskPriorityUntil) { auth.addToast?.('Specify the time for this task priority.', 'error'); return; }
-    const selectedTeam = availableTeams.find(team => team.name === taskTeam);
-    if (taskTeam && !selectedTeam) { auth.addToast?.('That team or its leader is already assigned to an active task.', 'error'); return; }
+    const selectedTeam = teamGroups.find(team => team.name === taskTeam);
+    if (taskTeam && !selectedTeam) { auth.addToast?.('Choose a team from the current Sewadar team register.', 'error'); return; }
     if (taskMembers.some(id => !availableTaskMembers.some(person => person.id === id))) { auth.addToast?.('One or more selected Sewadars are no longer available.', 'error'); return; }
     setTaskBusy(true);
     const assignee = canManage ? taskAssignee.trim() : (auth.currentUser?.name || '');
@@ -201,19 +304,24 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
     if (ownerIsTeamLeader && (!selectedTeam || normalizeName(selectedTeam.lead) !== normalizeName(assignee))) { setTaskBusy(false); auth.addToast?.('A team leader can only be assigned through their own team.', 'error'); return; }
     const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const { error } = await supabase.from('manpower_tasks').insert({
-      id: taskId, organization_id: orgId,
+      id: taskId, organization_id: orgId, parent_task_id: null, meeting_id: null, resources: '', team_id: selectedTeam?.id || null,
       title: taskTitle.trim(), details: taskDetails.trim(), team: taskTeam.trim(), assigned_to: assignee,
       priority_level: taskPriority, priority_until: taskPriority === 'till_time' ? new Date(taskPriorityUntil).toISOString() : null,
-      member_id: taskMembers[0] || null, sewadar_id: null, due_date: taskDue || null, created_by: auth.currentUser?.id,
+      member_id: taskMembers[0] || null, sewadar_id: null, due_date: taskDue || null, event_id: taskEventId || null, department_id: taskDepartment || null, created_by: auth.currentUser?.id,
     });
-    if (error) { setTaskBusy(false); auth.addToast?.(/priority_level|priority_until|schema cache/i.test(error.message) ? `${error.message} — run supabase/migration_v66_team_task_priority.sql, then reload the app.` : `Could not create task: ${error.message}`, 'error'); return; }
+    if (error) { setTaskBusy(false); auth.addToast?.(/team_id|schema cache/i.test(error.message) ? `${error.message} — run supabase/migration_v84_task_team_links.sql, then reload the app.` : /priority_level|priority_until/i.test(error.message) ? `${error.message} — run supabase/migration_v66_team_task_priority.sql, then reload the app.` : /row-level security|permission denied/i.test(error.message) ? `${error.message} — run supabase/migration_v83_manpower_task_assignment_access.sql, then reload the app.` : `Could not create task: ${error.message}`, 'error'); return; }
+    const checklist = taskChecklist.split('\n').map(title => title.trim()).filter(Boolean);
+    if (checklist.length) {
+      const { error: checklistError } = await supabase.from('manpower_tasks').insert(checklist.map(title => ({ id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, organization_id: orgId, event_id: taskEventId || null, parent_task_id: taskId, meeting_id: null, department_id: taskDepartment || null, title, details: '', resources: '', team: taskTeam.trim(), team_id: selectedTeam?.id || null, assigned_to: assignee, priority_level: taskPriority, priority_until: taskPriority === 'till_time' ? new Date(taskPriorityUntil).toISOString() : null, due_date: taskDue || null, created_by: auth.currentUser?.id, status: 'todo' })));
+      if (checklistError) auth.addToast?.(`Task saved, but its checklist could not be saved: ${checklistError.message}`, 'error');
+    }
     if (taskMembers.length) {
       const links = taskMembers.map(member_id => ({ id: `task-member-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, organization_id: orgId, task_id: taskId, member_id }));
       const { error: linkError } = await supabase.from('manpower_task_members').insert(links);
-      if (linkError) auth.addToast?.(`Task created, but Sewadars could not be linked: ${linkError.message}`, 'error');
+      if (linkError) auth.addToast?.(`Task created, but Sewadars could not be linked: ${linkError.message}${/row-level security|permission denied/i.test(linkError.message) ? ' — run supabase/migration_v83_manpower_task_assignment_access.sql, then reload the app.' : ''}`, 'error');
     }
     setTaskBusy(false);
-    setTaskTitle(''); setTaskDetails(''); setTaskTeam(''); setTaskAssignee(''); setTaskMembers([]); setTaskDue(''); setTaskPriority('as_you_have_time'); setTaskPriorityUntil('');
+    setTaskTitle(''); setTaskDetails(''); setTaskChecklist(''); setTaskTeam(''); setTaskAssignee(''); setTaskMembers([]); setTaskDue(''); setTaskPriority('as_you_have_time'); setTaskPriorityUntil('');
     setTaskMemberQuery(''); setTaskPickerOpen(false);
     await loadTasks();
     setTaskDialogOpen(false);
@@ -229,7 +337,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
     setResourceBusy(true);
     const { error } = await supabase.rpc('manpower_task_add_resource', { p_task_id: resourceModalTask.id, p_item_id: resourceItemId, p_location: resourceLocationId, p_qty: Number(resourceQty) });
     setResourceBusy(false);
-    if (error) { auth.addToast?.(`${error.message}${/function|schema cache/i.test(error.message) ? ' — run supabase/migration_v67_task_resource_handoffs.sql, then reload the app.' : ''}`, 'error'); return; }
+    if (error) { auth.addToast?.(`${error.message}${/function|schema cache/i.test(error.message) ? ' — run supabase/migration_v67_task_resource_handoffs.sql, then reload the app.' : /row-level security|permission denied|cannot allocate task resources/i.test(error.message) ? ' — run supabase/migration_v83_manpower_task_assignment_access.sql, then reload the app.' : ''}`, 'error'); return; }
     setResourceItemId(''); setResourceQty('1'); await reloadTaskResources();
     auth.addToast?.('Resource allocated. The team leader can confirm receipt.', 'success');
   };
@@ -302,8 +410,9 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
 
   const exportCSV = () => {
     const includeCallFields = workspace === 'members' && memberSection === 'calling';
-    const head = ['Name', 'Member type', 'Serial no.', 'Batch no.', 'Relation', 'Relation name', 'Mobile', 'Village / city', 'Branch', 'Occupation', 'Department', 'Remarks', 'Employee code', 'Employee ID', 'Address', 'Address 2', ...(workspace === 'permanent' ? [] : ['Expected arrival date', 'Arrival time']), 'Skills', 'Teams', 'Team lead', 'Device', 'Device ID', ...(includeCallFields ? ['Calls', 'Last call outcome', 'Last call at'] : []), 'Arrival', 'Arrived at', 'Badge'];
-    const body = rows.map(s => [s.name, s.memberType === 'salary_based' ? 'permanent' : s.memberType === 'monthly' ? 'regular' : s.memberType, s.serialNo, s.batchNo, s.relation, s.relationName, s.phone, s.villageCity, s.branch, s.occupation, DEPT_LABEL[s.department] || s.department, s.remarks, s.employeeCode, s.employeeId, s.address, s.address2, ...(workspace === 'permanent' ? [] : [s.memberType === 'salary_based' ? '' : s.expectedArrival, s.memberType === 'salary_based' ? '' : s.expectedArrivalPeriod]), (s.skills || []).join('; '), (s.teams || []).join('; '), s.teamLead, DEVICE_LABEL[s.deviceType], s.deviceRef, ...(includeCallFields ? [s.callCount, s.lastCallOutcome ? OUTCOME_LABEL[s.lastCallOutcome] : '', s.lastCallAt || ''] : []), s.arrival, s.arrivedAt || '', s.badgeReturned ? 'Returned' : s.badgeIssued ? 'Issued' : 'Pending']);
+    const includeArrivalSchedule = workspace === 'members' && memberSection === 'calling';
+    const head = ['Name', 'Member type', 'Serial no.', 'Batch no.', 'Relation', 'Relation name', 'Mobile', 'Village / city', 'Branch', 'Occupation', 'Department', 'Remarks', 'Employee code', 'Employee ID', 'Address', 'Address 2', ...(includeArrivalSchedule ? ['Expected arrival date', 'Arrival time'] : []), 'Skills', 'Teams', 'Team lead', 'Device', 'Device ID', ...(includeCallFields ? ['Calls', 'Last call outcome', 'Last call at'] : []), 'Arrival', 'Arrived at', 'Badge'];
+    const body = rows.map(s => [s.name, s.memberType === 'salary_based' ? 'permanent' : s.memberType === 'monthly' ? 'regular' : s.memberType, s.serialNo, s.batchNo, s.relation, s.relationName, s.phone, s.villageCity, s.branch, s.occupation, DEPT_LABEL[s.department] || s.department, s.remarks, s.employeeCode, s.employeeId, s.address, s.address2, ...(includeArrivalSchedule ? [s.memberType === 'salary_based' ? '' : s.expectedArrival, s.memberType === 'salary_based' ? '' : s.expectedArrivalPeriod] : []), (s.skills || []).join('; '), (s.teams || []).join('; '), s.teamLead, DEVICE_LABEL[s.deviceType], s.deviceRef, ...(includeCallFields ? [s.callCount, s.lastCallOutcome ? OUTCOME_LABEL[s.lastCallOutcome] : '', s.lastCallAt || ''] : []), s.arrival, s.arrivedAt || '', s.badgeReturned ? 'Returned' : s.badgeIssued ? 'Issued' : 'Pending']);
     const csv = [head, ...body].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -329,8 +438,8 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
     <div className="space-y-3">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold tracking-tight flex items-center gap-2"><Users className="w-4 h-4 text-blue-400" />{workspace === 'permanent' ? 'Permanent members' : 'Sewadar roster'}</h1>
-          <p className="text-xs text-mute">Shared member list · contact, type, arrival, teams and devices</p>
+          <h1 className="text-lg font-bold tracking-tight flex items-center gap-2">{workspace === 'tasks' ? <ListTodo className="h-4 w-4 text-blue-400" /> : <Users className="h-4 w-4 text-blue-400" />}{workspace === 'tasks' ? 'Tasks' : workspace === 'permanent' ? 'Permanent members' : 'Sewadar Master'}</h1>
+          <p className="text-xs text-mute">{workspace === 'tasks' ? 'Plan and track work across events and departments.' : workspace === 'permanent' ? 'Permanent member records · contact, teams and devices' : 'Shared member records · contact, type, teams and devices'}</p>
         </div>
         {isRosterWorkspace && <div className="flex flex-wrap gap-2">
           <button className={cx(btnGhost(D), 'px-2.5 py-1.5 text-xs')} onClick={exportCSV}><Download className="w-3.5 h-3.5" />Export</button>
@@ -363,25 +472,28 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
       </section>}
 
       {workspace === 'tasks' && <section className="space-y-2">
-        <div className="flex justify-end"><button type="button" className={cx(btnPrimary, 'rounded-lg px-3 py-2 text-xs')} onClick={() => { setTaskMemberQuery(''); setTaskPickerOpen(false); setTaskDialogOpen(true); }}><Plus className="h-4 w-4" />Allocate task</button></div>
+        <div className="flex flex-wrap items-center justify-end gap-2"><button type="button" className={cx(btnPrimary, 'rounded-lg px-3 py-2 text-xs')} onClick={() => startTaskCreation(taskSelectedDate)}><Plus className="h-4 w-4" />Schedule task</button></div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">{([['all','All tasks',scopedTasks.length,'text-ink'],['pending','Pending',pendingTaskCount,'text-amber-300'],['today','Scheduled today',todayTaskCount,'text-blue-300'],['upcoming','Upcoming',upcomingTaskCount,'text-cyan-300'],['overdue','Overdue',overdueTaskCount,'text-rose-300'],['completed','Completed',completedTaskCount,'text-emerald-300']] as [TaskFilter,string,number,string][]).map(([key,label,count,tone])=><button key={key} type="button" aria-pressed={taskFilter===key} onClick={()=>setTaskFilter(key)} className={cx('rounded-lg border px-3 py-2 text-left transition-colors',taskFilter===key?'border-blue-500/50 bg-blue-500/10':'border-line bg-surface/60 hover:bg-raised')}><span className="block text-[10px] font-medium text-mute">{label}</span><span className={cx('mt-0.5 block text-lg font-semibold tabular-nums',tone)}>{count}</span></button>)}</div>
         <div className={cx(panel, 'overflow-hidden')}>
         <div className="flex flex-col gap-3 border-b border-line px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div><h2 className="flex items-center gap-2 text-base font-semibold"><ListTodo className="h-4 w-4 text-blue-400" />Team tasks</h2><p className="mt-1 text-xs text-mute">Allocate work to a team or selected Sewadars and track progress.</p></div>
-          <div role="group" aria-label="Filter team tasks" className="flex w-full gap-1 rounded-lg border border-line bg-field p-1 sm:w-auto">
-            {([['all', 'All tasks', tasks.length], ['active', 'Active', activeTaskCount], ['completed', 'Completed', completedTaskCount]] as [TaskFilter, string, number][]).map(([key, label, count]) => <button key={key} type="button" aria-pressed={taskFilter === key} onClick={() => setTaskFilter(key)} className={cx('flex-1 rounded-md px-3 py-2 text-xs font-medium transition-colors sm:flex-none', taskFilter === key ? 'bg-blue-600 text-white shadow-sm' : 'text-mute hover:bg-raised hover:text-ink')}>{label}<span className="ml-1.5 tabular-nums opacity-80">{count}</span></button>)}
-          </div>
+          <div><h2 className="flex items-center gap-2 text-base font-semibold"><ListTodo className="h-4 w-4 text-blue-400" />Tasks</h2><p className="mt-1 text-xs text-mute">One place for event, department, team, and room work. Select a future date in Calendar to schedule it.</p></div>
+          <div className="text-[10px] text-mute">Select a date to review its schedule. The full task list stays below.</div>
         </div>
+        <div className="grid gap-2 border-b border-line px-4 py-3 sm:grid-cols-2"><label className="text-[10px] font-medium text-mute">Event<select value={taskEventFilter} onChange={e => setTaskEventFilter(e.target.value)} className={cx(inputCls(D), 'mt-1 h-9 w-full')}><option value="all">All events and general tasks</option>{eventScope.events.map(event => <option key={event.id} value={event.id}>{event.name}</option>)}</select></label><label className="text-[10px] font-medium text-mute">Department<select value={taskDepartmentFilter} onChange={e => setTaskDepartmentFilter(e.target.value)} className={cx(inputCls(D), 'mt-1 h-9 w-full')}><option value="all">All departments</option>{DEPT_OPTIONS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}<option value="none">No department assigned</option></select></label></div>
         {taskDialogOpen && <Modal dark={D} title="Allocate task" xl onClose={() => setTaskDialogOpen(false)}><form onSubmit={saveTask} className="animate-slide-up space-y-4">
           <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-12">
-            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-5">Task name<input required value={taskTitle} onChange={e => setTaskTitle(e.target.value)} placeholder="e.g. Prepare welcome desk" className={cx(inputCls(D), 'h-10 w-full')} /></label>
-            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4">Team<select value={taskTeam} onChange={e => { const name = e.target.value; setTaskTeam(name); const team = teamGroups.find(t => t.name === name); const lead = team && sewadars.find(person => normalizeName(person.name) === normalizeName(team.lead)); const memberIds = team ? team.members.filter(isFreeForAssignment).map(person => person.id) : []; if (team && lead && isFreeForAssignment(lead) && memberIds.indexOf(lead.id) < 0) memberIds.push(lead.id); setTaskMembers(memberIds); }} className={cx(inputCls(D), 'h-10 w-full')}><option value="">Choose a team</option>{availableTeams.map(team => <option key={team.id} value={team.name}>{team.name} · {team.members.filter(isFreeForAssignment).length} available</option>)}</select></label>
-            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-2 xl:col-span-3">Due date<input type="date" value={taskDue} onChange={e => setTaskDue(e.target.value)} className={cx(inputCls(D), 'h-10 w-full')} /></label>
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4">Task name<input required value={taskTitle} onChange={e => setTaskTitle(e.target.value)} placeholder="e.g. Prepare welcome desk" className={cx(inputCls(D), 'h-10 w-full')} /></label>
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4">Event<select value={taskEventId} onChange={e => setTaskEventId(e.target.value)} className={cx(inputCls(D), 'h-10 w-full')}><option value="">General task (no event)</option>{eventScope.events.map(event => <option key={event.id} value={event.id}>{event.name}</option>)}</select></label>
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4">Department<select value={taskDepartment} onChange={e => setTaskDepartment(e.target.value)} className={cx(inputCls(D), 'h-10 w-full')}><option value="">Choose a department</option>{DEPT_OPTIONS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4">Team<select value={taskTeam} onChange={e => { const name = e.target.value; setTaskTeam(name); const team = teamGroups.find(t => t.name === name); const lead = team && sewadars.find(person => normalizeName(person.name) === normalizeName(team.lead)); const memberIds = team ? team.members.filter(isFreeForAssignment).map(person => person.id) : []; if (team && lead && isFreeForAssignment(lead) && memberIds.indexOf(lead.id) < 0) memberIds.push(lead.id); setTaskMembers(memberIds); }} className={cx(inputCls(D), 'h-10 w-full')}><option value="">Choose a team</option>{teamGroups.map(team => { const availableCount = team.members.filter(isFreeForAssignment).length; return <option key={team.id} value={team.name}>{team.name} · {availableCount} available{busyTeamNames.has(normalizeName(team.name)) ? ' · already has active task' : ''}</option>; })}</select><span className="text-[10px] font-normal text-faint">All registered teams are available. Available Sewadars are selected automatically.</span></label>
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4">Due date<input type="date" value={taskDue} onChange={e => setTaskDue(e.target.value)} className={cx(inputCls(D), 'h-10 w-full')} /></label>
             <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4">Priority<select value={taskPriority} onChange={e => setTaskPriority(e.target.value as typeof taskPriority)} className={cx(inputCls(D), 'h-10 w-full')}><option value="immediately">Immediately</option><option value="till_time">Till the time</option><option value="as_you_have_time">As you have time</option></select></label>
             {taskPriority === 'till_time' && <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4">Complete by<input required type="datetime-local" value={taskPriorityUntil} onChange={e => setTaskPriorityUntil(e.target.value)} className={cx(inputCls(D), 'h-10 w-full')} /></label>}
             <div className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4"><span>Task owner</span>{canManage ? <input value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)} placeholder="Name (optional)" className={cx(inputCls(D), 'h-10 w-full')} /> : <div className="flex h-10 items-center rounded-md border border-line bg-field px-3 text-sm text-ink-soft">{auth.currentUser?.name || 'Current user'}</div>}</div>
             <div className="min-w-0 md:col-span-1 xl:col-span-8"><span className="mb-1.5 block text-xs font-medium text-mute">Assign Sewadars <span className="ml-1 rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] text-blue-300">{taskMembers.length} selected</span></span><button type="button" onClick={() => { setTaskMemberQuery(''); setTaskMemberDraft(taskMembers); setTaskPickerOpen(true); }} className={cx(inputCls(D), 'flex min-h-11 items-center justify-between gap-2 text-left')}><span className="truncate">{taskMembers.length ? taskMembers.map(id => sewadars.find(person => person.id === id)?.name).filter(Boolean).join(', ') : 'Choose Sewadars'}</span><Users className="h-4 w-4 shrink-0 text-mute" /></button></div>
             <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-2 xl:col-span-9"><span>Task details <span className="font-normal text-faint">· optional</span></span><textarea value={taskDetails} onChange={e => setTaskDetails(e.target.value)} placeholder="Add instructions or useful context…" rows={2} className={cx(inputCls(D), 'min-h-[72px] w-full resize-y')} /></label>
             <div className="flex items-end md:col-span-2 xl:col-span-3"><button disabled={taskBusy || !taskTitle.trim()} className={cx(btnPrimary, 'h-10 w-full justify-center disabled:cursor-not-allowed disabled:opacity-50')}><Plus className="h-4 w-4" />{taskBusy ? 'Saving task…' : 'Create task'}</button></div>
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-2 xl:col-span-12"><span>Checklist <span className="font-normal text-faint">· optional, one step per line</span></span><textarea value={taskChecklist} onChange={e => setTaskChecklist(e.target.value)} placeholder={'Confirm the setup\nTest equipment\nComplete final check'} rows={3} className={cx(inputCls(D), 'min-h-[72px] w-full resize-y')} /></label>
           </div>
         </form></Modal>}
         {resourceModalTask && <Modal dark={D} title={`Resources · ${resourceModalTask.title}`} xl onClose={() => setResourceModalTask(null)}>
@@ -417,17 +529,54 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
           <label className="flex flex-col gap-1.5 text-xs font-medium text-mute">Note <span className="font-normal text-faint">· optional</span><textarea value={deliveryNote} onChange={e => setDeliveryNote(e.target.value)} className={inputCls(D)} rows={2} /></label>
           <div className="flex justify-end gap-2"><button type="button" className={btnGhost(D)} onClick={() => setDeliveryTask(null)}>Cancel</button><button className={btnPrimary} disabled={busyTaskIds.has(deliveryTask.id) || !deliveryReceivedBy.trim()}>{busyTaskIds.has(deliveryTask.id) ? 'Saving…' : 'Confirm delivery'}</button></div>
         </form></Modal>}
-        <div className="max-h-[30rem] space-y-2 overflow-y-auto p-3 sm:p-4">
-          {visibleTasks.map(t => <article key={t.id} className="animate-fade-in rounded-lg border border-line bg-surface/70 p-3 transition-colors hover:border-line-strong sm:p-4">
-            <div className="flex flex-wrap items-start gap-3">
-              <span className={cx('mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ring-4', t.status === 'complete' ? 'bg-emerald-400 ring-emerald-400/10' : t.status === 'in_progress' ? 'bg-blue-400 ring-blue-400/10' : 'bg-amber-400 ring-amber-400/10')} />
-              <div className="min-w-0 flex-1"><h3 className="text-sm font-semibold text-ink">{t.title}</h3><p className="mt-1 text-xs leading-5 text-mute">{[t.team, (t.sewadar_names || []).join(', ') || t.assigned_to, t.due_date && `Due ${t.due_date}`].filter(Boolean).join(' · ') || 'No team or owner assigned'}</p><span className={cx('mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold', t.priority_level === 'immediately' ? 'bg-rose-500/10 text-rose-300' : t.priority_level === 'till_time' ? 'bg-amber-500/10 text-amber-300' : 'bg-blue-500/10 text-blue-300')}>{t.priority_level === 'immediately' ? 'Immediately' : t.priority_level === 'till_time' ? `Till ${t.priority_until ? new Date(t.priority_until).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'specified time'}` : 'As you have time'}</span>{resourcesForTask(t.id).length > 0 && <p className="mt-1 text-[10px] text-mute">Resources · {resourcesForTask(t.id).some(resource => !resource.received_at) ? 'awaiting team-leader receipt' : t.status === 'complete' && resourcesForTask(t.id).some(resource => resource.returned_good_qty + resource.returned_damaged_qty < resource.qty) ? 'return pending' : 'received by team leader'}</p>}{t.details && <p className="mt-2 text-xs leading-5 text-ink-soft">{t.details}</p>}</div>
-              <div className="ml-auto flex items-center gap-2">{t.source === 'manpower' && canHandleTaskResources(t) && <button type="button" onClick={() => void openTaskResources(t)} className={cx(btnGhost(D), 'text-blue-300')}><Package className="h-3.5 w-3.5" /><span className="hidden sm:inline">Resources</span>{resourcesForTask(t.id).length > 0 && <span className="tabular-nums">{resourcesForTask(t.id).length}</span>}</button>}<span className={cx('rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize', t.status === 'complete' ? 'bg-emerald-500/10 text-emerald-300' : t.status === 'in_progress' ? 'bg-blue-500/10 text-blue-300' : 'bg-amber-500/10 text-amber-300')}>{busyTaskIds.has(t.id) ? 'Saving…' : t.status.replace('_', ' ')}</span>{t.status === 'todo' && <button disabled={busyTaskIds.has(t.id)} onClick={() => setTaskStatus(t, 'in_progress')} className={btnGhost(D)}><Play className="h-3.5 w-3.5" /><span className="hidden sm:inline">Start</span></button>}{t.status === 'in_progress' && <button disabled={busyTaskIds.has(t.id)} onClick={() => setTaskStatus(t, 'complete')} className={btnGhost(D)}><CircleCheck className="h-3.5 w-3.5" /><span className="hidden sm:inline">Complete</span></button>}{canManage && t.source === 'manpower' && <button onClick={() => void deleteTask(t)} className={cx(btnGhost(D), 'text-rose-300')} aria-label={`Remove task ${t.title}`} title="Remove task"><Trash2 className="h-3.5 w-3.5" /></button>}</div>
-            </div>
-          </article>)}
-          {!visibleTasks.length && <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center"><ListTodo className="mx-auto h-6 w-6 text-faint" /><p className="mt-2 text-sm font-medium text-ink">{tasks.length ? `No ${taskFilter} tasks` : 'No tasks yet'}</p><p className="mt-1 text-xs text-mute">{tasks.length ? 'Try another filter to see more work.' : 'Create a task above to get the team started.'}</p></div>}
         </div>
+        <section className={cx(panel, 'overflow-hidden')} aria-label="Task calendar">
+        <div className="grid gap-3 p-3 sm:p-4 xl:grid-cols-[minmax(0,.9fr)_minmax(260px,1.1fr)]">
+          <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-ink">{calendarMonth.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</h3><p className="mt-0.5 text-[10px] text-mute">Select a date to review its tasks. Schedule tasks with the button above.</p></div><div className="flex items-center gap-1"><button type="button" className={cx(btnGhost(D), 'p-2')} aria-label="Previous month" onClick={() => setCalendarMonth(month => new Date(month.getFullYear(), month.getMonth() - 1, 1))}><ChevronLeft className="h-4 w-4"/></button><button type="button" className={cx(btnGhost(D), 'px-2.5 py-1.5 text-[10px]')} onClick={() => {const now=new Date();setCalendarMonth(new Date(now.getFullYear(),now.getMonth(),1));setTaskSelectedDate(taskDateKey(now));}}>Today</button><button type="button" className={cx(btnGhost(D), 'p-2')} aria-label="Next month" onClick={() => setCalendarMonth(month => new Date(month.getFullYear(), month.getMonth() + 1, 1))}><ChevronRight className="h-4 w-4"/></button></div></div>
+          <div className="grid grid-cols-7 gap-1">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day => <div key={day} className="px-1 py-1.5 text-center text-[9px] font-semibold uppercase tracking-wide text-mute">{day}</div>)}
+            {calendarDates.map(date => { const dayKey = taskDateKey(date); const dayTasks = calendarTasks.filter(task => String(task.due_date).slice(0, 10) === dayKey); const currentMonth = date.getMonth() === calendarMonth.getMonth(); const today = dayKey === todayTaskKey; return <button key={dayKey} type="button" onClick={() => setTaskSelectedDate(dayKey)} aria-pressed={taskSelectedDate === dayKey} aria-label={`${date.toLocaleDateString('en-IN', { dateStyle: 'full' })}, ${dayTasks.length} scheduled tasks`} className={cx('flex min-h-12 min-w-0 flex-col items-stretch gap-0.5 rounded-md border p-1 text-left transition-colors sm:min-h-14 sm:p-1.5', currentMonth ? 'border-line bg-surface hover:border-blue-400/50 hover:bg-blue-500/5' : 'border-line/50 bg-raised/20 text-faint', today && 'ring-1 ring-blue-400/60', taskSelectedDate === dayKey && 'border-blue-400 bg-blue-500/10')}><span className={cx('flex h-4 w-4 items-center justify-center rounded-full text-[9px] tabular-nums', today ? 'bg-blue-600 font-semibold text-white' : currentMonth ? 'text-ink-soft' : 'text-faint')}>{date.getDate()}</span><span className="min-w-0 space-y-0.5">{dayTasks.slice(0, 1).map(task => <span key={task.id} className={cx('block truncate rounded px-1 py-0.5 text-[8px]', task.status === 'complete' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-blue-500/10 text-blue-200')}>{task.title}</span>)}{dayTasks.length > 1 && <span className="block px-1 text-[8px] text-mute">+{dayTasks.length - 1} more</span>}</span></button>; })}
+          </div>
+          {!calendarTasks.length && <p className="rounded-md border border-dashed border-line p-3 text-center text-[10px] text-mute">No tasks are scheduled in this month.</p>}
+          </div>
+          <section className="min-w-0 rounded-lg border border-line bg-surface/60 p-3"><div className="mb-2 flex items-start justify-between gap-2"><div><h3 className="text-xs font-semibold text-ink">{new Date(`${taskSelectedDate}T00:00:00`).toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long'})}</h3><p className="mt-0.5 text-[10px] text-mute">{selectedDayTasks.length} task{selectedDayTasks.length===1?'':'s'} in this view</p></div><button type="button" className={cx(btnGhost(D),'px-2 py-1 text-[10px]')} onClick={()=>startTaskCreation(taskSelectedDate)}><Plus className="h-3 w-3"/>Add</button></div>{selectedDayTasks.length ? <div className="max-h-[24rem] space-y-1.5 overflow-y-auto">{selectedDayTasks.map(task=><button key={task.id} type="button" onClick={()=>setTaskFilter(task.status==='complete'?'completed':'all')} className="block w-full rounded-md border border-line bg-surface p-2 text-left hover:border-blue-400/40"><span className="block truncate text-xs font-medium text-ink">{task.title}</span><span className="mt-0.5 block truncate text-[10px] text-mute">{task.team||task.assigned_to||'Unassigned'} · {task.status.replace('_',' ')}</span></button>)}</div>:<p className="rounded-md border border-dashed border-line px-3 py-6 text-center text-[10px] text-mute">Nothing scheduled for this date.</p>}</section>
         </div>
+        </section>
+        <section className={cx(panel, 'overflow-hidden')} aria-label="Task register">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3"><div><h3 className="text-sm font-semibold text-ink">Task register</h3><p className="mt-0.5 text-xs text-mute">{visibleTasks.length} rows · task details, assignments, priority, status and due dates</p></div><button type="button" onClick={exportTasksToExcel} disabled={!visibleTasks.length} className={cx(btnGhost(D), 'text-xs')}><Download className="h-3.5 w-3.5" />Export Excel</button></div>
+        <div className="max-h-[34rem] overflow-auto">
+          {visibleTasks.length > 0 && <table className="w-full min-w-[1120px] border-collapse text-left text-xs">
+            <thead className="sticky top-0 z-10 bg-raised text-[10px] font-semibold uppercase tracking-wide text-mute"><tr>{['Task', 'Event / department', 'Team', 'Assigned to', 'Due date', 'Priority', 'Status', 'Resources', 'Actions'].map(heading => <th key={heading} scope="col" className="whitespace-nowrap border-b border-line px-3 py-2.5">{heading}</th>)}</tr></thead>
+            <tbody className="divide-y divide-line">
+              {visibleTasks.map(t => {
+                const taskResources = resourcesForTask(t.id);
+                const taskTeam = teamGroups.find(team => normalizeName(team.name) === normalizeName(t.team || ''));
+                const eventName = eventScope.events.find(event => event.id === t.event_id)?.name || (t.event_id ? 'Event' : 'General');
+                const dueKey = String(t.due_date || '').slice(0, 10);
+                const overdue = !!dueKey && dueKey < todayTaskKey && t.status !== 'complete';
+                const assignees = (t.sewadar_names || []).filter(Boolean);
+                const resourceSummary = taskResources.length
+                  ? taskResources.some(resource => !resource.received_at) ? 'Awaiting receipt'
+                    : taskResources.some(resource => resource.returned_good_qty + resource.returned_damaged_qty < resource.qty) ? 'Return pending'
+                      : 'Issued'
+                  : 'None';
+                return <tr key={t.id} className="align-top transition-colors hover:bg-raised/40">
+                  <td className="max-w-64 px-3 py-3"><div className="font-semibold text-ink">{t.title}</div>{t.parent_task_id && <div className="mt-0.5 text-[10px] text-blue-300">Checklist step · {scopedTasks.find(parent => parent.id === t.parent_task_id)?.title || 'Parent task'}</div>}{t.details && <div className="mt-1 line-clamp-2 text-[10px] leading-4 text-mute" title={t.details}>{t.details}</div>}</td>
+                  <td className="max-w-48 px-3 py-3"><div className="font-medium text-ink-soft">{eventName}</div><div className="mt-0.5 text-[10px] text-mute">{DEPT_LABEL[t.department_id] || t.department_id || 'No department'}</div></td>
+                  <td className="max-w-40 px-3 py-3"><div className="text-ink-soft">{t.team || 'Unassigned'}</div>{taskTeam?.lead && <div className="mt-0.5 text-[10px] text-mute">Lead: {taskTeam.lead}</div>}</td>
+                  <td className="max-w-48 px-3 py-3"><div className="text-ink-soft">{assignees.length ? assignees.join(', ') : t.assigned_to || 'Unassigned'}</div>{assignees.length > 0 && t.assigned_to && <div className="mt-0.5 text-[10px] text-mute">Owner: {t.assigned_to}</div>}</td>
+                  <td className="whitespace-nowrap px-3 py-3"><span className={overdue ? 'font-semibold text-rose-300' : 'text-ink-soft'}>{displayTaskDate(t.due_date)}</span>{overdue && <span className="mt-1 block text-[10px] text-rose-300">Overdue</span>}</td>
+                  <td className="whitespace-nowrap px-3 py-3"><span className={cx('inline-flex rounded-full px-2 py-1 text-[10px] font-semibold', t.priority_level === 'immediately' ? 'bg-rose-500/10 text-rose-300' : t.priority_level === 'till_time' ? 'bg-amber-500/10 text-amber-300' : 'bg-blue-500/10 text-blue-300')}>{t.priority_level === 'immediately' ? 'Immediate' : t.priority_level === 'till_time' ? 'Due by time' : 'As time allows'}</span>{t.priority_level === 'till_time' && t.priority_until && <div className="mt-1 text-[10px] text-mute">{new Date(t.priority_until).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</div>}</td>
+                  <td className="whitespace-nowrap px-3 py-3"><span className={cx('inline-flex rounded-full px-2 py-1 text-[10px] font-semibold capitalize', t.status === 'complete' ? 'bg-emerald-500/10 text-emerald-300' : t.status === 'in_progress' ? 'bg-blue-500/10 text-blue-300' : 'bg-amber-500/10 text-amber-300')}>{busyTaskIds.has(t.id) ? 'Saving…' : t.status.replace('_', ' ')}</span></td>
+                  <td className="whitespace-nowrap px-3 py-3"><div className="text-ink-soft">{taskResources.length} item{taskResources.length === 1 ? '' : 's'}</div><div className="mt-0.5 text-[10px] text-mute">{resourceSummary}</div></td>
+                  <td className="px-3 py-3"><div className="flex items-center gap-1.5">{t.source === 'manpower' && canHandleTaskResources(t) && <button type="button" onClick={() => void openTaskResources(t)} className={cx(btnGhost(D), 'px-2 py-1 text-[10px] text-blue-300')} title="Manage task resources"><Package className="h-3 w-3" /><span>Resources</span></button>}{t.status === 'todo' && <button type="button" disabled={busyTaskIds.has(t.id)} onClick={() => setTaskStatus(t, 'in_progress')} className={cx(btnGhost(D), 'px-2 py-1 text-[10px]')}><Play className="h-3 w-3" /><span>Start</span></button>}{t.status === 'in_progress' && <button type="button" disabled={busyTaskIds.has(t.id)} onClick={() => setTaskStatus(t, 'complete')} className={cx(btnGhost(D), 'px-2 py-1 text-[10px]')}><CircleCheck className="h-3 w-3" /><span>Complete</span></button>}{canManage && t.source === 'manpower' && <button type="button" onClick={() => void deleteTask(t)} className={cx(btnGhost(D), 'px-2 py-1 text-rose-300')} aria-label={`Remove task ${t.title}`} title="Remove task"><Trash2 className="h-3 w-3" /></button>}</div></td>
+                </tr>;
+              })}
+            </tbody>
+          </table>}
+          {!visibleTasks.length && <div className="rounded-lg border border-dashed border-line px-5 py-10 text-center"><ListTodo className="mx-auto h-6 w-6 text-faint" /><p className="mt-2 text-sm font-medium text-ink">{scopedTasks.length ? `No ${taskFilter} tasks` : 'No tasks in this filter'}</p><p className="mt-1 text-xs text-mute">{scopedTasks.length ? 'Try another status filter to see more work.' : 'Create a task or choose different event and department filters.'}</p></div>}
+        </div>
+        </section>
       </section>}
 
       {taskDialogOpen && taskPickerOpen && <Modal dark={D} title="Select Sewadars for task" wide onClose={() => setTaskPickerOpen(false)}>
@@ -563,7 +712,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
         </div>
       </section>}
 
-      {editing && <SewadarForm initial={editing === 'new' ? null : editing} defaultMemberType={workspace === 'permanent' ? 'salary_based' : 'monthly'} teams={teamGroups} onClose={() => setEditing(null)}
+      {editing && <SewadarForm initial={editing === 'new' ? null : editing} defaultMemberType={workspace === 'permanent' ? 'salary_based' : 'monthly'} teams={teamGroups} showArrivalSchedule={workspace === 'members' && memberSection === 'calling'} onClose={() => setEditing(null)}
         onSave={(i) => (editing === 'new' ? m.add(i) : m.update(editing.id, i))}
         onDelete={editing !== 'new' ? () => m.remove([editing.id]) : undefined}
         onSetArrival={editing !== 'new' ? arrival => m.setArrival([editing.id], arrival) : undefined}
@@ -601,11 +750,12 @@ const SewadarForm: React.FC<{
   onSave: (i: SewadarInput) => Promise<boolean>;
   onDelete?: () => Promise<boolean>;
   fullPage?: boolean;
+  showArrivalSchedule?: boolean;
   onSetArrival?: (arrival: Arrival) => Promise<boolean>;
   onSetBadge?: (issued: boolean) => Promise<boolean>;
   onSetBadgeReturned?: (returned: boolean) => Promise<boolean>;
   onCallHistory?: () => void;
-}> = ({ initial, defaultMemberType = 'monthly', teams, onClose, onSave, onDelete, fullPage = false, onSetArrival, onSetBadge, onSetBadgeReturned, onCallHistory }) => {
+}> = ({ initial, defaultMemberType = 'monthly', teams, onClose, onSave, onDelete, fullPage = false, showArrivalSchedule = false, onSetArrival, onSetBadge, onSetBadgeReturned, onCallHistory }) => {
   const [f, setF] = useState<SewadarInput>(() => initial ? ({
     name: initial.name, memberType: initial.memberType, serialNo: initial.serialNo, batchNo: initial.batchNo, phone: initial.phone,
     department: initial.department, relation: initial.relation, relationName: initial.relationName, villageCity: initial.villageCity,
@@ -651,7 +801,7 @@ const SewadarForm: React.FC<{
         </div></section>
         <section className="space-y-3 border-t border-line pt-4"><h3 className="text-xs font-semibold uppercase tracking-wider text-mute">Sewa and team assignment</h3><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="text-xs text-mute">Department<select value={f.department} onChange={e => set('department', e.target.value)} className={cx(inputCls(D), 'mt-1')}><option value="">Not assigned</option>{DEPT_OPTIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
-          {f.memberType !== 'salary_based' && <>{field('expectedArrival', 'Expected arrival date', 'date')}
+          {showArrivalSchedule && f.memberType !== 'salary_based' && <>{field('expectedArrival', 'Expected arrival date', 'date')}
           <label className="text-xs text-mute">Expected arrival time<select value={f.expectedArrivalPeriod} onChange={e => set('expectedArrivalPeriod', e.target.value as ArrivalTimeOfDay)} className={cx(inputCls(D), 'mt-1')}><option value="">Not set</option><option value="morning">Morning</option><option value="noon">Noon</option><option value="evening">Evening</option><option value="night">Night</option></select></label></>}
           <fieldset className="text-xs text-mute sm:col-span-2"><legend className="mb-1">Teams (choose any that apply)</legend>
             <button type="button" aria-expanded={teamPickerOpen} onClick={() => { setTeamPickerOpen(open => !open); setTeamQuery(''); }} className={cx(inputCls(D), 'mt-1 flex min-h-10 items-center justify-between gap-2 text-left')}>
@@ -904,7 +1054,7 @@ const ImportModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         <label className="flex items-center gap-2 text-xs text-mute">If the sheet has no member type<select value={defaultType} onChange={e => setDefaultType(e.target.value as SewadarMemberType)} className="h-8 rounded-md border border-line bg-field px-2 text-xs text-ink"><option value="monthly">Regular</option><option value="annual">Annual</option><option value="salary_based">Permanent</option></select></label>
         <label className="flex flex-wrap items-center gap-2 text-xs text-mute">Upload CSV<input type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values" onChange={async e => { const file = e.currentTarget.files?.[0]; if (file) setText(await file.text()); }} className="text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-raised file:px-3 file:py-2 file:font-semibold file:text-ink" /></label>
       </div>
-      <textarea rows={7} autoFocus value={text} onChange={e => setText(e.target.value)} placeholder={'Paste CSV rows with a header row, for example:\nName,Member type,Mobile,Department,Expected arrival date,Arrival time\nAmit Sharma,Regular,9876543210,WiFi,2026-10-12,Morning'} className={cx(inputCls(D), 'font-mono text-xs')} />
+      <textarea rows={7} autoFocus value={text} onChange={e => setText(e.target.value)} placeholder={'Paste CSV rows with a header row, for example:\nName,Member type,Mobile,Department\nAmit Sharma,Regular,9876543210,WiFi'} className={cx(inputCls(D), 'font-mono text-xs')} />
       {parsed.length > 0 && <div className="mt-2 rounded-md bg-raised/60 px-2.5 py-2 text-[11px] text-mute">Preview: <span className="font-medium text-ink">{parsed.slice(0, 4).map(row => `${row.name} · ${row.memberType.replace('_', ' ')}`).join('  |  ')}</span>{parsed.length > 4 && `  |  +${parsed.length - 4} more`}</div>}
       <div className="flex items-center justify-between mt-4">
         <span className="text-xs text-mute">{parsed.length} ready to import</span>

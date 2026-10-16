@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { supabase } from '../modules/walkie/lib/supabaseClient';
 
-export type EventScope = { id: string; name: string; starts_at: string; event_type?: 'monthly' | 'annual' | 'special'; special_member_ids?: string[] };
+export type EventScope = { id: string; name: string; starts_at: string; ends_at?: string | null; status?: string; staffing_days_before?: number; staffing_days_after?: number; event_type?: 'monthly' | 'annual' | 'special'; special_member_ids?: string[] };
 type ScopeContextValue = {
   events: EventScope[];
   loading: boolean;
@@ -24,7 +24,7 @@ export const EventScopeProvider: React.FC<{ children: React.ReactNode; organizat
 
   const refreshEvents = useCallback(async () => {
     if (!organizationId || !approved) { setEvents([]); return; }
-    const { data, error } = await supabase.from('event_plans').select('id,name,starts_at,event_type,special_member_ids').eq('organization_id', organizationId)
+    const { data, error } = await supabase.from('event_plans').select('id,name,starts_at,ends_at,status,event_type,special_member_ids,staffing_days_before,staffing_days_after').eq('organization_id', organizationId)
       .neq('status', 'cancelled').order('starts_at', { ascending: false });
     if (!error) setEvents((data || []) as EventScope[]);
   }, [organizationId, approved]);

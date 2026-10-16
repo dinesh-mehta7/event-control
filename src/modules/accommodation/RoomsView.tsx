@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BedDouble, Building2, CircleCheck, Edit3, ListTodo, Lock, Play, Plus, Search, Trash2, Upload, UserPlus, Users } from 'lucide-react';
+import { BedDouble, Building2, Circle, CircleCheck, Edit3, ListTodo, Lock, Play, Plus, Search, Trash2, Upload, UserPlus, Users } from 'lucide-react';
 import { useAccommodation } from './AccommodationContext';
 import { DEPT_LABEL, DEPT_OPTIONS } from './types';
 import type { Member, MemberImportRow, Room, RoomRequirement } from './types';
@@ -33,9 +33,11 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
     addRoom, updateRoom, updateRoomSetup, deleteRoom, addMembers, importMembers, updateMember, deleteMember } = useAccommodation();
   const eventScope = useEventScope();
   const roomEventId = eventScope.scopeFor('accommodation');
-  const roomEventName = eventScope.events.find(event => event.id === roomEventId)?.name || 'Normal';
+  const roomEvent = eventScope.events.find(event => event.id === roomEventId);
+  const roomEventName = roomEvent?.name || 'Normal';
   const auth: any = useWalkie();
   const canAdminAssignRoomMembers = ['owner', 'dept_head'].includes(auth.currentUser?.level);
+  const canEditRoomDefinitions = canManageRooms && !roomEventId;
   const manpower = useManpower();
   const orgId = auth.currentUser?.organizationId;
   const [eventHeadcount, setEventHeadcount] = useState<{ hereNow: number; returned: number; memberStatuses: Record<string, string> }>({ hereNow: 0, returned: 0, memberStatuses: {} });
@@ -67,7 +69,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
       .subscribe();
     return () => { live = false; void supabase.removeChannel(channel); };
   }, [orgId, roomEventId]);
-  const canManageTasks = canManageRooms;
+  const canManageTasks = canManageRooms || (['owner', 'dept_head'].includes(auth.currentUser?.level) && !!roomEventId);
   const [tasks, setTasks] = useState<any[]>([]);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskMember, setTaskMember] = useState('');
@@ -99,6 +101,18 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
     const { error } = await supabase.from('accommodation_member_tasks').update({ status, updated_at: new Date().toISOString() }).eq('id', task.id);
     if (error) auth.addToast?.(`Could not update task: ${error.message}`, 'error'); else await loadTasks();
   };
+  const assignRoomSetupTask = async (room: Room) => {
+    if (!orgId || !canManageTasks) return;
+    const title = window.prompt(`Setup task for ${room.name}`, `Prepare ${room.name}`)?.trim();
+    if (!title) return;
+    const team = manpower.teams.find(item => item.name === room.responsibleTeam);
+    const { error } = await supabase.from('accommodation_member_tasks').insert({
+      id: `room-task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, organization_id: orgId,
+      member_id: null, room_id: room.id, event_id: roomEventId || null, title, details: `Prepare event room: ${room.name}`,
+      assigned_to: team?.lead || auth.currentUser?.name || '', created_by: auth.currentUser?.id,
+    });
+    if (error) auth.addToast?.(`Could not assign room task: ${error.message}. Run migration_v79_event_room_requirements.sql.`, 'error'); else await loadTasks();
+  };
 
   const [mode] = useState<Mode>('rooms');
   const [search, setSearch] = useState('');
@@ -115,12 +129,12 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
 
   const restRooms = rooms.filter(room => room.category === 'rest_room');
   const totalBeds = restRooms.reduce((t, r) => t + r.capacity, 0);
-  const placed = members.filter(m => m.roomId && rooms.some(r => r.id === m.roomId)).length;
+  const placed = members.filter(m => m.roomId && restRooms.some(r => r.id === m.roomId)).length;
   const placedInRestRooms = members.filter(m => m.roomId && restRooms.some(r => r.id === m.roomId)).length;
   const unassigned = members.length - placed;
-  const roomById = useMemo(() => new Map(rooms.map(r => [r.id, r])), [rooms]);
-  const roomsReady = rooms.filter(room => room.requirements.length > 0 && room.requirements.every(item => item.quantity > 0 && item.readyQuantity >= item.quantity)).length;
-  const roomsReadyPercent = rooms.length ? Math.round((roomsReady / rooms.length) * 100) : 0;
+  const roomById = useMemo(() => new Map(restRooms.map(r => [r.id, r])), [restRooms]);
+  const roomsReady = restRooms.filter(room => room.requirements.length > 0 && room.requirements.every(item => item.quantity > 0 && item.readyQuantity >= item.quantity)).length;
+  const roomsReadyPercent = restRooms.length ? Math.round((roomsReady / restRooms.length) * 100) : 0;
   const bedsFree = Math.max(0, totalBeds - placedInRestRooms);
   const bedsFreePercent = totalBeds ? Math.round((bedsFree / totalBeds) * 100) : null;
   const membersPlacedPercent = members.length ? Math.round((placed / members.length) * 100) : null;
@@ -128,9 +142,9 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
   // rooms grouped by block
   const grouped = useMemo(() => {
     const g = new Map<string, Room[]>();
-    rooms.forEach(r => { const k = r.block || 'Rooms'; g.set(k, [...(g.get(k) || []), r]); });
+    restRooms.forEach(r => { const k = r.block || 'Rooms'; g.set(k, [...(g.get(k) || []), r]); });
     return Array.from(g.entries());
-  }, [rooms]);
+  }, [restRooms]);
 
   const q = search.trim().toLowerCase();
   const canFulfillRoomRequirements = (room: Room) => {
@@ -198,7 +212,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
           employeeId: val(r, 'employeeid', 'empid'), address: val(r, 'address', 'address1'), address2: val(r, 'address2', 'addressline2'),
           expectedArrival: dateISO(val(r, 'expectedarrival', 'promisedarrival', 'sewajoiningdate', 'joiningdate', 'promiseddate')),
           teamName: val(r, 'teamname', 'team'), teamLead: val(r, 'teamlead', 'lead'),
-          department, roomId: rooms.find(room => room.name.toLowerCase() === roomName.toLowerCase())?.id || null,
+          department, roomId: restRooms.find(room => room.name.toLowerCase() === roomName.toLowerCase())?.id || null,
         };
       }).filter(r => r.name);
       const ok = await importMembers(imported);
@@ -211,22 +225,21 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
     <div className={cx(embedded ? 'space-y-3 text-[13px]' : 'space-y-5', embedded && 'text-ink')}>
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
-          {!embedded && <><h1 className="text-2xl font-bold tracking-tight">Rooms</h1><p className={cx('text-sm', muted)}>Room capacity and readiness for this event.</p></>}
+        {!embedded && <><h1 className="text-2xl font-bold tracking-tight">Rest rooms</h1><p className={cx('text-sm', muted)}>Rest room capacity and readiness for this event.</p></>}
         </div>
-        {!canManageRooms && (
-          <p className={cx('flex items-center gap-1.5 text-xs', muted)}><Lock className="w-3.5 h-3.5" />View only — room and member edits are limited to accommodation leads and IT owners.</p>
-        )}
+        {roomEventId && <p className={cx('flex items-center gap-1.5 text-xs', muted)}><Lock className="w-3.5 h-3.5" />Event rooms are managed in Requirement Management. View and return necessities here.</p>}
+        {!canManageRooms && !roomEventId && <p className={cx('flex items-center gap-1.5 text-xs', muted)}><Lock className="w-3.5 h-3.5" />View only — room and member edits are limited to accommodation leads and IT owners.</p>}
       </div>
       {importMessage && <div role="status" className={cx('rounded-lg border px-3 py-2 text-xs', importMessage.includes('imported.') ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-amber-500/30 bg-amber-500/10 text-amber-300')}>{importMessage} CSV headers can match Sr. No., B. No., Name, Rel, Relation Name, Mobile, Village/City, Branch, Occupation, Remarks, SEWA JOINING DATE, EMP CODE, Employee ID, Address, Address 2, Department, Member Type, and Room.</div>}
       <p className={cx('text-[11px]', muted)}>{roomEventId ? `Here now and returned-back totals stay synced with ${roomEventName} attendance.` : 'Select an event in the header to see live here-now and returned-back totals.'}</p>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <SummaryCard dark={dark} icon={Building2} title="Rooms" value={rooms.length} metricLabel="Ready rooms" metricValue={roomsReady} detail={`${roomsReady} of ${rooms.length} fully ready`} percent={rooms.length ? roomsReadyPercent : null} color="#10b981" />
+        <SummaryCard dark={dark} icon={Building2} title="Rest rooms" value={restRooms.length} metricLabel="Ready rooms" metricValue={roomsReady} detail={`${roomsReady} of ${restRooms.length} fully ready`} percent={restRooms.length ? roomsReadyPercent : null} color="#10b981" />
         <SummaryCard dark={dark} icon={BedDouble} title="Beds" value={totalBeds} metricLabel="Beds free" metricValue={bedsFree} detail={`${bedsFree} of ${totalBeds} available`} percent={bedsFreePercent} color="#f59e0b" />
         <SummaryCard dark={dark} icon={Users} title="Members" value={members.length} metricLabel="In rooms" metricValue={placed} detail={`${placed} assigned · ${unassigned} not in a room`} percent={membersPlacedPercent} color="#3b82f6" />
       </div>
 
-      {canManageRooms && <div className="flex flex-wrap items-center justify-end gap-2">
+      {canEditRoomDefinitions && <div className="flex flex-wrap items-center justify-end gap-2">
         <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" aria-label="Import members from CSV" onChange={e => importCsv(e.target.files?.[0])} />
         {canAdminAssignRoomMembers && <>
           <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-2')} disabled={importBusy} onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4" />{importBusy ? 'Importing…' : 'Import CSV'}</button>
@@ -239,11 +252,11 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
 
       {mode === 'rooms' && (
         <>
-          {!loading && !rooms.length && (
+          {!loading && !restRooms.length && (
             <div className={cx('rounded-xl border p-10 text-center', card(dark))}>
               <Building2 className="w-8 h-8 mx-auto mb-3 text-faint" />
               <p className="font-semibold">No rooms yet</p>
-              <p className={cx('text-sm mt-1', muted)}>{canManageRooms ? 'Add your first room to start placing members.' : 'The department owner has not added any rooms yet.'}</p>
+              <p className={cx('text-sm mt-1', muted)}>{roomEventId ? 'Create a rest room in Event Planning to see it here.' : canManageRooms ? 'Add your first rest room to start placing members.' : 'The department owner has not added any rooms yet.'}</p>
             </div>
           )}
           {grouped.map(([block, list]) => (
@@ -288,11 +301,13 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                       </div>
                       {r.category === 'control_room' && <div className={cx('mt-2 rounded-md bg-raised px-2 py-1.5 text-[10px]', muted)}>Requirements team: <span className="font-semibold text-ink">{r.responsibleTeam || 'No team assigned'}</span></div>}
                       {r.category === 'control_room' && <div className={cx('mt-2 rounded-md border border-blue-500/20 bg-blue-500/5 px-2.5 py-2 text-[10px]', muted)}>{linkedControlRooms[r.id] ? <><span className="font-semibold text-blue-300">Control Rooms · {roomEventName}:</span> {linkedControlRooms[r.id].name} · {linkedControlRooms[r.id].location} · {linkedControlRooms[r.id].pc_count} PCs</> : <>No CCTV Control Room linked for {roomEventName}. Link it from Control Rooms → Edit room.</>}</div>}
+                      {tasks.filter(task => task.room_id === r.id).length > 0 && <div className="mt-2 space-y-1 rounded-md bg-raised/50 p-2">{tasks.filter(task => task.room_id === r.id).map(task => <div key={task.id} className="flex items-center gap-2 text-[10px]"><span className="min-w-0 flex-1 truncate text-ink-soft">{task.title} · {task.assigned_to || 'Unassigned'}</span><select aria-label={`Status for ${task.title}`} disabled={!canManageTasks && task.assigned_to !== auth.currentUser?.name} className="rounded border border-line bg-field px-1.5 py-1 text-[10px] text-ink disabled:opacity-60" value={task.status} onChange={e => void updateTaskStatus(task, e.target.value)}><option value="todo">To do</option><option value="in_progress">In progress</option><option value="complete">Ready</option></select></div>)}</div>}
                       {roomReady && r.readyAt && <p className={cx('mt-1 text-[10px]', muted)}>Ready at {new Date(r.readyAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>}
                       {roomReturned && r.returnedAt && <p className={cx('mt-1 text-[10px]', muted)}>Returned at {new Date(r.returnedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>}
                       <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-line">
                         <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5')} onClick={() => setRequirementsRoom(r)}><ListTodo className="w-3.5 h-3.5" />Necessities</button>
-                        {canManageRooms && <>
+                        {roomEventId && canManageTasks && <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5')} onClick={() => void assignRoomSetupTask(r)}><Plus className="w-3.5 h-3.5" />Assign room task</button>}
+                        {canEditRoomDefinitions && <>
                           {canAdminAssignRoomMembers && <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5')} disabled={full} onClick={() => setRoomAssignmentModal(r)}><UserPlus className="w-3.5 h-3.5" />Add people</button>}
                           <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5')} onClick={() => setRoomModal(r)} aria-label={`Edit room ${r.name}`}><Edit3 className="w-3.5 h-3.5" /></button>
                           <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5 text-rose-500')} aria-label={`Delete room ${r.name}`}
@@ -328,7 +343,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
             <select aria-label="Filter by room" value={roomFilter} onChange={e => setRoomFilter(e.target.value)} className={cx(inputCls(dark), 'sm:w-56')}>
               <option value="all">All members</option>
               <option value="none">Not in a room</option>
-              {rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+              {restRooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </div>
           <section className="border-b border-line p-4 space-y-3">
@@ -370,7 +385,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                         {canAdminAssignRoomMembers ? (
                           <select aria-label={`Room for ${m.name}`} value={m.roomId || ''} onChange={e => updateMember(m.id, { roomId: e.target.value || null })} className={cx(inputCls(dark), 'py-1.5 text-xs min-w-[10rem]')}>
                             <option value="">— Not in a room —</option>
-                            {rooms.map(r => {
+                            {restRooms.map(r => {
                               const free = r.capacity - membersInRoom(r.id).length;
                               return <option key={r.id} value={r.id} disabled={free <= 0 && r.id !== m.roomId}>{r.name} · {r.category === 'control_room' ? 'Control room' : 'Rest room'} ({Math.max(0, free)} free)</option>;
                             })}
@@ -399,8 +414,8 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
       {roomModal && <RoomForm dark={dark} room={roomModal === 'new' ? null : roomModal} teams={manpower.teams} onClose={() => setRoomModal(null)}
         onSave={(v) => (roomModal === 'new' ? addRoom(v) : updateRoom(roomModal.id, v))} />}
       {roomAssignmentModal && <RoomAssignmentModal dark={dark} room={roomAssignmentModal} members={members} presentMembers={presentRoomCandidates} eventSelected={!!roomEventId} onClose={() => setRoomAssignmentModal(null)} onSave={ids => saveRoomAssignment(roomAssignmentModal, ids)} />}
-      {requirementsRoom && <RoomRequirementsModal dark={dark} room={requirementsRoom} canDefine={canDefineRoomRequirements} canFulfill={canFulfillRoomRequirements(requirementsRoom)} onClose={() => setRequirementsRoom(null)} onSave={next => updateRoomSetup(requirementsRoom.id, next)} />}
-      {memberModal && <MemberForm dark={dark} rooms={rooms} members={members}
+      {requirementsRoom && <RoomRequirementsModal dark={dark} room={requirementsRoom} canDefine={canDefineRoomRequirements} canFulfill={canFulfillRoomRequirements(requirementsRoom)} isPostEvent={roomEvent?.status === 'complete'} onClose={() => setRequirementsRoom(null)} onSave={next => updateRoomSetup(requirementsRoom.id, next)} />}
+      {memberModal && <MemberForm dark={dark} rooms={restRooms} members={members}
         edit={'id' in memberModal ? memberModal : null} presetRoom={'id' in memberModal ? undefined : memberModal.room}
         canAssignRoomMembers={canAdminAssignRoomMembers} onClose={() => setMemberModal(null)} onAdd={addMembers} onEdit={updateMember} />}
       {confirm && <ConfirmModal dark={dark} title={confirm.title} body={confirm.body} confirmLabel={confirm.label} onConfirm={confirm.run} onClose={() => setConfirm(null)} />}
@@ -454,11 +469,7 @@ const RoomForm: React.FC<{ dark: boolean; room: Room | null; teams: { id: string
           <div><label className={labelCls(dark)} htmlFor="rn">Room name / number</label><input id="rn" autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. A-101" className={inputCls(dark)} /></div>
           <div><label className={labelCls(dark)} htmlFor="rb">Block / camp (optional)</label><input id="rb" value={block} onChange={e => setBlock(e.target.value)} placeholder="e.g. Block A" className={inputCls(dark)} /></div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div><label className={labelCls(dark)} htmlFor="room-category">Category</label><select id="room-category" value={category} onChange={e => setCategory(e.target.value as Room['category'])} className={inputCls(dark)}><option value="rest_room">Rest room</option><option value="control_room">Control room</option></select></div>
-          {category === 'control_room' && <div><label className={labelCls(dark)} htmlFor="room-team">Team fulfilling requirements</label><select id="room-team" required value={responsibleTeam} onChange={e => setResponsibleTeam(e.target.value)} className={inputCls(dark)}><option value="">Choose a Sewadar team</option>{teams.map(team => <option key={team.id} value={team.name}>{team.name}{team.lead ? ` · Lead: ${team.lead}` : ''}</option>)}</select>{!teams.length && <p className="mt-1 text-[11px] text-amber-300">Create a team in Sewadars → Teams first.</p>}</div>}
-        </div>
-        <div><label className={labelCls(dark)} htmlFor="rc">{category === 'control_room' ? 'Member capacity' : 'Room capacity (beds)'}</label><input id="rc" type="number" min={1} max={500} required value={capacity} onChange={e => setCapacity(e.target.value)} className={inputCls(dark)} /><p className={cx('mt-1 text-[11px]', dark ? 'text-gray-500' : 'text-gray-500')}>{category === 'control_room' ? 'Capacity limits how many roster members can be assigned to this control room.' : 'Capacity is used for member placement; beds are not room setup requirements.'}</p></div>
+        <div><label className={labelCls(dark)} htmlFor="rc">Room capacity (beds)</label><input id="rc" type="number" min={1} max={500} required value={capacity} onChange={e => setCapacity(e.target.value)} className={inputCls(dark)} /><p className={cx('mt-1 text-[11px]', dark ? 'text-gray-500' : 'text-gray-500')}>Capacity is used for member placement; beds are not room setup requirements.</p></div>
         <div><label className={labelCls(dark)} htmlFor="rno">Notes (optional)</label><input id="rno" value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. Ground floor, AC" className={inputCls(dark)} /></div>
         <div className="flex justify-end gap-2 pt-1"><button type="button" onClick={onClose} className={btnGhost(dark)}>Cancel</button><button type="submit" disabled={busy} className={btnPrimary}>{busy ? 'Saving…' : 'Save room'}</button></div>
       </form>
@@ -467,12 +478,16 @@ const RoomForm: React.FC<{ dark: boolean; room: Room | null; teams: { id: string
 };
 
 const RoomRequirementsModal: React.FC<{
-  dark: boolean; room: Room; canDefine: boolean; canFulfill: boolean; onClose: () => void;
+  dark: boolean; room: Room; canDefine: boolean; canFulfill: boolean; isPostEvent: boolean; onClose: () => void;
   onSave: (requirements: RoomRequirement[]) => Promise<boolean>;
-}> = ({ dark, room, canDefine, canFulfill, onClose, onSave }) => {
+}> = ({ dark, room, canDefine, canFulfill, isPostEvent, onClose, onSave }) => {
   const [items, setItems] = useState<RoomRequirement[]>(room.requirements.map(item => ({ ...item })));
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<'prepare' | 'return'>(isPostEvent ? 'return' : 'prepare');
+  useEffect(() => { if (isPostEvent) setPhase('return'); }, [isPostEvent]);
   const changeItem = (index: number, patch: Partial<RoomRequirement>) => setItems(current => current.map((item, i) => i === index ? { ...item, ...patch } : item));
+  const isPrepared = (item: RoomRequirement) => item.quantity > 0 && item.readyQuantity >= item.quantity;
+  const completeCount = items.filter(item => phase === 'prepare' ? isPrepared(item) : item.returned).length;
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setBusy(true);
@@ -489,34 +504,48 @@ const RoomRequirementsModal: React.FC<{
     if (ok) onClose();
   };
   return (
-    <Modal title={`Necessities · ${room.name}`} dark={dark} wide onClose={onClose}>
-      <form onSubmit={submit} className="space-y-3">
-        <p className={cx('text-xs', dark ? 'text-gray-400' : 'text-gray-600')}>
-          {room.category === 'rest_room' ? 'Accommodation members prepare and return these necessities.' : `The ${room.responsibleTeam || 'assigned'} team prepares and returns these necessities.`}
-        </p>
-        {items.length === 0 && <p className={cx('rounded-lg border border-dashed border-line px-3 py-5 text-center text-xs', dark ? 'text-gray-500' : 'text-gray-500')}>No necessities added yet.</p>}
-        <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
-          {items.map((item, index) => (
-            <div key={index} className="rounded-lg border border-line p-3 space-y-2">
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_minmax(0,1fr)_auto] sm:items-end">
-                <label className={labelCls(dark)}>Necessity<input disabled={!canDefine} value={item.name} onChange={e => changeItem(index, { name: e.target.value })} placeholder="Fan, mattress, blanket…" className={cx(inputCls(dark), 'mt-1')} /></label>
-                <label className={labelCls(dark)}>Needed<input disabled={!canDefine} type="number" min={0} value={item.quantity} onChange={e => changeItem(index, { quantity: Number(e.target.value), readyQuantity: Math.min(item.readyQuantity, Number(e.target.value) || 0) })} className={cx(inputCls(dark), 'mt-1')} /></label>
-                <label className={labelCls(dark)}>Collect from<input disabled={!canDefine} value={item.collectFrom || ''} onChange={e => changeItem(index, { collectFrom: e.target.value })} placeholder="Store / block / contact" className={cx(inputCls(dark), 'mt-1')} /></label>
-                {canDefine && <button type="button" aria-label={`Remove ${item.name || 'necessity'}`} className={cx(btnGhost(dark), 'px-2 text-rose-400')} onClick={() => setItems(current => current.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></button>}
-              </div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-                <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={item.quantity > 0 && item.readyQuantity >= item.quantity} disabled={!canFulfill || item.quantity <= 0} onChange={e => changeItem(index, { readyQuantity: e.target.checked ? item.quantity : 0, returned: e.target.checked ? item.returned : false })} />Ready</label>
-                <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={!!item.returned} disabled={!canFulfill || item.quantity <= 0 || item.readyQuantity < item.quantity} onChange={e => changeItem(index, { returned: e.target.checked })} />Returned</label>
-                <span className={cx('ml-auto tabular-nums', dark ? 'text-gray-400' : 'text-gray-600')}>{Math.min(item.readyQuantity, item.quantity)}/{item.quantity} ready</span>
-              </div>
-            </div>
-          ))}
+    <Modal title={`Room checklist · ${room.name}`} dark={dark} xl stickyHeader onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><p className={cx('text-xs', dark ? 'text-gray-400' : 'text-gray-600')}>{room.category === 'rest_room' ? 'Assign and prepare necessities before the event. After it ends, collect them and mark each one returned.' : `The ${room.responsibleTeam || 'assigned'} team prepares this room before the event and returns its necessities afterward.`}</p></div>
+          <span className={cx('shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-medium tabular-nums', dark ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600')}>{completeCount} / {items.length} {phase === 'prepare' ? 'prepared' : 'returned'}</span>
         </div>
-        {canDefine && <button type="button" className={btnGhost(dark)} onClick={() => setItems(current => [...current, { name: '', quantity: 1, readyQuantity: 0, collectFrom: '', returned: false }])}><Plus className="h-3.5 w-3.5" />Add necessity</button>}
-        {!canDefine && !canFulfill && <p className={cx('text-[11px]', dark ? 'text-gray-500' : 'text-gray-500')}>View only. Room necessities are managed by Accommodation or the responsible team.</p>}
+
+        <div className={cx('grid grid-cols-2 gap-1 rounded-lg border p-1', dark ? 'border-gray-700 bg-gray-900/60' : 'border-gray-200 bg-gray-50')} role="group" aria-label="Room work phase">
+          <button type="button" aria-pressed={phase === 'prepare'} onClick={() => setPhase('prepare')} className={cx('rounded-md px-3 py-2 text-xs font-semibold transition-colors', phase === 'prepare' ? 'bg-blue-600 text-white' : dark ? 'text-gray-400 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}><span className="mr-1.5">1</span>Before event · Prepare & accommodate</button>
+          <button type="button" aria-pressed={phase === 'return'} onClick={() => setPhase('return')} className={cx('rounded-md px-3 py-2 text-xs font-semibold transition-colors', phase === 'return' ? 'bg-blue-600 text-white' : dark ? 'text-gray-400 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}><span className="mr-1.5">2</span>After event · Collect & return</button>
+        </div>
+        <p className={cx('text-[11px]', dark ? 'text-gray-500' : 'text-gray-500')}>{phase === 'prepare' ? 'Complete each item as it is placed in the room. Room assignments are managed with Add people.' : isPostEvent ? 'Event is marked complete. Collect each prepared item from the room and mark it returned.' : 'After the event, collect each prepared item from the room. A return task can only be completed after preparation.'}</p>
+
+        {items.length === 0 && <p className={cx('rounded-lg border border-dashed border-line px-3 py-8 text-center text-xs', dark ? 'text-gray-500' : 'text-gray-500')}>No necessities added yet. Add the items needed for this room before the event.</p>}
+        <div className="max-h-[58vh] space-y-2 overflow-y-auto pr-1">
+          {items.map((item, index) => {
+            const done = phase === 'prepare' ? isPrepared(item) : item.returned;
+            const editable = canDefine && phase === 'prepare';
+            return <article key={index} className={cx('rounded-lg border p-3', done ? dark ? 'border-emerald-500/30 bg-emerald-500/[0.04]' : 'border-emerald-500/30 bg-emerald-50/50' : 'border-line')}>
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_minmax(0,1fr)_auto] sm:items-end">
+                <label className={labelCls(dark)}>Necessity<input disabled={!editable} value={item.name} onChange={e => changeItem(index, { name: e.target.value })} placeholder="Fan, mattress, blanket…" className={cx(inputCls(dark), 'mt-1')} /></label>
+                <label className={labelCls(dark)}>Needed<input disabled={!editable} type="number" min={0} value={item.quantity} onChange={e => changeItem(index, { quantity: Number(e.target.value), readyQuantity: Math.min(item.readyQuantity, Number(e.target.value) || 0), returned: Number(e.target.value) > 0 && item.readyQuantity >= Number(e.target.value) ? item.returned : false })} className={cx(inputCls(dark), 'mt-1')} /></label>
+                <label className={labelCls(dark)}>Collect from<input disabled={!editable} value={item.collectFrom || ''} onChange={e => changeItem(index, { collectFrom: e.target.value })} placeholder="Store / block / contact" className={cx(inputCls(dark), 'mt-1')} /></label>
+                {editable && <button type="button" aria-label={`Remove ${item.name || 'necessity'}`} className={cx(btnGhost(dark), 'px-2 text-rose-400')} onClick={() => setItems(current => current.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></button>}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-line/70 pt-2">
+                <div className="flex items-center gap-2 text-[11px]">
+                  {done ? <><CircleCheck className="h-4 w-4 text-emerald-400"/><span className="font-semibold text-emerald-400">Done · {phase === 'prepare' ? 'Prepared' : 'Returned'}</span></> : <><Circle className="h-4 w-4 text-amber-400"/><span className="font-medium text-amber-300">To do · {phase === 'prepare' ? 'Prepare' : 'Return'}</span></>}
+                  {phase === 'prepare' && <span className={cx('ml-1 tabular-nums', dark ? 'text-gray-500' : 'text-gray-500')}>{Math.min(item.readyQuantity, item.quantity)} / {item.quantity} ready</span>}
+                </div>
+                {canFulfill && <button type="button" disabled={phase === 'prepare' ? item.quantity <= 0 : !isPrepared(item)} onClick={() => changeItem(index, phase === 'prepare' ? { readyQuantity: done ? 0 : item.quantity, returned: done ? false : item.returned } : { returned: !item.returned })} className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5', done && 'border-emerald-500/30 text-emerald-400')}>
+                  {done ? <><CircleCheck className="h-3.5 w-3.5"/>{phase === 'prepare' ? 'Mark to do' : 'Mark unreturned'}</> : <><Circle className="h-3.5 w-3.5"/>Mark {phase === 'prepare' ? 'prepared' : 'returned'}</>}
+                </button>}
+              </div>
+            </article>;
+          })}
+        </div>
+        {canDefine && phase === 'prepare' && <button type="button" className={btnGhost(dark)} onClick={() => setItems(current => [...current, { name: '', quantity: 1, readyQuantity: 0, collectFrom: '', returned: false }])}><Plus className="h-3.5 w-3.5" />Add necessity</button>}
+        {!canDefine && <p className={cx('text-[11px]', dark ? 'text-gray-500' : 'text-gray-500')}>{canFulfill ? 'Room necessities are managed by Accommodation or the responsible control-room team. Update task status here.' : 'View only. Task updates are limited to Accommodation or the responsible team.'}</p>}
         <div className="flex justify-end gap-2 border-t border-line pt-3">
           <button type="button" onClick={onClose} className={btnGhost(dark)}>Close</button>
-          {(canDefine || canFulfill) && <button type="submit" disabled={busy} className={btnPrimary}>{busy ? 'Saving…' : 'Save necessities'}</button>}
+          {(canDefine || canFulfill) && <button type="submit" disabled={busy} className={btnPrimary}>{busy ? 'Saving…' : 'Save checklist'}</button>}
         </div>
       </form>
     </Modal>

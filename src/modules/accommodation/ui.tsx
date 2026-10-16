@@ -19,9 +19,9 @@ export const Modal: React.FC<{ title: string; dark: boolean; onClose: () => void
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
   const content = (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="animate-fade-in fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-label={title}
-        className={cx('animate-pop-in w-full max-h-[92dvh] rounded-t-2xl sm:rounded-xl border border-line bg-surface text-ink', stickyHeader ? 'flex flex-col overflow-hidden p-0' : 'overflow-y-auto p-5 sm:p-6', xl ? 'sm:max-w-3xl' : wide ? 'sm:max-w-lg' : 'sm:max-w-md')}>
+        className={cx('animate-calm-enter w-full max-h-[92dvh] rounded-t-2xl sm:rounded-xl border border-line bg-surface text-ink shadow-2xl', stickyHeader ? 'flex flex-col overflow-hidden p-0' : 'overflow-y-auto p-5 sm:p-6', xl ? 'sm:max-w-3xl' : wide ? 'sm:max-w-lg' : 'sm:max-w-md')}>
         <div className={cx('flex items-center justify-between mb-4', stickyHeader ? 'shrink-0 border-b border-line px-5 pt-5 pb-3 sm:px-6 sm:pt-6' : '')}>
           <h2 className="text-lg font-bold">{title}</h2>
           <button onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg hover:bg-raised"><X className="w-4 h-4" /></button>

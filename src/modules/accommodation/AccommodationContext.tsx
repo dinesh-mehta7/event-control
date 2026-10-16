@@ -10,7 +10,7 @@ import { useEventScope } from '../../context/EventScopeContext';
 // Row mappers (database snake_case  ->  UI camelCase)
 // ---------------------------------------------------------------------------
 const mapRoom = (r: any, scopeKey = 'normal'): Room => ({
-  id: r.id, name: r.name, category: r.category === 'control_room' ? 'control_room' : 'rest_room', block: r.block || '', capacity: r.capacity, notes: r.notes || '', responsibleTeam: r.responsible_team || '',
+  id: r.id, eventId: r.event_id || null, name: r.name, category: r.category === 'control_room' ? 'control_room' : 'rest_room', block: r.block || '', capacity: r.capacity, notes: r.notes || '', responsibleTeam: r.responsible_team || '',
   requirements: (() => { const source = r.requirements_by_scope?.[scopeKey] ?? (scopeKey === 'normal' ? r.requirements : []); return Array.isArray(source) ? source.map((x: any) => ({
     name: String(x.name || ''), quantity: Math.max(0, Number(x.quantity) || 0), readyQuantity: Math.max(0, Number(x.readyQuantity) || 0), collectFrom: String(x.collectFrom || ''), returned: !!x.returned,
   })).filter((x: RoomRequirement) => x.name) : []; })(),
@@ -56,6 +56,7 @@ export const friendlyError = (error: any): string => {
   if (error?.code === '23505' || /duplicate key|already exists/i.test(msg)) return 'That name already exists — pick a different one.';
   if (/meal_label/i.test(msg)) return 'The database is missing meal_menu.meal_label. Run supabase/migration_v23_meal_label_repair.sql in the Supabase SQL Editor, then reload the app.';
   if (/accommodation_rooms.*(category|responsible_team)|(category|responsible_team).*accommodation_rooms|accommodation_update_room_requirements/i.test(msg)) return 'Room categories and team-based requirements need migration v69. Run supabase/migration_v69_accommodation_room_categories.sql in the Supabase SQL Editor, then reload.';
+  if (/event_requirement_id|accommodation_rooms.*event_id|event_requirements.*room_requirements|room_id.*accommodation_member_tasks/i.test(msg)) return 'Event room requirements need migration v79. Run supabase/migration_v79_event_room_requirements.sql in the Supabase SQL Editor, then reload.';
   if (/scope_key|readiness_by_scope|requirements_by_scope/i.test(msg)) return 'The database is missing event-scoped accommodation fields. Run supabase/migration_v63_accommodation_event_readiness.sql in the Supabase SQL Editor, then reload the app.';
   if (/member_type/i.test(msg)) return 'The database still has the old member types. Run supabase/migration_v25_member_types.sql in the Supabase SQL Editor, then reload the app.';
   if (/call_count|last_call_outcome|expected_arrival|arrival_status|accommodation_member_tasks/i.test(msg)) return 'The database is missing member operations fields. Run supabase/migration_v24_member_operations.sql in the Supabase SQL Editor, then reload the app.';
@@ -142,7 +143,9 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
   // The database enforces these too (row-level security); the UI just mirrors
   // them so people don't see buttons that would be refused.
   const canManageRooms = ready && (user.level === 'owner' || user.level === 'dept_head' || (user.level === 'sub_dept_head' && user.subDepartment === 'accommodation'));
-  const canDefineRoomRequirements = ready && (user.level === 'owner' || (user.level === 'dept_head' && (!user.subDepartment || user.subDepartment === 'it')));
+  // Event/room necessities are defined in Event Planning. Accommodation can view
+  // the saved list and record returns, but cannot create or redefine requirements.
+  const canDefineRoomRequirements = ready && (user.level === 'owner' || user.level === 'dept_head' || (user.level === 'sub_dept_head' && user.subDepartment === 'accommodation'));
   const canManageMenu = ready && (user.level === 'owner' || (user.level === 'sub_dept_head' && user.subDepartment === 'accommodation'));
 
   const toast = useCallback((msg: string, type: 'success' | 'error' | 'warning' = 'success') => w.addToast?.(msg, type), [w.addToast]);
@@ -162,12 +165,13 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
       setLoadError(friendlyError(err));
     } else {
       setLoadError('');
-      setRooms(r.data.map((row: any) => mapRoom(row, scopeKey)).sort(sortRooms));
+      const scopedRooms = r.data.filter((row: any) => eventId ? !row.event_id || row.event_id === eventId : !row.event_id);
+      setRooms(scopedRooms.map((row: any) => mapRoom(row, scopeKey)).sort(sortRooms));
       setMembers(m.data.map(mapMember).sort(sortMembers));
       setMeals(mm.data.map(mapMeal).sort(sortMeals));
     }
     setLoading(false);
-  }, [ready, scopeKey]);
+  }, [ready, scopeKey, eventId]);
 
   useEffect(() => {
     if (!ready) { setRooms([]); setMembers([]); setMeals([]); setLoadError(''); return; }
@@ -201,7 +205,7 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
       .channel(`accommodation-${orgId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'accommodation_rooms', filter }, (p: any) => {
         if (p.eventType === 'DELETE') setRooms(prev => prev.filter(x => x.id !== p.old.id));
-        else setRooms(prev => upsert(prev, mapRoom(p.new, scopeKey), sortRooms));
+        else if (eventId ? (!p.new.event_id || p.new.event_id === eventId) : !p.new.event_id) setRooms(prev => upsert(prev, mapRoom(p.new, scopeKey), sortRooms));
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'accommodation_members', filter }, (p: any) => {
         if (p.eventType === 'DELETE') setMembers(prev => prev.filter(x => x.id !== p.old.id));
@@ -213,7 +217,7 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [ready, orgId, scopeKey]);
+  }, [ready, orgId, scopeKey, eventId]);
 
   // Deleting a room un-assigns its people in the database (on delete set null)
   // — mirror that locally instantly.
@@ -231,7 +235,7 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
     if (!canManageRooms) { toast('Only the department owner can add rooms.', 'error'); return false; }
     if (!validRoom(i)) return false;
     const requirements = canDefineRoomRequirements ? i.requirements : [];
-    const row = { id: uid('room'), organization_id: orgId, name: i.name.trim(), category: i.category, responsible_team: i.category === 'control_room' ? i.responsibleTeam.trim() : '', block: i.block.trim(), capacity: i.capacity, notes: i.notes.trim(), requirements: scopeKey === 'normal' ? requirements : [], requirements_by_scope: { [scopeKey]: requirements }, readiness_by_scope: { [scopeKey]: { readyAt: '', returnedAt: '' } } };
+    const row = { id: uid('room'), organization_id: orgId, event_id: eventId, name: i.name.trim(), category: i.category, responsible_team: i.category === 'control_room' ? i.responsibleTeam.trim() : '', block: i.block.trim(), capacity: i.capacity, notes: i.notes.trim(), requirements: scopeKey === 'normal' ? requirements : [], requirements_by_scope: { [scopeKey]: requirements }, readiness_by_scope: { [scopeKey]: { readyAt: '', returnedAt: '' } } };
     const { data, error } = await supabase.from('accommodation_rooms').insert(row).select().single();
     if (error) { toast(`Could not add room: ${friendlyError(error)}`, 'error'); return false; }
     setRooms(prev => upsert(prev, mapRoom(data, scopeKey), sortRooms));

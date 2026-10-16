@@ -131,6 +131,12 @@ The migration inventory is:
    | `migration_v72_general_feedback.sql` | Combines material/site-event reports as Issues and adds a separate general Feedback option |
    | `migration_v73_event_linked_reports.sql` | Links Issues & Reports entries to an event |
    | `migration_v74_wifi_event_usage.sql` | Associates Wi-Fi access issues with events for usage reports |
+   | `migration_v78_event_staffing_requirements.sql` | Daily event staffing requirements and collection locations |
+   | `migration_v79_event_room_requirements.sql` | Event room requirements synced to Accommodation |
+   | `migration_v80_wifi_register_fields.sql` | Switch and port details for outdoor Wi-Fi points, plus department user ID issue list fields |
+   | `migration_v81_accounts_vendor_payment_docs.sql` | Accounts-only vendor payments and optional bill/payment proof attachments |
+   | `migration_v82_event_radio_collection_unit.sql` | Required source unit for event Walkie-Talkie requests |
+   | `migration_v83_manpower_task_assignment_access.sql` | Aligns task, Sewadar assignment, and resource permissions with the Sewadar and Accommodation workspaces |
 
 `migration_v16` needs v11–v15 first (it reads inventory, purchase, notifications and the history table).
 
@@ -429,3 +435,18 @@ Connects event records to the shared meeting, task, inventory, and report flows.
 
 ## migration_v77_meeting_transcripts.sql
 Stores the Teams online meeting ID so transcript-based minutes can be generated. Run after migration_v76; included in setup.sql for new databases.
+
+## migration_v80_wifi_register_fields.sql
+Adds switch location and port number to Wi-Fi access points, and From, Contact, and Device Model to issued department user IDs. Apply after migration_v79 on existing databases; included in setup.sql for new databases.
+
+## migration_v81_accounts_vendor_payment_docs.sql
+Adds the Accounts department, requires complete contact and bank details for offline vendors, and stores optional bill/payment-proof attachments in private storage. Payment requests and history are visible to Accounts; only non-owner Accounts users can record payments. Apply after migration_v80 on existing databases; included in setup.sql for new databases.
+
+## migration_v82_event_radio_collection_unit.sql
+Adds a required collection unit to event radio requests so the source appears in both Event Requirements and the Walkie-Talkie approval queue. Apply after migration_v81 on existing databases; included in setup.sql for new databases.
+
+## migration_v83_manpower_task_assignment_access.sql
+Allows authorized Accommodation sub-department leads to manage teams, task assignments, and task resources, matching the controls already shown in the app. Resource handoffs use the team lead, an assigned Sewadar, or the task owner as recipient. Apply after migration_v82 on existing databases; included in setup.sql for new databases.
+
+## migration_v84_task_team_links.sql
+Adds a validated foreign-key link between tasks and registered teams, backfills existing assignments, and keeps the displayed team name in sync. Apply after migration_v83 on existing databases; included in setup.sql for new databases.

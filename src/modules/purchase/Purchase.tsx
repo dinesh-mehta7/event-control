@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Check, ClipboardList, Edit3, Plus, Search, ShoppingCart, Trash2, Truck, Wallet, X } from 'lucide-react';
+import { Check, ClipboardList, Edit3, FileText, Plus, Search, ShoppingCart, Trash2, Truck, Wallet, X } from 'lucide-react';
 import { Modal, ConfirmModal, btnGhost, cx, inputCls, labelCls } from '../accommodation/ui';
 import { todayStr } from '../accommodation/dates';
 import { inr } from '../../views/orgData';
@@ -10,6 +10,8 @@ import type { VendorInput } from './PurchaseContext';
 import { useInventory } from '../inventory';
 import { INCOMING, PAYABLE, PAYREQ, PAY_MODES, STATUS, payModeLabel, poDue, poTotal, poUnitsLeft } from './types';
 import type { PO, POStatus, Payment, PaymentRequest, Receipt, Vendor, VendorMode } from './types';
+import { supabase } from '../walkie/lib/supabaseClient';
+import { useWalkie } from '../walkie';
 
 // Requests, Orders, Receiving and Payments are one flow now. This file holds the buying half of it: the buy list,
 // orders, receiving, vendors and payments. The Requests screen shows them as its tabs.
@@ -119,15 +121,21 @@ const PaymentList: React.FC<{ rows: Payment[] | null; empty: string; showPo?: bo
   if (rows === null) return <Empty>Loading…</Empty>;
   if (!rows.length) return <Empty>{empty}</Empty>;
   return (
-    <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-xs"><thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr>{['Amount', ...(showPo ? ['Purchase order'] : []), 'Method', 'Reference', 'Paid by', 'Note', 'Date', 'Recorded by'].map((heading, index) => <th key={index} className="px-3 py-2.5 font-semibold">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line/70">
+    <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-xs"><thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr>{['Amount', ...(showPo ? ['Purchase order'] : []), 'Method', 'Reference', 'Paid by', 'Note', 'Documents', 'Date', 'Recorded by'].map((heading, index) => <th key={index} className="px-3 py-2.5 font-semibold">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line/70">
       {rows.map(r => {
         const o = po.get(r.poId);
         return (
-          <tr key={r.id} className="hover:bg-raised/30"><td className="px-3 py-2.5 whitespace-nowrap font-bold tabular-nums">{money(r.amount)}</td>{showPo && <td className="px-3 py-2.5 whitespace-nowrap">{o ? `${o.number} · ${o.title}` : '—'}</td>}<td className="px-3 py-2.5 whitespace-nowrap">{payModeLabel(r.mode)}</td><td className="px-3 py-2.5 whitespace-nowrap">{r.ref || '—'}</td><td className="px-3 py-2.5 whitespace-nowrap">{r.paidBy || '—'}</td><td className="px-3 py-2.5">{r.note || '—'}</td><td className="px-3 py-2.5 whitespace-nowrap">{when(r.doneAt)}</td><td className="px-3 py-2.5 whitespace-nowrap">{r.doneBy || '—'}</td></tr>
+          <tr key={r.id} className="hover:bg-raised/30"><td className="px-3 py-2.5 whitespace-nowrap font-bold tabular-nums">{money(r.amount)}</td>{showPo && <td className="px-3 py-2.5 whitespace-nowrap">{o ? `${o.number} · ${o.title}` : '—'}</td>}<td className="px-3 py-2.5 whitespace-nowrap">{payModeLabel(r.mode)}</td><td className="px-3 py-2.5 whitespace-nowrap">{r.ref || '—'}</td><td className="px-3 py-2.5 whitespace-nowrap">{r.paidBy || '—'}</td><td className="px-3 py-2.5">{r.note || '—'}</td><td className="px-3 py-2.5"><div className="flex gap-2">{r.billPath && <PaymentAttachment path={r.billPath} label="Bill"/>}{r.proofPath && <PaymentAttachment path={r.proofPath} label="Proof"/>}{!r.billPath&&!r.proofPath&&'—'}</div></td><td className="px-3 py-2.5 whitespace-nowrap">{when(r.doneAt)}</td><td className="px-3 py-2.5 whitespace-nowrap">{r.doneBy || '—'}</td></tr>
         );
       })}
     </tbody></table></div>
   );
+};
+
+const PaymentAttachment: React.FC<{ path: string; label: string }> = ({ path, label }) => {
+  const [busy, setBusy] = useState(false);
+  const open = async () => { setBusy(true); const { data, error } = await supabase.storage.from('purchase-payment-documents').createSignedUrl(path, 60); setBusy(false); if (error || !data?.signedUrl) return; window.open(data.signedUrl, '_blank', 'noopener,noreferrer'); };
+  return <button type="button" disabled={busy} onClick={() => void open()} className="inline-flex items-center gap-1 text-blue-300 hover:text-blue-200 disabled:opacity-60"><FileText className="h-3 w-3"/>{busy?'Opening…':label}</button>;
 };
 
 // ---- views -----------------------------------------------------------------
@@ -224,18 +232,18 @@ const VendorsView: React.FC = () => {
 };
 
 const VendorForm: React.FC<{ initial: Vendor | null; onClose: () => void; onSave: (v: VendorInput) => Promise<boolean> }> = ({ initial, onClose, onSave }) => {
-  const [f, setF] = useState<VendorInput>({ name: initial?.name || '', vendorMode: initial?.vendorMode || '', contact: initial?.contact || '', phone: initial?.phone || '', email: initial?.email || '', address: initial?.address || '', notes: initial?.notes || '' });
+  const [f, setF] = useState<VendorInput>({ name: initial?.name || '', vendorMode: initial?.vendorMode || '', contact: initial?.contact || '', phone: initial?.phone || '', email: initial?.email || '', address: initial?.address || '', accountHolder: initial?.accountHolder || '', bankName: initial?.bankName || '', accountNumber: initial?.accountNumber || '', ifsc: initial?.ifsc || '', bankBranch: initial?.bankBranch || '', upiId: initial?.upiId || '', notes: initial?.notes || '' });
   const [busy, setBusy] = useState(false);
-  const setText = (k: 'name' | 'contact' | 'phone' | 'email' | 'address' | 'notes', v: string) => setF(p => ({ ...p, [k]: v }));
+  const setText = (k: keyof Omit<VendorInput, 'vendorMode'>, v: string) => setF(p => ({ ...p, [k]: v }));
   const submit = async (e: React.FormEvent) => { e.preventDefault(); setBusy(true); const ok = await onSave(f); setBusy(false); if (ok) onClose(); };
-  const field = (id: string, label: string, k: 'contact' | 'phone' | 'email' | 'address' | 'notes', type = 'text') => <div><label className={labelCls(D)} htmlFor={id}>{label}</label><input id={id} type={type} value={f[k]} onChange={e => setText(k, e.target.value)} className={inputCls(D)} /></div>;
+  const field = (id: string, label: string, k: keyof Omit<VendorInput, 'vendorMode' | 'name'>, type = 'text', required = false) => <div><label className={labelCls(D)} htmlFor={id}>{label}{required && <span className="ml-1 text-rose-300">*</span>}</label><input id={id} required={required} type={type} inputMode={k === 'accountNumber' ? 'numeric' : undefined} value={f[k]} onChange={e => setText(k, e.target.value)} className={inputCls(D)} /></div>;
   return (
     <Modal title={initial ? 'Edit vendor' : 'Add vendor'} dark={D} onClose={onClose} wide>
       <form onSubmit={submit} className="space-y-4">
         <div className="grid sm:grid-cols-2 gap-3"><div><label className={labelCls(D)} htmlFor="vn-n">Vendor name</label><input id="vn-n" autoFocus required value={f.name} onChange={e => setText('name', e.target.value)} className={inputCls(D)} /></div><div><label className={labelCls(D)} htmlFor="vn-mode">Vendor category</label><select id="vn-mode" required value={f.vendorMode} onChange={e => setF(p => ({ ...p, vendorMode: e.target.value as VendorMode | '' }))} className={inputCls(D)}><option value="">Choose category…</option><option value="online">Online marketplace</option><option value="offline">Offline / local vendor</option></select><p className="mt-1 text-[10px] text-mute">Amazon / Flipkart or local supplier</p></div></div>
-        <div className="grid grid-cols-2 gap-3">{field('vn-c', 'Contact person', 'contact')}{field('vn-p', 'Phone', 'phone', 'tel')}</div>
-        {field('vn-e', 'Email', 'email', 'email')}
-        {f.vendorMode === 'offline' && field('vn-a', 'Vendor address', 'address')}
+        <div className="grid grid-cols-2 gap-3">{field('vn-c', 'Contact person', 'contact', 'text', f.vendorMode === 'offline')}{field('vn-p', 'Phone', 'phone', 'tel', f.vendorMode === 'offline')}</div>
+        <div className="grid grid-cols-2 gap-3">{field('vn-e', 'Email', 'email', 'email')}{f.vendorMode === 'offline' && field('vn-a', 'Vendor address', 'address', 'text', true)}</div>
+        {f.vendorMode === 'offline' && <section className="space-y-3 rounded-lg border border-line bg-raised/30 p-3"><div><h3 className="text-xs font-semibold text-ink">Bank details for offline payments</h3><p className="mt-1 text-[10px] text-mute">Complete the payee and bank information before saving this local vendor.</p></div><div className="grid gap-3 sm:grid-cols-2">{field('vn-holder','Account holder','accountHolder','text',true)}{field('vn-bank','Bank name','bankName','text',true)}{field('vn-account','Account number','accountNumber','text',true)}{field('vn-ifsc','IFSC code','ifsc','text',true)}{field('vn-branch','Bank branch','bankBranch','text',true)}{field('vn-upi','UPI ID','upiId')}</div></section>}
         {field('vn-t', 'Notes', 'notes')}
         <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className={btnGhost(D)}>Cancel</button><button type="submit" disabled={busy || !f.name.trim()} className={primary}>{busy ? 'Saving…' : 'Save'}</button></div>
       </form>
@@ -373,22 +381,51 @@ const AskPayModal: React.FC<{ id: string; onClose: () => void }> = ({ id, onClos
 
 // ---- Purchase pays an approved request -----------------------------------------------
 const PayNowModal: React.FC<{ id: string; onClose: () => void }> = ({ id, onClose }) => {
-  const { payRequests, orders, payNow, userName } = usePurchase();
+  const { payRequests, orders, vendors, payNow, userName, canPay } = usePurchase();
+  const auth: any = useWalkie();
   const r = payRequests.find(x => x.id === id); const o = r ? orders.find(x => x.id === r.poId) : undefined;
+  const vendor = o?.vendorId ? vendors.find(row => row.id === o.vendorId) : undefined;
   const [mode, setMode] = useState('bank'); const [ref, setRef] = useState(''); const [paidBy, setPaidBy] = useState(userName); const [note, setNote] = useState(''); const [busy, setBusy] = useState(false);
+  const [billFile, setBillFile] = useState<File | null>(null); const [proofFile, setProofFile] = useState<File | null>(null); const [fileError, setFileError] = useState('');
   if (!r || !o) return null;
-  const submit = async (e: React.FormEvent) => { e.preventDefault(); setBusy(true); const ok = await payNow(r.id, { mode, ref, paidBy, note }); setBusy(false); if (ok) onClose(); };
+  const uploadFile = async (file: File | null, kind: 'bill' | 'proof') => {
+    if (!file) return '';
+    const organizationId = auth.currentUser?.organizationId;
+    if (!organizationId) throw new Error('Organization could not be identified.');
+    const ext = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'file';
+    const path = `${organizationId}/${r.id}/${kind}-${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from('purchase-payment-documents').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false });
+    if (error) throw error;
+    return path;
+  };
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!canPay) return;
+    setFileError(''); setBusy(true); const uploaded: string[] = [];
+    try {
+      const billPath = await uploadFile(billFile, 'bill'); if (billPath) uploaded.push(billPath);
+      const proofPath = await uploadFile(proofFile, 'proof'); if (proofPath) uploaded.push(proofPath);
+      const ok = await payNow(r.id, { mode, ref, paidBy, note, billPath, proofPath });
+      if (!ok && uploaded.length) await supabase.storage.from('purchase-payment-documents').remove(uploaded);
+      if (ok) onClose();
+    } catch (error: any) {
+      if (uploaded.length) await supabase.storage.from('purchase-payment-documents').remove(uploaded);
+      setFileError(error?.message || 'Could not upload the payment attachments.');
+    } finally { setBusy(false); }
+  };
   return (
     <Modal title={`Pay · ${o.number}`} dark={D} onClose={onClose} wide>
       <form onSubmit={submit} className="space-y-4">
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">Record the payment of <b className="tabular-nums">{money(r.amount)}</b>{r.note ? ` (${r.note})` : ''}.</div>
+        {vendor?.vendorMode === 'offline' && <section className="rounded-lg border border-line bg-raised/30 p-3"><h3 className="text-xs font-semibold text-ink">Offline vendor payment details · {vendor.name}</h3><dl className="mt-2 grid gap-x-4 gap-y-2 text-xs sm:grid-cols-2 lg:grid-cols-3">{[['Account holder',vendor.accountHolder],['Account number',vendor.accountNumber],['Bank',vendor.bankName],['IFSC',vendor.ifsc],['Branch',vendor.bankBranch],['UPI ID',vendor.upiId],['Contact',vendor.contact],['Phone',vendor.phone],['Address',vendor.address]].filter(([,value])=>value).map(([label,value])=><div key={label}><dt className="text-[10px] text-mute">{label}</dt><dd className="break-words font-medium text-ink">{value}</dd></div>)}</dl></section>}
         <div className="grid grid-cols-2 gap-3">
           <div><label className={labelCls(D)} htmlFor="pn-m">Paid via</label><select id="pn-m" value={mode} onChange={e => setMode(e.target.value)} className={inputCls(D)}>{PAY_MODES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
           <div><label className={labelCls(D)} htmlFor="pn-r">UTR / cheque / voucher no.</label><input id="pn-r" autoFocus value={ref} onChange={e => setRef(e.target.value)} className={inputCls(D)} /></div>
           <div><label className={labelCls(D)} htmlFor="pn-p">Paid by</label><input id="pn-p" value={paidBy} onChange={e => setPaidBy(e.target.value)} className={inputCls(D)} /></div>
           <div><label className={labelCls(D)} htmlFor="pn-n">Note (optional)</label><input id="pn-n" value={note} onChange={e => setNote(e.target.value)} className={inputCls(D)} /></div>
         </div>
-        <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className={btnGhost(D)}>Cancel</button><button type="submit" disabled={busy} className={good}>{busy ? 'Saving…' : 'I have paid. Record it'}</button></div>
+        <div className="rounded-lg border border-line bg-raised/30 p-3"><div className="mb-2"><h3 className="text-xs font-semibold text-ink">Payment attachments <span className="font-normal text-mute">· optional</span></h3><p className="mt-1 text-[10px] text-mute">Attach a bill, payment proof, or both. PDF, JPG, PNG, or WebP files up to 10 MB each.</p></div><div className="grid gap-3 sm:grid-cols-2"><label className={labelCls(D)}>Bill<input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={e => {const file=e.target.files?.[0]||null;if(file&&file.size>10*1024*1024){setFileError('Each attachment must be 10 MB or smaller.');e.target.value='';return;}if(file&&!['application/pdf','image/jpeg','image/png','image/webp'].includes(file.type)){setFileError('Choose a PDF, JPG, PNG, or WebP file.');e.target.value='';return;}setBillFile(file);setFileError('');}} className="mt-1 block w-full text-xs file:mr-2 file:rounded-md file:border-0 file:bg-raised file:px-2 file:py-1.5 file:text-ink" /></label><label className={labelCls(D)}>Payment proof<input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={e => {const file=e.target.files?.[0]||null;if(file&&file.size>10*1024*1024){setFileError('Each attachment must be 10 MB or smaller.');e.target.value='';return;}if(file&&!['application/pdf','image/jpeg','image/png','image/webp'].includes(file.type)){setFileError('Choose a PDF, JPG, PNG, or WebP file.');e.target.value='';return;}setProofFile(file);setFileError('');}} className="mt-1 block w-full text-xs file:mr-2 file:rounded-md file:border-0 file:bg-raised file:px-2 file:py-1.5 file:text-ink" /></label></div>{fileError&&<p role="alert" className="mt-2 text-xs text-rose-300">{fileError}</p>}</div>
+        {!canPay && <p role="alert" className="text-xs text-rose-300">Only Accounts team members can record payments.</p>}
+        <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className={btnGhost(D)}>Cancel</button><button type="submit" disabled={busy||!canPay||!!fileError} className={good}>{busy ? 'Saving payment…' : 'Record payment'}</button></div>
       </form>
     </Modal>
   );
@@ -396,7 +433,7 @@ const PayNowModal: React.FC<{ id: string; onClose: () => void }> = ({ id, onClos
 
 // One payment request, with the buttons that fit who is looking at it.
 const PayReqRow: React.FC<{ r: PaymentRequest; showOrder?: boolean; open?: (poId: string) => void }> = ({ r, showOrder, open }) => {
-  const { orders, canManage, withdrawPayment } = usePurchase();
+  const { orders, canManage, canPay, withdrawPayment } = usePurchase();
   const [paying, setPaying] = useState(false);
   const o = orders.find(x => x.id === r.poId);
   return (
@@ -411,7 +448,7 @@ const PayReqRow: React.FC<{ r: PaymentRequest; showOrder?: boolean; open?: (poId
         {r.decisionNote && <div className="text-xs text-mute">Note: {r.decisionNote}</div>}
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        {['pending', 'approved'].includes(r.status) && canManage && <><button className={good} onClick={() => setPaying(true)}><Wallet className="w-4 h-4" />Pay now</button><button className={btnGhost(D)} onClick={() => withdrawPayment(r.id)}>Cancel</button></>}
+        {['pending', 'approved'].includes(r.status) && canPay && <button className={good} onClick={() => setPaying(true)}><Wallet className="w-4 h-4" />Pay now</button>}{['pending', 'approved'].includes(r.status) && canManage && <button className={btnGhost(D)} onClick={() => withdrawPayment(r.id)}>Cancel</button>}
       </div>
       {paying && <PayNowModal id={r.id} onClose={() => setPaying(false)} />}
     </li>
@@ -813,14 +850,14 @@ const OrderModal: React.FC<{ id: string; onClose: () => void; onEdit: (id: strin
 
 // ---- payments ----------------------------------------------------------------------------------------------
 const PaymentsView: React.FC<{ open: (id: string) => void; onAsk: (id: string) => void }> = ({ open, onAsk }) => {
-  const { orders, payRequests, vendorName, canManage, stats, withdrawPayment } = usePurchase();
+  const { orders, payRequests, vendorName, canManage, canPay, stats, withdrawPayment } = usePurchase();
   const [payingId, setPayingId] = useState<string | null>(null);
   const ready = payRequests.filter(r => r.status === 'pending' || r.status === 'approved');
   const closed = payRequests.filter(r => ['paid', 'rejected', 'cancelled'].includes(r.status)).slice(0, 30);
   const asked = (poId: string) => payRequests.filter(r => r.poId === poId && (r.status === 'pending' || r.status === 'approved')).reduce((a, r) => a + r.amount, 0);
   const due = orders.filter(o => PAYABLE.includes(o.status) && poDue(o) - asked(o.id) > 0.009);
   const rows = useLedger<Payment>('payments', 300);
-  const requestTable = (list: PaymentRequest[], actions: boolean) => list.length ? <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-xs"><thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr>{['Amount', 'PO ticket', 'Status', 'Requested by', 'Requested at', 'Note', ...(actions ? [''] : [])].map((heading, index) => <th key={index} className="px-3 py-2.5 font-semibold">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line/70">{list.map(request => { const order = orders.find(row => row.id === request.poId); return <tr key={request.id} className="hover:bg-raised/30"><td className="px-3 py-2.5 whitespace-nowrap font-bold tabular-nums">{money(request.amount)}</td><td className="px-3 py-2.5 whitespace-nowrap">{order ? <button type="button" onClick={() => open(order.id)} className="font-mono font-bold text-blue-300 hover:underline">{order.number}</button> : '—'}</td><td className="px-3 py-2.5 whitespace-nowrap">{PAYREQ[request.status].label}</td><td className="px-3 py-2.5 whitespace-nowrap">{request.requestedBy || '—'}</td><td className="px-3 py-2.5 whitespace-nowrap">{when(request.requestedAt)}</td><td className="px-3 py-2.5">{request.note || '—'}</td>{actions && <td className="px-3 py-2.5 text-right whitespace-nowrap">{canManage && <div className="flex justify-end gap-1"><button type="button" className={good} onClick={() => setPayingId(request.id)}>Pay now</button><button type="button" className={btnGhost(D)} onClick={() => withdrawPayment(request.id)}>Cancel</button></div>}</td>}</tr>; })}</tbody></table></div> : <Empty>{actions ? 'No payment requests are ready.' : 'No earlier payment requests.'}</Empty>;
+  const requestTable = (list: PaymentRequest[], actions: boolean) => list.length ? <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-xs"><thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr>{['Amount', 'PO ticket', 'Status', 'Requested by', 'Requested at', 'Note', ...(actions ? [''] : [])].map((heading, index) => <th key={index} className="px-3 py-2.5 font-semibold">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line/70">{list.map(request => { const order = orders.find(row => row.id === request.poId); return <tr key={request.id} className="hover:bg-raised/30"><td className="px-3 py-2.5 whitespace-nowrap font-bold tabular-nums">{money(request.amount)}</td><td className="px-3 py-2.5 whitespace-nowrap">{order ? <button type="button" onClick={() => open(order.id)} className="font-mono font-bold text-blue-300 hover:underline">{order.number}</button> : '—'}</td><td className="px-3 py-2.5 whitespace-nowrap">{PAYREQ[request.status].label}</td><td className="px-3 py-2.5 whitespace-nowrap">{request.requestedBy || '—'}</td><td className="px-3 py-2.5 whitespace-nowrap">{when(request.requestedAt)}</td><td className="px-3 py-2.5">{request.note || '—'}</td>{actions && <td className="px-3 py-2.5 text-right whitespace-nowrap"><div className="flex justify-end gap-1">{canPay && <button type="button" className={good} onClick={() => setPayingId(request.id)}>Pay now</button>}{canManage && <button type="button" className={btnGhost(D)} onClick={() => withdrawPayment(request.id)}>Cancel</button>}</div></td>}</tr>; })}</tbody></table></div> : <Empty>{actions ? 'No payment requests are ready.' : 'No earlier payment requests.'}</Empty>;
   return (
     <div className="space-y-5">
       <div className={cx(panel, 'overflow-x-auto')}><table className="w-full min-w-[600px] text-xs"><thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute"><tr><th className="px-3 py-2 font-semibold">Still to pay</th><th className="px-3 py-2 font-semibold">Ready to pay</th><th className="px-3 py-2 font-semibold">Orders with money due</th></tr></thead><tbody><tr><td className="px-3 py-2.5 text-base font-bold tabular-nums text-amber-300">{money(stats.due)}</td><td className="px-3 py-2.5 text-base font-bold tabular-nums text-blue-300">{ready.length}</td><td className="px-3 py-2.5 text-base font-bold tabular-nums text-rose-300">{orders.filter(o => PAYABLE.includes(o.status) && poDue(o) > 0).length}</td></tr></tbody></table></div>
@@ -837,7 +874,7 @@ const PaymentsView: React.FC<{ open: (id: string) => void; onAsk: (id: string) =
 
 // ---- the procurement desk -----------------------------------------------------------------------------
 export const PurchaseDesk: React.FC<{ view: DeskView }> = ({ view }) => {
-  const { loadError, canManage, canReceive } = usePurchase();
+  const { loadError, canManage, canReceive, canPay } = usePurchase();
   const [filter, setFilter] = useState<POStatus | 'all'>('all');
   const [viewing, setViewing] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -845,7 +882,7 @@ export const PurchaseDesk: React.FC<{ view: DeskView }> = ({ view }) => {
   const [asking, setAsking] = useState<string | null>(null);
   return (
     <div className="space-y-5">
-      {!canManage && <div className="p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-xl text-xs">🔒 {canReceive ? 'You can view orders and record goods received, but not change orders.' : 'You can view orders but not change them.'}</div>}
+      {!canManage && <div className="p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-xl text-xs">🔒 {canPay ? 'Accounts access: review payment requests and record payments. Purchase manages orders.' : canReceive ? 'You can view orders and record goods received, but not change orders.' : 'You can view orders but not change them.'}</div>}
       {loadError && <div role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-400 text-sm p-3">Could not load purchases: {loadError}</div>}
       {view === 'buy' && <BuyListView editOrder={setViewing} />}
       {view === 'tracking' && <WaitingView />}

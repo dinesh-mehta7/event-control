@@ -53,7 +53,7 @@ interface AppContextType {
 }
 
 export interface CameraInput { cameraCode: string; location: string; type: string; nvrId: string; switchId: string; status: CameraItem['status'] }
-export interface WiFiAPInput { apCode: string; model: string; location: string; status: WiFiAccessPoint['status'] }
+export interface WiFiAPInput { apCode: string; model: string; location: string; switchLocation: string; portNumber: string; status: WiFiAccessPoint['status'] }
 
 const mapCamera = (r: any): CameraItem => ({
   id: r.id, cameraCode: r.camera_code, name: r.camera_code, zone: r.location, locationDetails: r.location,
@@ -63,10 +63,10 @@ const mapCamera = (r: any): CameraItem => ({
 const mapWiFiAP = (r: any): WiFiAccessPoint => ({
   id: r.id, apCode: r.ap_code, model: r.model || '', zone: r.location, location: r.location,
   ipAddress: '', macAddress: '', connectedClients: 0, bandwidthUsageMbps: 0, status: r.status,
-  switchPort: '', uptimeHours: 0,
+  switchPort: r.port_number || '', switchLocation: r.switch_location || '', portNumber: r.port_number || '', uptimeHours: 0,
 });
 const assetsErrorText = (error: any) => /schema cache|does not exist|could not find/i.test(error?.message || '')
-  ? `${error.message} — run supabase/migration_v27_cctv_wifi_assets.sql in the Supabase SQL Editor, then reload.`
+  ? `${error.message} — run supabase/migration_v27_cctv_wifi_assets.sql and supabase/migration_v80_wifi_register_fields.sql in the Supabase SQL Editor, then reload.`
   : error?.code === '23505' ? 'That ID is already used in this organization.' : error?.message || 'Could not save this record.';
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -77,7 +77,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<UserProfile>(SIGNED_OUT);
   const [tabs, setTabs] = useState<Record<SubDepartmentId, string>>({
     cctv: 'Dashboard', wifi: 'Dashboard', walkie: 'Dashboard', control: 'Dashboard',
-    inventory: 'Dashboard', purchase: 'Dashboard', accommodation: 'Dashboard', sewadars: 'Dashboard',
+    inventory: 'Dashboard', purchase: 'Dashboard', accounts: 'Payments', accommodation: 'Dashboard', sewadars: 'Dashboard',
   });
   const [cameras, setCameras] = useState<CameraItem[]>([]);
   const [wifiAPs, setWifiAPs] = useState<WiFiAccessPoint[]>([]);
@@ -152,13 +152,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
   const addWiFiAP: AppContextType['addWiFiAP'] = async ap => {
     if (!organizationId) return 'Sign in to an organization first.';
-    const { data, error } = await supabase.from('wifi_access_points').insert({ organization_id: organizationId, ap_code: ap.apCode.trim(), model: ap.model.trim(), location: ap.location.trim(), status: ap.status }).select().single();
+    const { data, error } = await supabase.from('wifi_access_points').insert({ organization_id: organizationId, ap_code: ap.apCode.trim(), model: ap.model.trim(), location: ap.location.trim(), switch_location: ap.switchLocation.trim(), port_number: ap.portNumber.trim(), status: ap.status }).select().single();
     if (error) return assetsErrorText(error);
     setWifiAPs(rows => [...rows, mapWiFiAP(data)].sort((a, b) => a.zone.localeCompare(b.zone) || a.apCode.localeCompare(b.apCode)));
     return null;
   };
   const updateWiFiAP: AppContextType['updateWiFiAP'] = async (id, ap) => {
-    const { data, error } = await supabase.from('wifi_access_points').update({ ap_code: ap.apCode.trim(), model: ap.model.trim(), location: ap.location.trim(), status: ap.status }).eq('id', id).select().single();
+    const { data, error } = await supabase.from('wifi_access_points').update({ ap_code: ap.apCode.trim(), model: ap.model.trim(), location: ap.location.trim(), switch_location: ap.switchLocation.trim(), port_number: ap.portNumber.trim(), status: ap.status }).eq('id', id).select().single();
     if (error) return assetsErrorText(error);
     setWifiAPs(rows => [...rows.filter(row => row.id !== id), mapWiFiAP(data)].sort((a, b) => a.zone.localeCompare(b.zone) || a.apCode.localeCompare(b.apCode)));
     return null;
