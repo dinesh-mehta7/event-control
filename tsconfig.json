@@ -27,7 +27,6 @@
     "incremental": true
   },
   "include": [
-    ".next-production/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
     "src/**/*.ts",
