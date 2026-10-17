@@ -106,8 +106,10 @@ export const MeetingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       p_audience_all: m.audienceAll ?? true, p_audience_depts: m.audienceDepts || [],
       p_audience_groups: m.audienceGroups || [], p_message: m.message || '',
     };
+    // create_event_linked_meeting (v76) always makes a 'meeting' and takes no p_kind; sending it makes the call fail.
+    const { p_kind, ...eventArgs } = meetingArgs;
     const { data, error } = m.eventId
-      ? await supabase.rpc('create_event_linked_meeting', { ...meetingArgs, p_event_id: m.eventId })
+      ? await supabase.rpc('create_event_linked_meeting', { ...eventArgs, p_event_id: m.eventId })
       : await supabase.rpc('create_meeting', meetingArgs);
     if (error) return dbMessage(error);
     await load();
