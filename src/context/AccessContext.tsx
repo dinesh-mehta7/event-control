@@ -10,14 +10,14 @@ import type { SubDepartmentId } from '../types';
 export type GrantLevel = 'staff' | 'sub_dept_head' | 'dept_head';
 
 export interface Member {
-  id: string; name: string; email: string; role: string; level: string; subDepartment: SubDepartmentId | null;
+  id: string; name: string; email: string; role: string; level: string; subDepartment: SubDepartmentId | null; departmentId: string | null;
   isActive: boolean; approved: boolean; requestedSub: SubDepartmentId | null; requestedAt: string | null; createdAt: string;
 }
 export interface SewadarAccountLink { id: string; name: string; memberType: string; teamName: string; profileId: string | null }
 
 const mapMember = (p: any): Member => ({
   id: p.id, name: p.name || p.email, email: p.email, role: p.role, level: p.level || 'other',
-  subDepartment: p.sub_department || null, isActive: p.is_active !== false, approved: p.approved !== false,
+  subDepartment: p.sub_department || null, departmentId: p.department_id || null, isActive: p.is_active !== false, approved: p.approved !== false,
   requestedSub: p.requested_sub_department || null, requestedAt: p.requested_at || null, createdAt: p.created_at,
 });
 
@@ -30,7 +30,7 @@ const dbMessage = (e: any): string => {
 interface Ctx {
   members: Member[]; requests: Member[]; codes: Partial<Record<SubDepartmentId, string>>; isOwner: boolean; loading: boolean;
   sewadarMembers: SewadarAccountLink[];
-  review: (userId: string, approve: boolean, level?: GrantLevel, sub?: SubDepartmentId | null) => Promise<string | null>;
+  review: (userId: string, approve: boolean, level?: GrantLevel, sub?: SubDepartmentId | null, departmentId?: string | null) => Promise<string | null>;
   linkSewadar: (userId: string, memberId: string | null) => Promise<string | null>;
   regenerate: (sub: SubDepartmentId) => Promise<string | null>;
   requestAccess: (code: string) => Promise<string | null>;
@@ -77,9 +77,9 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return () => { supabase.removeChannel(ch); };
   }, [uid, seesCodes, refresh]);
 
-  const review = useCallback(async (userId: string, approve: boolean, lvl: GrantLevel = 'staff', sub: SubDepartmentId | null = null) => {
-    const { error } = await supabase.rpc('review_access_request', { p_user: userId, p_approve: approve, p_level: lvl, p_sub: sub });
-    if (error) return dbMessage(error);
+  const review = useCallback(async (userId: string, approve: boolean, lvl: GrantLevel = 'staff', sub: SubDepartmentId | null = null, departmentId: string | null = null) => {
+    const { error } = await supabase.rpc('review_access_request', { p_user: userId, p_approve: approve, p_level: lvl, p_sub: sub, p_department: departmentId });
+    if (error) return /p_department|review_access_request/i.test(error.message || '') ? 'Run supabase/migration_v90_role_hierarchy.sql in the Supabase SQL Editor, then reload.' : dbMessage(error);
     await refresh();
     return null;
   }, [refresh]);

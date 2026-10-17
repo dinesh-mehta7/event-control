@@ -12,7 +12,7 @@ export const OtherDept: React.FC = () => {
   const send = async () => {
     if (!code.trim()) return; setBusy(true); setMsg('');
     const e = await requestAccess(code.trim()); setBusy(false);
-    if (e) { setOk(false); setMsg(e); } else { setOk(true); setMsg('Sent. The Organization Head will review it.'); setCode(''); }
+    if (e) { setOk(false); setMsg(e); } else { setOk(true); setMsg('Sent. The Super Admin will review it.'); setCode(''); }
   };
   return (
     <div className="space-y-4 max-w-lg">
@@ -21,7 +21,7 @@ export const OtherDept: React.FC = () => {
         <a href="#/requests/new" className={btnPrimary + ' inline-flex'}>Raise a request</a>
       </Card>
       <Card icon={LifeBuoy} title="Join a department">
-        <p className="text-sm text-mute mb-3">Enter the code your department head gave you. The owner approves it before you get access.</p>
+        <p className="text-sm text-mute mb-3">Enter the code your department head gave you. The Super Admin approves it before you get access.</p>
         <div className="flex gap-2"><input className={inputCls} placeholder="Department code" aria-label="Department code" value={code} onChange={e => setCode(e.target.value)} />
           <button className={btnPrimary} disabled={busy} onClick={send}>Send</button></div>
         {msg && <p role="status" className={`text-sm mt-2 ${ok ? 'text-emerald-400' : 'text-red-300'}`}>{msg}</p>}

@@ -20,7 +20,7 @@ const downloadCalendarInvite = (meeting: MeetingRow) => {
   const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${meeting.title.replace(/[^a-z0-9_-]+/gi, '-') || 'meeting'}.ics`; anchor.click(); URL.revokeObjectURL(url);
 };
 const tone = (s: string) => s === 'live' || s === 'done' ? 'bg-emerald-500/15 text-emerald-300' : s === 'scheduled' ? 'bg-blue-500/15 text-blue-300' : s === 'cancelled' ? 'bg-red-500/15 text-red-300' : 'bg-raised text-mute';
-const meetingAction = 'inline-flex items-center gap-1.5 rounded-md border border-line bg-surface/50 px-2.5 py-1.5 text-[11px] font-medium text-ink-soft transition-colors hover:border-blue-500/50 hover:text-blue-300';
+const meetingAction = 'inline-flex items-center gap-1.5 rounded-md border border-line bg-surface/50 px-2.5 py-1.5 text-[11.5px] font-medium text-ink-soft transition-colors hover:border-blue-500/50 hover:text-blue-300';
 
 export const Empty: React.FC<{ children: React.ReactNode }> = ({ children }) => <li className="py-8 text-center text-sm text-mute">{children}</li>;
 export const Err: React.FC<{ msg: string }> = ({ msg }) => msg ? <p role="alert" className="text-xs text-red-400 mb-3">{msg}</p> : null;
@@ -36,10 +36,10 @@ export const AudiencePicker: React.FC<{ all: boolean; setAll: (v: boolean) => vo
       <label className="flex items-center gap-2"><input type="radio" name="audience" checked={!all} onChange={() => setAll(false)} /> Selected groups</label>
     </div>
     {!all && <div className="grid gap-3 border-t border-line pt-3 sm:grid-cols-2">
-      <div className="space-y-2"><div className="text-[10px] font-semibold uppercase tracking-wide text-mute">Departments</div>
+      <div className="space-y-2"><div className="text-[10.5px] font-semibold uppercase tracking-wide text-mute">Departments</div>
         <div className="grid gap-2 sm:grid-cols-2">{(Object.keys(DEPTS) as SubDepartmentId[]).map(d => <label key={d} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={depts.includes(d)} onChange={() => toggleDept(d)} />{DEPTS[d]}</label>)}</div>
       </div>
-      <div className="space-y-2"><div className="text-[10px] font-semibold uppercase tracking-wide text-mute">Member groups</div>
+      <div className="space-y-2"><div className="text-[10.5px] font-semibold uppercase tracking-wide text-mute">Member groups</div>
         <div className="grid gap-2 sm:grid-cols-2">{choices.map(([value, label]) => <label key={value} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={groups.includes(value)} onChange={() => toggleGroup(value)} />{label}</label>)}</div>
         {!teams.length && <p className="text-xs text-mute">No Sewadar teams have been added yet.</p>}
       </div>
@@ -66,7 +66,7 @@ export const MeetingRowView: React.FC<{ m: MeetingRow; eventName?: string; canCh
       {canChange && m.status === 'scheduled' && <button className={linkBtn} onClick={() => onStatus(m.id, 'cancelled')}>Cancel</button>}
       {canChange && m.kind === 'meeting' && onAddTask && <button className={meetingAction} onClick={() => setShowTaskForm(value => !value)}><ListPlus size={13} />Action item</button>}
     </div></div>
-    <div className="ml-11 mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-[11px] text-mute">
+    <div className="ml-11 mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-[11.5px] text-mute">
       <span className="inline-flex items-center gap-1.5"><CalendarDays size={13} />{when(m.startsAt)}</span>
       <span className="inline-flex items-center gap-1.5">{m.mode === 'online' ? <Video size={13} /> : <MapPin size={13} />}{m.mode === 'online' ? 'Online' : m.place || 'Location not set'}</span>
       <span className="inline-flex items-center gap-1.5"><Users size={13} />{who(m) || 'No audience selected'}</span>
@@ -74,7 +74,7 @@ export const MeetingRowView: React.FC<{ m: MeetingRow; eventName?: string; canCh
       {m.eventId && <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-blue-300">{eventName || 'Linked event'}</span>}
       {m.mode === 'online' && m.link && open && <a className={linkBtn} href={m.link} target="_blank" rel="noreferrer">Join meeting</a>}
     </div>
-    {(m.agenda || m.message) && <section className="ml-11 mt-3 space-y-1 border-t border-line/70 pt-2.5"><h4 className="text-[10px] font-semibold uppercase tracking-wide text-mute">Details</h4>{m.agenda && <p className="text-xs leading-relaxed text-ink-soft whitespace-pre-wrap">{m.agenda}</p>}{m.message && <p className="text-xs leading-relaxed text-ink-soft whitespace-pre-wrap">{m.message}</p>}</section>}
+    {(m.agenda || m.message) && <section className="ml-11 mt-3 space-y-1 border-t border-line/70 pt-2.5"><h4 className="text-[10.5px] font-semibold uppercase tracking-wide text-mute">Details</h4>{m.agenda && <p className="text-xs leading-relaxed text-ink-soft whitespace-pre-wrap">{m.agenda}</p>}{m.message && <p className="text-xs leading-relaxed text-ink-soft whitespace-pre-wrap">{m.message}</p>}</section>}
     {m.kind === 'meeting' && (m.minutes || canEditMom) && <section className="ml-11 mt-3 border-t border-line/70 pt-2.5"><div className="flex flex-wrap items-center justify-between gap-3"><h4 className="flex items-center gap-2 text-xs font-semibold text-ink"><FileText size={16} />Meeting minutes</h4>{canEditMom && !editingMom && <button type="button" className={linkBtn} onClick={() => { setMom(m.minutes); setEditingMom(true); }}><Pencil size={12} />{m.minutes ? 'Edit minutes' : 'Add minutes'}</button>}</div>{momError && !editingMom && <Err msg={momError} />}{editingMom ? <div className="mt-2 space-y-2"><textarea className={inputCls + ' w-full'} rows={4} maxLength={20000} placeholder="Decisions, action items, owners and due dates…" value={mom} onChange={e => setMom(e.target.value)} /><Err msg={momError} /><div className="flex justify-end gap-2"><button className={linkBtn} onClick={() => { setEditingMom(false); setMom(m.minutes); }}>Cancel</button><button className={linkBtn} disabled={savingMom} onClick={saveMom}><Save size={12} />{savingMom ? 'Saving…' : 'Save minutes'}</button></div></div> : <div className="mt-2 whitespace-pre-wrap text-xs leading-snug text-ink-soft">{m.minutes || <span className="text-faint">No minutes added yet.</span>}</div>}</section>}
     {showTaskForm && onAddTask && <form className="ml-11 mt-3 grid gap-2 rounded-lg border border-line bg-raised/40 p-3 sm:grid-cols-2" onSubmit={async event => { event.preventDefault(); setTaskError(''); setSavingTask(true); const error = await onAddTask(m, task); setSavingTask(false); if (error) setTaskError(error); else { setTask({ ...task, title: '' }); setShowTaskForm(false); } }}><h4 className="sm:col-span-2 text-xs font-semibold text-ink">Create task from meeting action</h4><input required className={inputCls} placeholder="Action / task" value={task.title} onChange={e => setTask(old => ({ ...old, title: e.target.value }))} /><select className={inputCls} aria-label="Department responsible" value={task.department} onChange={e => setTask(old => ({ ...old, department: e.target.value as SubDepartmentId }))}>{Object.entries(DEPTS).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select><label className="text-xs text-mute">Deadline<input required type="date" className={inputCls + ' mt-1'} value={task.dueDate} onChange={e => setTask(old => ({ ...old, dueDate: e.target.value }))} /></label><label className="text-xs text-mute">Priority<select className={inputCls + ' mt-1'} value={task.priority} onChange={e => setTask(old => ({ ...old, priority: e.target.value }))}><option value="immediately">Urgent</option><option value="till_time">High · due by deadline</option><option value="as_you_have_time">Normal</option></select></label><Err msg={taskError} /><button type="submit" className={linkBtn} disabled={savingTask}>{savingTask ? 'Adding…' : 'Add task'}</button></form>}
   </li>;

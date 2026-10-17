@@ -67,11 +67,11 @@ export const MenuView: React.FC = () => {
       <div className="grid items-stretch gap-3 lg:grid-cols-5">
         <section aria-label="Live meal status" className="flex h-full flex-col lg:col-span-3 rounded-lg border border-line bg-gradient-to-br from-raised to-surface p-3 shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <span className="inline-flex items-center gap-2 text-[11px] font-bold tracking-wider text-rose-400">
+            <span className="inline-flex items-center gap-2 text-[11.5px] font-bold tracking-wider text-rose-400">
               <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-60" /><span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" /></span>
               LIVE · {prettyDate(today)}
             </span>
-            {pinned && <button onClick={() => setPinned(null)} className="text-[11px] text-blue-400 hover:underline">Back to automatic</button>}
+            {pinned && <button onClick={() => setPinned(null)} className="text-[11.5px] text-blue-400 hover:underline">Back to automatic</button>}
           </div>
           {!focus ? (
             <div className="py-3">
@@ -80,7 +80,7 @@ export const MenuView: React.FC = () => {
             </div>
           ) : <div className="flex flex-1 flex-col">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div><h2 className="text-lg font-bold tracking-tight">{focus.label}</h2><p className={cx('mt-0.5 flex items-center gap-1 text-[11px]', muted)}><Clock className="h-3 w-3" />{fmtTime(focus.start)}–{fmtTime(focus.end)}</p></div>
+              <div><h2 className="text-lg font-bold tracking-tight">{focus.label}</h2><p className={cx('mt-0.5 flex items-center gap-1 text-[11.5px]', muted)}><Clock className="h-3 w-3" />{fmtTime(focus.start)}–{fmtTime(focus.end)}</p></div>
               <StatusBadge s={focus.status} dark={dark} />
             </div>
             <p className={cx('mt-2 truncate text-xs', muted)}>{dishes(focus.items).join(' · ') || 'Dishes not added yet.'}</p>
@@ -90,11 +90,11 @@ export const MenuView: React.FC = () => {
                 const reached = cur >= i + 1;
                 const isCurrent = cur === i + 1;
                 const stepClass = cx('w-full rounded-lg border p-2 text-left transition-colors', reached ? statusTone(step.key, dark) : 'border-line text-faint', isCurrent && 'ring-1 ring-current');
-                const content = <><span className="block text-[9px] font-bold uppercase tracking-wider opacity-70">Step {i + 1}</span><span className="mt-0.5 block text-[11px] font-semibold">{step.label}</span></>;
+                const content = <><span className="block text-[10px] font-bold uppercase tracking-wider opacity-70">Step {i + 1}</span><span className="mt-0.5 block text-[11.5px] font-semibold">{step.label}</span></>;
                 return <li key={step.key}>{canManageMenu ? <button type="button" className={cx(stepClass, 'hover:opacity-90')} aria-pressed={isCurrent} onClick={() => setMealStatus(focus.id, step.key)}>{content}</button> : <div className={stepClass} aria-current={isCurrent ? 'step' : undefined}>{content}</div>}</li>;
               })}
             </ol>
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px]">
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10.5px]">
               <span className={muted}>{focus.changedAt ? `Updated ${timeAgo(focus.changedAt)}${focus.changedBy ? ` by ${focus.changedBy}` : ''}` : 'Not started yet'}</span>
               {canManageMenu && focus.status !== 'scheduled' && <button className="text-blue-400 hover:underline" onClick={() => setMealStatus(focus.id, 'scheduled')}>Reset</button>}
             </div>
@@ -110,7 +110,7 @@ export const MenuView: React.FC = () => {
               return <li key={meal.id} className="relative"><span className={cx('absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full ring-2 ring-surface', dot)} />
                 <button type="button" onClick={() => setPinned(meal.id === auto?.id ? null : meal.id)} className={cx('w-full rounded-md px-2 py-1 text-left transition-colors hover:bg-raised', isFocus && 'bg-brand-soft')}>
                   <span className="flex items-center justify-between gap-2"><span className="truncate text-xs font-semibold">{meal.label}</span><StatusBadge s={meal.status} dark={dark} /></span>
-                  <span className={cx('mt-0.5 block text-[10px]', muted)}>{fmtTime(meal.start)}–{fmtTime(meal.end)}{dishes(meal.items).length ? ` · ${dishes(meal.items).join(', ')}` : ''}</span>
+                  <span className={cx('mt-0.5 block text-[10.5px]', muted)}>{fmtTime(meal.start)}–{fmtTime(meal.end)}{dishes(meal.items).length ? ` · ${dishes(meal.items).join(', ')}` : ''}</span>
                 </button>
               </li>;
             })}
@@ -124,7 +124,7 @@ export const MenuView: React.FC = () => {
           <h2 className="text-sm font-bold flex items-center gap-2"><CalendarDays className="w-4 h-4 text-blue-500" />Menu chart</h2>
           <div role="tablist" aria-label="Chart view" className="inline-flex p-1 rounded-lg bg-raised">
             {([['day', 'Day'], ['all', 'All days']] as const).map(([k, l]) => (
-              <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)} className={cx('px-3 py-1.5 rounded-md text-[11px] font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400', view === k ? 'bg-blue-600 text-white shadow-sm' : muted)}>{l}</button>
+              <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)} className={cx('px-3 py-1.5 rounded-md text-[11.5px] font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400', view === k ? 'bg-blue-600 text-white shadow-sm' : muted)}>{l}</button>
             ))}
           </div>
         </div>

@@ -32,11 +32,11 @@ export const Stepper: React.FC<{ r: Pick<Req, 'status' | 'items' | 'parts'> & Pa
           <li key={s.label} className="min-w-0 text-center">
             <div className="relative flex h-7 items-center justify-center">
               {i < steps.length - 1 && <span aria-hidden="true" className={`absolute left-1/2 right-[-50%] top-1/2 h-[2px] -translate-y-1/2 rounded-full transition-colors duration-500 ease-out ${done ? 'bg-gradient-to-r from-blue-500 to-sky-400' : 'bg-line-strong'}`} />}
-              <span className={`relative z-10 grid h-6 w-6 place-items-center rounded-full border text-[11px] font-semibold transition-[background-color,border-color,color,box-shadow,transform] duration-300 ease-out ${done ? 'scale-100 border-blue-500 bg-blue-600 text-white shadow-[0_0_12px_rgba(37,99,235,0.28)]' : cur ? 'scale-105 border-blue-400 bg-blue-500/15 text-blue-300 ring-4 ring-blue-500/10' : 'border-line-strong bg-surface text-faint'}`}>
+              <span className={`relative z-10 grid h-6 w-6 place-items-center rounded-full border text-[11.5px] font-semibold transition-[background-color,border-color,color,box-shadow,transform] duration-300 ease-out ${done ? 'scale-100 border-blue-500 bg-blue-600 text-white shadow-none' : cur ? 'scale-105 border-blue-400 bg-blue-500/15 text-blue-300 ring-4 ring-blue-500/10' : 'border-line-strong bg-surface text-faint'}`}>
                 {done ? <Check size={13} strokeWidth={2.5} /> : i + 1}
               </span>
             </div>
-            <span className={`mt-1.5 block px-1 text-[11px] leading-tight transition-colors duration-300 ${done ? 'font-medium text-blue-300' : cur ? 'font-semibold text-ink' : 'text-faint'}`}>{s.label}</span>
+            <span className={`mt-1.5 block px-1 text-[11.5px] leading-tight transition-colors duration-300 ${done ? 'font-medium text-blue-300' : cur ? 'font-semibold text-ink' : 'text-faint'}`}>{s.label}</span>
           </li>
         );
       })}

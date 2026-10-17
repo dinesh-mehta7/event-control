@@ -7,9 +7,9 @@ function StockBreakdownChart({ title, total, out, free, fix, dark }) {
   const radius = 38;
   const circumference = 2 * Math.PI * radius;
   const segments = [
-    { label: 'Allocated', value: out, color: '#3b82f6' },
-    { label: 'Available', value: free, color: '#10b981' },
-    { label: 'Maintenance', value: fix, color: '#f59e0b' },
+    { label: 'Allocated', value: out, color: 'rgb(var(--c-chart-1))' },
+    { label: 'Available', value: free, color: 'rgb(var(--c-chart-ok))' },
+    { label: 'Maintenance', value: fix, color: 'rgb(var(--c-chart-3))' },
   ];
   let offset = 0;
 
@@ -17,17 +17,17 @@ function StockBreakdownChart({ title, total, out, free, fix, dark }) {
     <div className="my-3 flex min-h-[104px] items-center justify-center gap-4" role="group" aria-label={`${title} stock breakdown`}>
       <div className="relative h-24 w-24 shrink-0">
         <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90" aria-hidden="true">
-          <circle cx="50" cy="50" r={radius} fill="none" stroke={dark ? '#3a3a3d' : '#e2e8f0'} strokeWidth="10" />
+          <circle cx="50" cy="50" r={radius} fill="none" style={{ stroke: 'rgb(var(--c-line))' }} strokeWidth="10" />
           {segments.map(segment => {
             const length = total > 0 ? Math.min(segment.value, total) / total * circumference : 0;
             const segmentOffset = offset;
             offset += length;
-            return <circle key={segment.label} cx="50" cy="50" r={radius} fill="none" stroke={segment.color} strokeWidth="10"
+            return <circle key={segment.label} cx="50" cy="50" r={radius} fill="none" style={{ stroke: segment.color }} strokeWidth="10"
               strokeDasharray={`${length} ${circumference - length}`} strokeDashoffset={-segmentOffset} />;
           })}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center" aria-hidden="true">
-          <strong className="text-xl font-bold leading-none">{total}</strong><span className="mt-1 text-[9px] text-slate-400">total</span>
+          <strong className="text-xl font-bold leading-none">{total}</strong><span className="mt-1 text-[10px] text-slate-400">total</span>
         </div>
       </div>
       <dl className="min-w-[112px] space-y-2 text-xs">

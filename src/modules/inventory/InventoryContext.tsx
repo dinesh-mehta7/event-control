@@ -50,6 +50,8 @@ interface Ctx {
   deleteLocation: (id: string) => Promise<boolean>;
 }
 const C = createContext<Ctx | null>(null);
+// For optional consumers (e.g. Help Desk's related item): null outside <InventoryProvider> instead of throwing.
+export const useInventoryMaybe = (): Ctx | null => useContext(C);
 export const useInventory = (): Ctx => { const c = useContext(C); if (!c) throw new Error('useInventory must be used inside <InventoryProvider>'); return c; };
 
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

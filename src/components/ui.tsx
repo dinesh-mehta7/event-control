@@ -89,7 +89,7 @@ export const Tabs: React.FC<{ tabs: TabDef[]; value: string; onChange: (id: stri
           </button>
         );
       })}
-      <span aria-hidden="true" className={`pointer-events-none absolute bottom-0 left-0 h-0.5 bg-blue-500 will-change-[transform,width] ${ready ? 'transition-[transform,width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]' : ''}`} style={{ width: indicator.width, transform: `translateX(${indicator.x}px)` }} />
+      <span aria-hidden="true" className={`pointer-events-none absolute bottom-0 left-0 h-0.5 rounded-full bg-brand will-change-[transform,width] ${ready ? 'transition-[transform,width] duration-[550ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]' : ''}`} style={{ width: indicator.width, transform: `translateX(${indicator.x}px)` }} />
     </div>
   );
 };

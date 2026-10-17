@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { User, LayoutDashboard, Sun, Moon, LogOut } from 'lucide-react';
+import { roleLabel } from '../lib/roles';
+import { User, LayoutDashboard, Sun, Moon, Crown, LogOut } from 'lucide-react';
+import { settingsFor, themeChoiceOf, type ThemeChoice } from '../hooks/useMotion';
 import { useApp as useWalkie } from '../modules/walkie/context/AppContext';
 import { HeaderTools } from './HeaderTools';
 import { useAnimatedPresence } from '../hooks/useAnimatedPresence';
 
 // The one account menu for every screen: a round icon button at the top right.
 // Click to open; click outside / Esc to close. Screens can pass extra items (e.g. admin tools) as children.
-const LEVEL: Record<string, string> = { owner: 'Organization Head', dept_head: 'IT Department Head', sub_dept_head: 'Sub-department Head', staff: 'Staff' };
 
 export const ProfileMenu: React.FC<{ extra?: React.ReactNode }> = ({ extra }) => {
   const w: any = useWalkie();
@@ -14,7 +15,8 @@ export const ProfileMenu: React.FC<{ extra?: React.ReactNode }> = ({ extra }) =>
   const present = useAnimatedPresence(open);
   const box = useRef<HTMLDivElement>(null);
   const u = w.currentUser;
-  const isDark = w.settings?.theme === 'dark';
+  const choice = themeChoiceOf(w.settings);
+  const pick = (c: ThemeChoice) => w.setSettings?.((p: any) => ({ ...p, ...settingsFor(c) }));
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
@@ -36,15 +38,23 @@ export const ProfileMenu: React.FC<{ extra?: React.ReactNode }> = ({ extra }) =>
           <div className="px-4 py-3 border-b border-line">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-sm font-semibold text-ink truncate">{u?.name || 'Account'}</span>
-              {(LEVEL[u?.level] || u?.role) && <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400">{LEVEL[u?.level] || u?.role}</span>}
+              <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400">{roleLabel(u?.level, u?.subDepartment, (w.departments || []).find((d: any) => d.id === u?.departmentId)?.name)}</span>
             </div>
             {u?.email && <div className="text-xs text-mute truncate">{u.email}</div>}
           </div>
           {(u?.level === 'owner' || u?.level === 'dept_head') && <a role="menuitem" href="#/" onClick={() => setOpen(false)} className={item}><LayoutDashboard size={16} className="text-blue-400" />Command Center</a>}
-          <button role="menuitem" onClick={() => w.setSettings?.((p: any) => ({ ...p, theme: p.theme === 'dark' ? 'light' : 'dark' }))} className={item}>
-            {isDark ? <Sun size={16} className="text-amber-400" /> : <Moon size={16} className="text-blue-400" />}
-            <span className="flex-1">{isDark ? 'Light theme' : 'Dark theme'}</span>
-          </button>
+          <div className="px-4 py-3 border-t border-line">
+            <div className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider text-faint">Theme</div>
+            <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 gap-1.5">
+              {([['light', 'Light', Sun, 'bg-[#f5f5f6]', 'bg-[#4f46e5]'], ['dark', 'Dark', Moon, 'bg-[#17181b]', 'bg-[#7c83f7]'], ['saffron', 'Royal', Crown, 'bg-[#0d0e11]', 'bg-gradient-to-br from-[#ffcf55] to-[#ff6a1f]']] as const).map(([id, label, Icon, base, dot]) => (
+                <button key={id} type="button" role="radio" aria-checked={choice === id} onClick={() => pick(id)}
+                  className={`flex flex-col items-center gap-1.5 rounded-lg border p-1.5 text-[11px] font-medium transition-colors ${choice === id ? 'border-blue-500 text-ink ring-1 ring-blue-500/40' : 'border-line text-mute hover:border-line-strong hover:text-ink'}`}>
+                  <span className={`relative grid h-8 w-full place-items-center overflow-hidden rounded-md border border-black/10 ${base}`}><span className={`h-3 w-3 rounded-full ${dot}`} /></span>
+                  <span className="flex items-center gap-1"><Icon size={11} />{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           {extra && <div className="border-t border-line" onClick={() => setOpen(false)}>{extra}</div>}
           <button role="menuitem" onClick={() => { setOpen(false); w.logout?.(); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-semibold text-left text-red-400 hover:bg-red-500/10 border-t border-line transition-colors"><LogOut size={16} />Sign out</button>
         </div>

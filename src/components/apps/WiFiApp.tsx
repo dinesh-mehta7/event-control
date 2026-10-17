@@ -5,6 +5,7 @@ import type { WiFiAPInput } from '../../context/AppContext';
 import type { WiFiAccessPoint } from '../../types';
 import { useWalkie } from '../../modules/walkie';
 import { Tabs } from '../ui';
+import { Swap } from '../Swap';
 import { WiFiAccessRegister } from './WiFiAccessRegister';
 
 const EMPTY: WiFiAPInput = { apCode: '', model: '', location: '', switchLocation: '', portNumber: '', status: 'online' };
@@ -48,10 +49,11 @@ export const WiFiApp: React.FC = () => {
     <p className="text-sm text-mute">Track outdoor Wi-Fi points, their location, switch location, port number, and status. Department user IDs are in Access Accounts.</p>
     <Tabs value={currentTab} onChange={setCurrentTab} tabs={tabs.map(t => ({ id: t, label: t }))} />
     {assetsError && <div role="alert" className="rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-300">{assetsError}</div>}
+    <Swap k={currentTab} indexOf={k => tabs.indexOf(k as any)}>
     {currentTab === 'Access Points' && <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="grid grid-cols-3 gap-2">
-          {[['Access points', wifiAPs.length], ['Locations', locations.length], ['Online', wifiAPs.filter(ap => ap.status === 'online').length]].map(([label, value]) => <div key={label as string} className="min-w-24 rounded-md border border-line bg-surface px-3 py-2"><div className="text-[11px] text-mute">{label}</div><div className="text-lg font-semibold text-ink tabular-nums">{value}</div></div>)}
+          {[['Access points', wifiAPs.length], ['Locations', locations.length], ['Online', wifiAPs.filter(ap => ap.status === 'online').length]].map(([label, value]) => <div key={label as string} className="min-w-24 rounded-md border border-line bg-surface px-3 py-2"><div className="text-[11.5px] text-mute">{label}</div><div className="text-lg font-semibold text-ink tabular-nums">{value}</div></div>)}
         </div>
         {canManage && <button onClick={startAdd} className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500"><Plus size={16} />Add access point</button>}
       </div>
@@ -65,6 +67,7 @@ export const WiFiApp: React.FC = () => {
       </div>
     </div>}
     {currentTab === 'Access Accounts' && <WiFiAccessRegister organizationId={auth.currentUser?.organizationId} canManage={canManage} departments={auth.departments || []} />}
+    </Swap>
 
     {formOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"><form onSubmit={save} className="w-full max-w-lg space-y-4 rounded-lg border border-line bg-surface p-5">
       <div><h3 className="text-lg font-semibold text-ink">{editingId ? 'Edit access point' : 'Add access point'}</h3><p className="text-sm text-mute">Record the access point and where it is installed.</p></div>

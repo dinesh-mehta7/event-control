@@ -154,17 +154,18 @@ export function AppProvider({ children }) {
   const [deliveries, setDeliveries] = useState([]);
   const [inventorySettings, setInventorySettings] = useState({ totalEarphones: 0, totalChargers: 0, chargersMaintenance: 0, earphonesMaintenance: 0 });
 
-  // Dark is the default theme. `themeV` migrates browsers that saved the old light default once;
-  // after that, whatever the person picks (light or dark) is kept.
+  // Dark is the default theme. `themeV` moves every browser to Dark once;
+  // after that, whatever the person picks in the account menu (Light, Dark or Royal) is kept.
   const [settings, setSettings] = useState(() => {
     const s = safeJsonParse('wt_settings', {
       orgName: 'Apex Security & Logistics',
       logo: '📻',
       theme: 'dark',
+      palette: 'indigo',
       defaultAllocator: 'Administrator',
       role: 'Admin'
     });
-    return s.themeV === 2 ? s : { ...s, theme: 'dark', themeV: 2 };
+    return s.themeV === 4 ? s : { ...s, theme: 'dark', palette: 'indigo', themeV: 4 };
   });
 
   const [currentTab, setCurrentTab] = useState('dashboard');

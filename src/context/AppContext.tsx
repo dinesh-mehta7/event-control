@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { usePermissions } from './PermissionsContext';
+import type { ModuleQuery } from '../lib/permissions';
 import type { SubDepartmentId, UserProfile, CameraItem, WiFiAccessPoint, ControlRoom } from '../types';
 import { useApp as useWalkie } from '../modules/walkie/context/AppContext';
 import { supabase } from '../modules/walkie/lib/supabaseClient';
@@ -123,12 +125,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => { active = false; supabase.removeChannel(channel); };
   }, [organizationId, auth.currentUser?.approved, auth.currentUser?.isActive]);
 
-  // Owner and IT head open every department; everyone else only their own.
+  // Super Admin and Department Heads open every module; sub-department roles follow Administration → Sub-department Permissions.
+  const perms = usePermissions();
   const canAccessApp = (appId: SubDepartmentId | 'owner'): boolean => {
     if (currentUser.role === 'owner') return true;
     if (appId === 'owner') return false;
     if (currentUser.role === 'dept_head') return true;
-    return currentUser.subDepartmentId === appId;
+    if (currentUser.role === 'volunteer') return false;
+    return perms.can(appId as ModuleQuery);
   };
   const setActiveApp = (target: SubDepartmentId | 'owner') => { if (canAccessApp(target)) window.location.hash = target === 'owner' ? '#/' : '#/' + target; };
 

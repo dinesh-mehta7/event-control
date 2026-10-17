@@ -3,6 +3,7 @@ import { Siren, Clock3, FileClock } from 'lucide-react';
 import { useMeetings } from '../context/MeetingsContext';
 import { btnDanger } from '../components/ui';
 import { PageIntro, Tabs } from '../components/ui';
+import { Swap } from '../components/Swap';
 import { when } from './meetings/shared';
 import { MeetingsList } from './meetings/MeetingsList';
 import { EmergencyList } from './meetings/EmergencyList';
@@ -31,7 +32,7 @@ export const MeetingsEmergency: React.FC<{ tab?: string }> = ({ tab }) => {
         { id: 'meetings', label: 'Meetings', count: meetings.filter(m => m.status === 'scheduled' || m.status === 'live').length },
         { id: 'emergency', label: 'Emergency', count: active.length, alert: true },
       ]} />
-      {cur === 'meetings' ? <MeetingsList /> : <EmergencyList />}
+      <Swap k={cur} indexOf={k => ['meetings', 'emergency'].indexOf(k)}>{cur === 'meetings' ? <MeetingsList /> : <EmergencyList />}</Swap>
     </div>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, FileSpreadsheet, Inbox, Plus, X } from 'lucide-react';
 import { Empty, Tabs, btnGhost, inputCls, btnPrimary } from '../../components/ui';
+import { Swap } from '../../components/Swap';
 import { DEPTS } from '../../views/orgData';
 import { useRequests } from './RequestsContext';
 import { NewRequest } from './NewRequest';
@@ -34,8 +35,8 @@ const Row: React.FC<{ r: Req }> = ({ r }) => {
       </td>
       <td className="max-w-[160px] truncate whitespace-nowrap px-3 py-2.5 align-middle text-xs text-ink-soft">{r.departmentName || (r.subDepartment ? DEPTS[r.subDepartment] : '—')}</td>
       <td className="whitespace-nowrap px-3 py-2.5 align-middle text-xs font-medium tabular-nums text-ink-soft">{totalBudget === null ? '—' : `₹${totalBudget.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}</td>
-      <td className="whitespace-nowrap px-3 py-2.5 align-middle"><div className="flex items-center gap-1">{chain.map(step => <span key={step.label} className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${step.state === 'done' ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300' : step.state === 'current' ? 'border-blue-500 bg-blue-500/15 text-blue-300' : 'border-line text-faint'}`}>{step.label}</span>)}</div></td>
-      <td className="whitespace-nowrap px-3 py-2.5 align-middle"><div className="flex items-center gap-1.5"><StatusBadge status={r.status} closed={!!r.confirmedAt} />{r.priority === 'urgent' && <UrgentBadge />}{isOverdue(r) && <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-medium text-red-300">Overdue</span>}</div></td>
+      <td className="whitespace-nowrap px-3 py-2.5 align-middle"><div className="flex items-center gap-1">{chain.map(step => <span key={step.label} className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${step.state === 'done' ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300' : step.state === 'current' ? 'border-blue-500 bg-blue-500/15 text-blue-300' : 'border-line text-faint'}`}>{step.label}</span>)}</div></td>
+      <td className="whitespace-nowrap px-3 py-2.5 align-middle"><div className="flex items-center gap-1.5"><StatusBadge status={r.status} closed={!!r.confirmedAt} />{r.priority === 'urgent' && <UrgentBadge />}{isOverdue(r) && <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10.5px] font-medium text-red-300">Overdue</span>}</div></td>
       <td className="w-7 px-2 py-2.5 align-middle text-faint"><ChevronRight size={14} /></td>
     </tr>
   );
@@ -43,7 +44,7 @@ const Row: React.FC<{ r: Req }> = ({ r }) => {
 
 const List: React.FC<{ rows: Req[]; empty: string }> = ({ rows, empty }) => (
   <div className="rounded-xl border border-line bg-surface overflow-hidden">
-    {rows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[850px] border-collapse text-left"><thead><tr className="bg-raised/40 text-[10px] font-medium uppercase tracking-wide text-mute"><th className="px-3 py-2">ID</th><th className="px-3 py-2">Request</th><th className="px-3 py-2">Dept</th><th className="px-3 py-2">Amount</th><th className="px-3 py-2">Approval chain</th><th className="px-3 py-2">Status</th><th className="w-7 px-2 py-2" /></tr></thead><tbody>{rows.map(r => <Row key={r.id} r={r} />)}</tbody></table></div> : <Empty>{empty}</Empty>}
+    {rows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[850px] border-collapse text-left"><thead><tr className="bg-raised/40 text-[10.5px] font-medium uppercase tracking-wide text-mute"><th className="px-3 py-2">ID</th><th className="px-3 py-2">Request</th><th className="px-3 py-2">Dept</th><th className="px-3 py-2">Amount</th><th className="px-3 py-2">Approval chain</th><th className="px-3 py-2">Status</th><th className="w-7 px-2 py-2" /></tr></thead><tbody>{rows.map(r => <Row key={r.id} r={r} />)}</tbody></table></div> : <Empty>{empty}</Empty>}
   </div>
 );
 
@@ -73,7 +74,7 @@ const NewRequestDialog: React.FC<{ children: React.ReactNode; onClose: () => voi
   return (
     <div className="fixed inset-0 z-[100] grid place-items-center p-3 sm:p-6" role="presentation">
       <button type="button" aria-label="Close new request" onClick={onClose} className="absolute inset-0 bg-black/70 backdrop-blur-md animate-fade-in" />
-      <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="new-request-title" className="dark relative flex max-h-[min(92dvh,900px)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/[0.08] bg-[#1c1c1e] text-white shadow-[0_28px_100px_rgba(0,0,0,.6)] animate-pop-in">
+      <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="new-request-title" className="dark relative flex max-h-[min(92dvh,900px)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/[0.08] bg-surface text-white shadow-[0_28px_100px_rgba(0,0,0,.6)] animate-pop-in">
         <div className="flex shrink-0 items-center justify-between border-b border-white/[0.07] px-5 py-4 sm:px-7">
           <div><p id="new-request-title" className="text-lg font-semibold tracking-tight">New request</p><p className="mt-0.5 text-xs text-white/55">Add the details and follow its progress from your requests.</p></div>
           <button type="button" onClick={onClose} aria-label="Close dialog" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/[0.08] text-white/70 transition hover:bg-white/[0.14] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"><X size={16} /></button>
@@ -213,6 +214,7 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
       {loadError && <div role="alert" className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{loadError}</div>}
       {!ready && !loadError && <p className="text-sm text-mute">Loading…</p>}
 
+      <Swap k={cur} indexOf={k => tabs.findIndex((t: any) => t.id === k)}>
       {cur === 'overview' && <Overview onOpen={f => { setFilter(f); go(me.isExec || me.level === 'sub_dept_head' ? 'all' : 'mine'); }} />}
       {cur === 'mine' && <List rows={mine} empty={filter === 'all' ? 'You have not raised any request yet. Use “New request” to start.' : 'No requests with this status.'} />}
       {cur === 'new' && <NewRequestDialog onClose={closeNewRequest}><NewRequest key={copy ? 'copy' : 'blank'} copyFrom={copy} onDone={id => { setCopy(null); if (id === 'event-radio') { location.hash = '#/walkie/requests'; return; } go(id); }} /></NewRequestDialog>}
@@ -233,6 +235,7 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
           </div>
           <List rows={all} empty="No requests match." />
         </div>)}
+      </Swap>
       {cur !== 'new' && ready && !requests.length && !loadError && <div className="flex items-center gap-2 text-xs text-faint"><Inbox size={14} />Requests you raise or need to act on will appear here.</div>}
     </div>
   );

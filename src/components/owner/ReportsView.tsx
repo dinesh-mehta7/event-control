@@ -14,6 +14,9 @@ import { STATUS as PO_STATUS, PAYABLE, poDue, poTotal } from '../../modules/purc
 import { STATUS_LABEL } from '../../modules/requests/types';
 import { inr } from '../../views/orgData';
 import { Card, Empty, Stat, Tabs, btnGhost, btnPrimary, printLight, th } from '../ui';
+import { Swap } from '../Swap';
+
+const REPORT_TABS = ['requests','purchase','inventory','wifi','people','accommodation','events','meetings','tasks','issues','radio'];
 
 const csvCell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 const download = (name: string, rows: (string | number)[][]) => {
@@ -164,6 +167,7 @@ export const ReportsView: React.FC = () => {
       <Tabs label="Reports" value={tab} onChange={setTab} tabs={[{ id: 'requests', label: 'Requests' }, { id: 'purchase', label: 'Purchase' }, { id: 'inventory', label: 'Inventory' }, { id: 'wifi', label: 'Wi-Fi usage' }, { id: 'people', label: 'People' }, { id: 'accommodation', label: 'Accommodation' }, { id: 'events', label: 'Events' }, { id: 'meetings', label: 'Meetings & minutes' }, { id: 'tasks', label: 'Tasks' }, { id: 'issues', label: 'Issues & feedback' }, { id: 'radio', label: 'Radio returns' }]} />
       {extraErrors.length > 0 && <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">Some report sources could not be loaded: {extraErrors.join(' · ')}</p>}
 
+      <Swap k={tab} indexOf={k => REPORT_TABS.indexOf(k)}>
       {tab === 'requests' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -245,6 +249,7 @@ export const ReportsView: React.FC = () => {
       {tab === 'issues' && <div className="space-y-4"><div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Stat label="Issues and feedback" value={(extraReports.issues || []).length} /><Stat label="Open issues" value={(extraReports.issues || []).filter(i => i.status === 'open').length} /><Stat label="Department posts" value={(extraReports.updates || []).length} /><Stat label="Event reviews" value={(extraReports.eventReviews || []).length} /></div><Card title="Issues and feedback"><ReportTable rows={(extraReports.issues || []).map(i => ({ ...i, event_name: eventScope.events.find(e => e.id === i.event_id)?.name || 'Unlinked' }))} columns={[["kind", "Type"], ["event_name", "Event"], ["sub_department", "Department"], ["title", "Title"], ["details", "Details"], ["reporter_name", "Reported by"], ["status", "Status"], ["created_at", "Created"]]} empty={extraLoading ? "Loading issue reports…" : "No issues or feedback recorded."} /></Card><Card title="Announcements and lessons learned"><ReportTable rows={extraReports.updates || []} columns={[["kind", "Type"], ["department", "Department"], ["title", "Title"], ["body", "Details"], ["author_name", "Posted by"], ["created_at", "Created"]]} empty="No announcements or lessons learned recorded." /></Card></div>}
 
       {tab === 'radio' && <div className="space-y-4"><div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Stat label="Return reports" value={(extraReports.radioReturns || []).length} /><Stat label="Walkies returned" value={(extraReports.radioReturns || []).reduce((n, r) => n + Number(r.returned_walkies || 0), 0)} /><Stat label="Chargers returned" value={(extraReports.radioReturns || []).reduce((n, r) => n + Number(r.returned_chargers || 0), 0)} /><Stat label="Earphones returned" value={(extraReports.radioReturns || []).reduce((n, r) => n + Number(r.returned_earphones || 0), 0)} /></div><ReportTable rows={(extraReports.radioReturns || []).map(r => ({ ...r, event_name: eventScope.events.find(e => e.id === r.event_id)?.name || 'General / no event' }))} columns={[["event_name", "Event"], ["department_name", "Department"], ["returned_walkies", "Walkies"], ["returned_chargers", "Chargers"], ["returned_earphones", "Earphones"], ["return_feedback", "Feedback"], ["status", "Status"], ["updated_at", "Updated"]]} empty={extraLoading ? "Loading radio reports…" : "No radio return reports recorded."} /></div>}
+      </Swap>
     </div>
   );
 };

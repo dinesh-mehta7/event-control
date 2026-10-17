@@ -2,13 +2,13 @@
 const colors = require('tailwindcss/colors');
 const plugin = require('tailwindcss/plugin');
 
-// ---- One blue brand for the whole app (white / blue / black, red only for alerts) ----
-// The accent names below (cyan, sky, indigo, purple, violet) are aliases of the same blue, kept so older
-// class names still work. New code should use `blue-*` and the semantic tokens (surface, ink, mute, line...).
+// ---- One indigo brand for the whole app (graphite neutrals, indigo accent, red only for alerts) ----
+// The accent names below (blue, cyan, sky, indigo, purple, violet) are aliases of the same indigo, kept so
+// existing class names still work. New code should use `blue-*` and the semantic tokens (surface, ink, mute, line...).
 const brandBlue = {
-  50:  '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd',
-  400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8',
-  800: '#1e40af', 900: '#1e3a8a', 950: '#172554',
+  50:  '#eef0ff', 100: '#e0e4ff', 200: '#c7cdfe', 300: '#a3aafb',
+  400: '#7c83f7', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca',
+  800: '#3730a3', 900: '#312e81', 950: '#1e1b4b',
 };
 
 const slate = {
@@ -33,46 +33,88 @@ STATUS.forEach(h => {
     lightVars[`--${h}-${s}`] = rgb(colors[h][LIGHT_SHADE[s]]);
   });
 });
+// Every accent shade is a CSS variable, so a theme can recolour buttons, links and highlights at once.
+const SHADES = Object.keys(brandBlue);
 ACCENTS.forEach(h => {
-  hueColors[h] = { ...brandBlue };
-  [200, 300, 400].forEach(s => {
-    hueColors[h][s] = v(`${h}-${s}`);
-    darkVars[`--${h}-${s}`] = rgb(brandBlue[s]);
-    lightVars[`--${h}-${s}`] = rgb(brandBlue[LIGHT_SHADE[s]]);
-  });
+  hueColors[h] = {};
+  SHADES.forEach(s => { hueColors[h][s] = v(`accent-${s}`); });
 });
+SHADES.forEach(s => {
+  darkVars[`--accent-${s}`] = rgb(brandBlue[s]);
+  lightVars[`--accent-${s}`] = rgb(brandBlue[LIGHT_SHADE[s] || s]);
+});
+
+// ---- Royal theme (id "saffron"): the sign-in page's charcoal with its gold → saffron accents ----
+// 300 = the page's gold (#ffc23d family), 400 = its link amber (#ffb35c), 500 = its saffron (#ff8a1f).
+const saffron = {
+  50:  '#fff8e6', 100: '#ffefc4', 200: '#ffe08f', 300: '#ffcf55',
+  400: '#ffb35c', 500: '#ff8a1f', 600: '#f07a12', 700: '#c9630f',
+  800: '#9c4b0e', 900: '#733810', 950: '#3d1d07',
+};
+const saffronVars = {};
+SHADES.forEach(s => { saffronVars[`--accent-${s}`] = rgb(saffron[s]); });
 
 // Semantic tokens — light & dark. Used by ALL modules via Tailwind utilities.
 const tokens = {
   light: {
-    canvas:       '#e9eef5',
-    surface:      '#e9eef5',
-    raised:       '#e1e7ef',
-    line:         '#d5dce6',
-    'line-strong':'#c8d1de',
-    ink:          '#020817',
-    'ink-soft':   '#1e293b',
-    mute:         '#526079',
-    faint:        '#7a879f',
-    field:        '#e9eef5',
-    brand:        '#2563eb',
-    'brand-soft': '#dbeafe',
+    canvas:       '#f5f5f6',
+    surface:      '#ffffff',
+    raised:       '#efeff1',
+    line:         '#e3e3e7',
+    'line-strong':'#d1d1d6',
+    ink:          '#111114',
+    'ink-soft':   '#2a2b30',
+    mute:         '#5b5c66',
+    faint:        '#8a8b94',
+    field:        '#ffffff',
+    brand:        '#4f46e5',
+    'brand-soft': '#eef0ff',
     'brand-fg':   '#ffffff',
+    // Chart series: one hue per meaning, tuned for contrast on each theme.
+    'chart-1':    '#4f46e5', // primary series (indigo)
+    'chart-2':    '#0e8fa3', // secondary series (cyan)
+    'chart-3':    '#b7791f', // warning / attention (amber)
+    'chart-ok':   '#16865a', // complete / healthy (green)
   },
   dark: {
-    canvas:       '#070708',
-    surface:      '#18181a',
-    raised:       '#242427',
-    line:         '#303034',
-    'line-strong':'#414146',
-    ink:          '#f5f5f5',
-    'ink-soft':   '#d4d4d8',
-    mute:         '#a1a1a8',
-    faint:        '#77777f',
-    field:        '#202023',
-    brand:        '#168bff',
-    'brand-soft': '#10233a',
+    canvas:       '#101113',
+    surface:      '#17181b',
+    raised:       '#1f2024',
+    line:         '#2b2d32',
+    'line-strong':'#3a3c42',
+    ink:          '#ececee',
+    'ink-soft':   '#cfd0d4',
+    mute:         '#9a9ba3',
+    faint:        '#6f7079',
+    field:        '#1b1c20',
+    brand:        '#7c83f7',
+    'brand-soft': '#1e1f3a',
     'brand-fg':   '#ffffff',
+    'chart-1':    '#7c83f7',
+    'chart-2':    '#1a9fb3', // validated: lightness band, CVD ΔE 11.3 vs chart-1 on #17181b
+    'chart-3':    '#e0a030',
+    'chart-ok':   '#34c38f',
+  },
+  saffron: {
+    // Same values as the sign-in page: --bg, the card (rgba(20,21,26,.78) on --bg), --line, --text, --muted, --dim.
+    canvas:       '#0d0e11',
+    surface:      '#14151a',
+    raised:       '#1c1d23',
+    line:         '#25262c',
+    'line-strong':'#35363d',
+    ink:          '#eef0f5',
+    'ink-soft':   '#cfd2da',
+    mute:         '#9097a6',
+    faint:        '#626a7a',
+    field:        '#101115',
+    brand:        '#ffb35c',
+    'brand-soft': '#2a1e10',
+    'brand-fg':   '#1a1206',
+    // validated on #15161b: lightness band, chroma, CVD ΔE ≥ 8.7, contrast ≥ 3:1
+    'chart-1':    '#e07018',
+    'chart-2':    '#1996ab',
+    'chart-3':    '#b08e1e',
+    'chart-ok':   '#2aa274',
   },
 };
 
@@ -81,6 +123,7 @@ Object.keys(tokens.light).forEach(k => {
   tokenColors[k] = v('c-' + k);
   lightVars[`--c-${k}`] = rgb(tokens.light[k]);
   darkVars[`--c-${k}`] = rgb(tokens.dark[k]);
+  saffronVars[`--c-${k}`] = rgb(tokens.saffron[k]);
 });
 
 module.exports = {
@@ -89,21 +132,22 @@ module.exports = {
   theme: {
     extend: {
       colors: { ...hueColors, slate, ...tokenColors },
-      // Compact global type scale. Keep a clear hierarchy without oversized body text.
+      // Global type scale in exact pixels (the html root is 13px, so rem values here would shrink).
+      // Readable enterprise sizes: 10.5px is the smallest text in the app.
       fontSize: {
-        xs:   ['0.625rem',  { lineHeight: '0.875rem' }], // 10px
-        sm:   ['0.71875rem',{ lineHeight: '1rem' }],     // 11.5px
-        base: ['0.78125rem',{ lineHeight: '1.125rem' }], // 12.5px
-        lg:   ['0.875rem',  { lineHeight: '1.25rem' }],  // 14px
-        xl:   ['1rem',      { lineHeight: '1.375rem' }], // 16px
-        '2xl':['1.125rem',  { lineHeight: '1.5rem', letterSpacing: '-0.015em' }], // 18px
-        '3xl':['1.3125rem', { lineHeight: '1.75rem', letterSpacing: '-0.02em' }],  // 21px
-        '4xl':['1.5rem',    { lineHeight: '2rem', letterSpacing: '-0.02em' }],     // 24px
+        xs:   ['10.5px', { lineHeight: '15px' }],
+        sm:   ['12px',   { lineHeight: '17px' }],
+        base: ['13px',   { lineHeight: '19px' }],
+        lg:   ['14.5px', { lineHeight: '21px' }],
+        xl:   ['16px',   { lineHeight: '23px' }],
+        '2xl':['18px',   { lineHeight: '25px', letterSpacing: '-0.015em' }],
+        '3xl':['21px',   { lineHeight: '28px', letterSpacing: '-0.02em' }],
+        '4xl':['24px',   { lineHeight: '31px', letterSpacing: '-0.02em' }],
       },
       fontFamily: {
         sans: ['Inter', '"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
       },
     },
   },
-  plugins: [plugin(({ addBase }) => addBase({ ':root': lightVars, '.dark': { ...darkVars, colorScheme: 'dark' } }))],
+  plugins: [plugin(({ addBase }) => addBase({ ':root': lightVars, '.dark': { ...darkVars, colorScheme: 'dark' }, '.dark.theme-saffron': saffronVars }))],
 };

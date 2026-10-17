@@ -395,10 +395,10 @@ export default function WalkiesView() {
                 const isSelected = selectedWalkies.includes(walkie.id);
                 return <tr key={walkie.id} className={`${isSelected ? 'bg-blue-500/5' : ''} ${isDark ? 'hover:bg-white/[0.025]' : 'hover:bg-slate-50'}`}>
                   <td className="px-4 py-3"><input type="checkbox" checked={isSelected} onChange={() => toggleSelect(walkie.id)} aria-label={`Select ${walkie.id}`} className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500" /></td>
-                  <td className="px-3 py-3"><div className="font-semibold text-ink">{walkie.label || walkie.id}</div><div className="mt-0.5 text-[11px] text-mute">ID: {walkie.id}</div></td>
-                  <td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10px] ${walkie.isRented ? 'bg-violet-500/10 text-violet-300' : 'bg-slate-500/10 text-mute'}`}>{walkie.isRented ? 'Rented' : 'Owned'}</span></td>
+                  <td className="px-3 py-3"><div className="font-semibold text-ink">{walkie.label || walkie.id}</div><div className="mt-0.5 text-[11.5px] text-mute">ID: {walkie.id}</div></td>
+                  <td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10.5px] ${walkie.isRented ? 'bg-violet-500/10 text-violet-300' : 'bg-slate-500/10 text-mute'}`}>{walkie.isRented ? 'Rented' : 'Owned'}</span></td>
                   <td className="px-3 py-3 text-ink-soft">{walkie.model || '—'}</td>
-                  <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ${STATUS_STYLES[walkie.status]}`}>{walkie.status}</span></td>
+                  <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10.5px] font-semibold ${STATUS_STYLES[walkie.status]}`}>{walkie.status}</span></td>
                   <td className="max-w-44 truncate px-3 py-3 text-ink-soft" title={dept?.name}>{walkie.status === 'Allocated' && dept ? dept.name : '—'}</td>
                   <td className="px-3 py-3">{walkie.channel ? <span className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 px-2 py-1 text-xs font-semibold text-blue-400"><Radio className="h-3 w-3" />{walkie.channel}</span> : <span className="text-mute">—</span>}</td>
                   <td className="max-w-40 truncate px-3 py-3 text-ink-soft" title={walkie.assignedPerson?.name}>{walkie.assignedPerson?.name || 'Unassigned'}</td>

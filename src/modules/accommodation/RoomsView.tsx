@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { memberMeta } from '../manpower/memberMeta';
 import { BedDouble, Building2, Circle, CircleCheck, Edit3, ListTodo, Lock, Play, Plus, Search, Trash2, Upload, UserPlus, Users } from 'lucide-react';
 import { useAccommodation } from './AccommodationContext';
 import { DEPT_LABEL, DEPT_OPTIONS } from './types';
@@ -204,7 +205,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
         return {
           name: val(r, 'name', 'fullname') || employeeName,
           memberType: (kind.includes('annual') || kind.includes('annually') ? 'annual' : kind.includes('month') ? 'monthly' : 'salary_based') as MemberImportRow['memberType'],
-          serialNo: val(r, 'srno', 'serialno', 'serialnumber'), batchNo: val(r, 'bno', 'batchno', 'batchnumber'),
+          serialNo: val(r, 'srno', 'serialno', 'serialnumber'), batchNo: val(r, 'badgeno', 'badgenumber', 'badge', 'bno', 'batchno', 'batchnumber'),
           relation: val(r, 'rel', 'relation'), relationName: val(r, 'relationname', 'fathername', 'guardianname'),
           mobile: val(r, 'mobile', 'phone', 'mobilenumber'), villageCity: val(r, 'villagecity', 'village', 'city'),
           branch: val(r, 'branch'), occupation: val(r, 'occupation'), remarks: val(r, 'remarks'),
@@ -222,7 +223,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
   };
 
   return (
-    <div className={cx(embedded ? 'space-y-3 text-[13px]' : 'space-y-5', embedded && 'text-ink')}>
+    <div className={cx(embedded ? 'space-y-3 text-[13.5px]' : 'space-y-5', embedded && 'text-ink')}>
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
         {!embedded && <><h1 className="text-2xl font-bold tracking-tight">Rest rooms</h1><p className={cx('text-sm', muted)}>Rest room capacity and readiness for this event.</p></>}
@@ -231,12 +232,12 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
         {!canManageRooms && !roomEventId && <p className={cx('flex items-center gap-1.5 text-xs', muted)}><Lock className="w-3.5 h-3.5" />View only — room and member edits are limited to accommodation leads and IT owners.</p>}
       </div>
       {importMessage && <div role="status" className={cx('rounded-lg border px-3 py-2 text-xs', importMessage.includes('imported.') ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-amber-500/30 bg-amber-500/10 text-amber-300')}>{importMessage} CSV headers can match Sr. No., B. No., Name, Rel, Relation Name, Mobile, Village/City, Branch, Occupation, Remarks, SEWA JOINING DATE, EMP CODE, Employee ID, Address, Address 2, Department, Member Type, and Room.</div>}
-      <p className={cx('text-[11px]', muted)}>{roomEventId ? `Here now and returned-back totals stay synced with ${roomEventName} attendance.` : 'Select an event in the header to see live here-now and returned-back totals.'}</p>
+      <p className={cx('text-[11.5px]', muted)}>{roomEventId ? `Here now and returned-back totals stay synced with ${roomEventName} attendance.` : 'Select an event in the header to see live here-now and returned-back totals.'}</p>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <SummaryCard dark={dark} icon={Building2} title="Rest rooms" value={restRooms.length} metricLabel="Ready rooms" metricValue={roomsReady} detail={`${roomsReady} of ${restRooms.length} fully ready`} percent={restRooms.length ? roomsReadyPercent : null} color="#10b981" />
-        <SummaryCard dark={dark} icon={BedDouble} title="Beds" value={totalBeds} metricLabel="Beds free" metricValue={bedsFree} detail={`${bedsFree} of ${totalBeds} available`} percent={bedsFreePercent} color="#f59e0b" />
-        <SummaryCard dark={dark} icon={Users} title="Members" value={members.length} metricLabel="In rooms" metricValue={placed} detail={`${placed} assigned · ${unassigned} not in a room`} percent={membersPlacedPercent} color="#3b82f6" />
+        <SummaryCard dark={dark} icon={Building2} title="Rest rooms" value={restRooms.length} metricLabel="Ready rooms" metricValue={roomsReady} detail={`${roomsReady} of ${restRooms.length} fully ready`} percent={restRooms.length ? roomsReadyPercent : null} color="rgb(var(--c-chart-ok))" />
+        <SummaryCard dark={dark} icon={BedDouble} title="Beds" value={totalBeds} metricLabel="Beds free" metricValue={bedsFree} detail={`${bedsFree} of ${totalBeds} available`} percent={bedsFreePercent} color="rgb(var(--c-chart-3))" />
+        <SummaryCard dark={dark} icon={Users} title="Members" value={members.length} metricLabel="In rooms" metricValue={placed} detail={`${placed} assigned · ${unassigned} not in a room`} percent={membersPlacedPercent} color="rgb(var(--c-chart-1))" />
       </div>
 
       {canEditRoomDefinitions && <div className="flex flex-wrap items-center justify-end gap-2">
@@ -261,7 +262,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
           )}
           {grouped.map(([block, list]) => (
             <section key={block} aria-label={block}>
-              <h2 className={cx('text-[11px] font-bold uppercase tracking-wider mb-2', muted)}>{block} · {list.length} room{list.length === 1 ? '' : 's'}</h2>
+              <h2 className={cx('text-[11.5px] font-bold uppercase tracking-wider mb-2', muted)}>{block} · {list.length} room{list.length === 1 ? '' : 's'}</h2>
               <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 {list.map(r => {
                   const inside = membersInRoom(r.id);
@@ -278,8 +279,8 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <h3 className="font-bold text-sm truncate" title={r.name}>{r.name}</h3>
-                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5"><span className={cx('inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold', r.category === 'control_room' ? 'bg-blue-500/10 text-blue-300' : 'bg-emerald-500/10 text-emerald-300')}>{r.category === 'control_room' ? 'Control room' : 'Rest room'}</span><span className="inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">Here now · {membersHereNow}</span></div>
-                          {r.notes && <p className={cx('text-[11px] truncate', muted)} title={r.notes}>{r.notes}</p>}
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5"><span className={cx('inline-flex rounded-md px-2 py-0.5 text-[10.5px] font-semibold', r.category === 'control_room' ? 'bg-blue-500/10 text-blue-300' : 'bg-emerald-500/10 text-emerald-300')}>{r.category === 'control_room' ? 'Control room' : 'Rest room'}</span><span className="inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-300">Here now · {membersHereNow}</span></div>
+                          {r.notes && <p className={cx('text-[11.5px] truncate', muted)} title={r.notes}>{r.notes}</p>}
                         </div>
                         <span className={cx('shrink-0 text-xs font-bold px-2 py-1 rounded-lg tabular-nums',
                           full ? 'bg-rose-500/15 text-rose-500' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400')}>
@@ -290,20 +291,20 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                         <div className={cx('h-full rounded-full', full ? 'bg-rose-500' : pct >= 75 ? 'bg-amber-500' : 'bg-emerald-500')} style={{ width: `${pct}%` }} />
                       </div>
                       <div className="mt-2.5 flex items-center justify-between gap-2">
-                        <span className={cx('rounded-md px-2 py-1 text-[10px] font-semibold', r.requirements.length === 0 ? 'bg-raised text-mute' : roomReady ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-300')}>{r.requirements.length === 0 ? 'Not set up' : roomReady ? 'Ready' : 'In progress'}</span>
-                        {roomReturned && <span className="rounded-md bg-blue-500/15 px-2 py-1 text-[10px] font-semibold text-blue-300">Returned</span>}
+                        <span className={cx('rounded-md px-2 py-1 text-[10.5px] font-semibold', r.requirements.length === 0 ? 'bg-raised text-mute' : roomReady ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-300')}>{r.requirements.length === 0 ? 'Not set up' : roomReady ? 'Ready' : 'In progress'}</span>
+                        {roomReturned && <span className="rounded-md bg-blue-500/15 px-2 py-1 text-[10.5px] font-semibold text-blue-300">Returned</span>}
                         <div className="ml-auto flex items-center gap-2">
-                          <span className={cx('text-right text-[10px]', muted)}>Necessities ready</span>
-                          <div className="h-9 w-9 shrink-0 rounded-full p-[3px]" role="progressbar" aria-label={`${r.name} necessities readiness`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={readinessPercent} style={{ background: `conic-gradient(#10b981 ${readinessPercent}%, rgba(148,163,184,.2) 0)` }}>
-                            <div className="flex h-full w-full items-center justify-center rounded-full bg-surface text-[9px] font-bold tabular-nums">{readinessPercent}%</div>
+                          <span className={cx('text-right text-[10.5px]', muted)}>Necessities ready</span>
+                          <div className="h-9 w-9 shrink-0 rounded-full p-[3px]" role="progressbar" aria-label={`${r.name} necessities readiness`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={readinessPercent} style={{ background: `conic-gradient(rgb(var(--c-chart-ok)) ${readinessPercent}%, rgb(var(--c-line)) 0)` }}>
+                            <div className="flex h-full w-full items-center justify-center rounded-full bg-surface text-[10px] font-bold tabular-nums">{readinessPercent}%</div>
                           </div>
                         </div>
                       </div>
-                      {r.category === 'control_room' && <div className={cx('mt-2 rounded-md bg-raised px-2 py-1.5 text-[10px]', muted)}>Requirements team: <span className="font-semibold text-ink">{r.responsibleTeam || 'No team assigned'}</span></div>}
-                      {r.category === 'control_room' && <div className={cx('mt-2 rounded-md border border-blue-500/20 bg-blue-500/5 px-2.5 py-2 text-[10px]', muted)}>{linkedControlRooms[r.id] ? <><span className="font-semibold text-blue-300">Control Rooms · {roomEventName}:</span> {linkedControlRooms[r.id].name} · {linkedControlRooms[r.id].location} · {linkedControlRooms[r.id].pc_count} PCs</> : <>No CCTV Control Room linked for {roomEventName}. Link it from Control Rooms → Edit room.</>}</div>}
-                      {tasks.filter(task => task.room_id === r.id).length > 0 && <div className="mt-2 space-y-1 rounded-md bg-raised/50 p-2">{tasks.filter(task => task.room_id === r.id).map(task => <div key={task.id} className="flex items-center gap-2 text-[10px]"><span className="min-w-0 flex-1 truncate text-ink-soft">{task.title} · {task.assigned_to || 'Unassigned'}</span><select aria-label={`Status for ${task.title}`} disabled={!canManageTasks && task.assigned_to !== auth.currentUser?.name} className="rounded border border-line bg-field px-1.5 py-1 text-[10px] text-ink disabled:opacity-60" value={task.status} onChange={e => void updateTaskStatus(task, e.target.value)}><option value="todo">To do</option><option value="in_progress">In progress</option><option value="complete">Ready</option></select></div>)}</div>}
-                      {roomReady && r.readyAt && <p className={cx('mt-1 text-[10px]', muted)}>Ready at {new Date(r.readyAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>}
-                      {roomReturned && r.returnedAt && <p className={cx('mt-1 text-[10px]', muted)}>Returned at {new Date(r.returnedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>}
+                      {r.category === 'control_room' && <div className={cx('mt-2 rounded-md bg-raised px-2 py-1.5 text-[10.5px]', muted)}>Requirements team: <span className="font-semibold text-ink">{r.responsibleTeam || 'No team assigned'}</span></div>}
+                      {r.category === 'control_room' && <div className={cx('mt-2 rounded-md border border-blue-500/20 bg-blue-500/5 px-2.5 py-2 text-[10.5px]', muted)}>{linkedControlRooms[r.id] ? <><span className="font-semibold text-blue-300">Control Rooms · {roomEventName}:</span> {linkedControlRooms[r.id].name} · {linkedControlRooms[r.id].location} · {linkedControlRooms[r.id].pc_count} PCs</> : <>No CCTV Control Room linked for {roomEventName}. Link it from Control Rooms → Edit room.</>}</div>}
+                      {tasks.filter(task => task.room_id === r.id).length > 0 && <div className="mt-2 space-y-1 rounded-md bg-raised/50 p-2">{tasks.filter(task => task.room_id === r.id).map(task => <div key={task.id} className="flex items-center gap-2 text-[10.5px]"><span className="min-w-0 flex-1 truncate text-ink-soft">{task.title} · {task.assigned_to || 'Unassigned'}</span><select aria-label={`Status for ${task.title}`} disabled={!canManageTasks && task.assigned_to !== auth.currentUser?.name} className="rounded border border-line bg-field px-1.5 py-1 text-[10.5px] text-ink disabled:opacity-60" value={task.status} onChange={e => void updateTaskStatus(task, e.target.value)}><option value="todo">To do</option><option value="in_progress">In progress</option><option value="complete">Ready</option></select></div>)}</div>}
+                      {roomReady && r.readyAt && <p className={cx('mt-1 text-[10.5px]', muted)}>Ready at {new Date(r.readyAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>}
+                      {roomReturned && r.returnedAt && <p className={cx('mt-1 text-[10.5px]', muted)}>Returned at {new Date(r.returnedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>}
                       <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-line">
                         <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5')} onClick={() => setRequirementsRoom(r)}><ListTodo className="w-3.5 h-3.5" />Necessities</button>
                         {roomEventId && canManageTasks && <button className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5')} onClick={() => void assignRoomSetupTask(r)}><Plus className="w-3.5 h-3.5" />Assign room task</button>}
@@ -347,10 +348,10 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
             </select>
           </div>
           <section className="border-b border-line p-4 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-[13px] font-semibold flex items-center gap-2"><ListTodo className="w-4 h-4 text-blue-400"/>Member work</h2><p className={cx('text-[11px] mt-0.5', muted)}>Assign work, then track to do, in progress and complete.</p></div><div className="flex gap-3 text-[11px] text-mute"><span>{tasks.filter(t => t.status === 'todo').length} to do</span><span>{tasks.filter(t => t.status === 'in_progress').length} ongoing</span><span>{tasks.filter(t => t.status === 'complete').length} done</span></div></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-[13.5px] font-semibold flex items-center gap-2"><ListTodo className="w-4 h-4 text-blue-400"/>Member work</h2><p className={cx('text-[11.5px] mt-0.5', muted)}>Assign work, then track to do, in progress and complete.</p></div><div className="flex gap-3 text-[11.5px] text-mute"><span>{tasks.filter(t => t.status === 'todo').length} to do</span><span>{tasks.filter(t => t.status === 'in_progress').length} ongoing</span><span>{tasks.filter(t => t.status === 'complete').length} done</span></div></div>
             <form onSubmit={saveTask} className="grid grid-cols-1 md:grid-cols-4 gap-2">
               <input required value={taskTitle} onChange={e => setTaskTitle(e.target.value)} placeholder="Task to do" className={cx(inputCls(dark), 'md:col-span-2')}/>
-              <select value={taskMember} onChange={e => setTaskMember(e.target.value)} className={inputCls(dark)} aria-label="Assign member"><option value="">{canManageTasks ? 'Assign to a member' : 'Assign to myself'}</option>{canManageTasks && members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+              <select value={taskMember} onChange={e => setTaskMember(e.target.value)} className={inputCls(dark)} aria-label="Assign member"><option value="">{canManageTasks ? 'Assign to a member' : 'Assign to myself'}</option>{canManageTasks && members.map(m => <option key={m.id} value={m.id}>{m.name}{memberMeta(m) ? ` · ${memberMeta(m)}` : ''}</option>)}</select>
               <button disabled={taskBusy} className={btnPrimary}><Plus className="w-4 h-4"/>{taskBusy ? 'Saving…' : 'Add task'}</button>
               <input value={taskDetails} onChange={e => setTaskDetails(e.target.value)} placeholder="Task details (optional)" className={cx(inputCls(dark), 'md:col-span-4')}/>
             </form>
@@ -361,7 +362,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
               <thead>
                 <tr className={cx('text-left text-xs uppercase tracking-wider', muted)}>
                   <th className="px-4 py-3 font-semibold">Member</th>
-                  <th className="px-4 py-3 font-semibold">Type / batch</th>
+                  <th className="px-4 py-3 font-semibold">Type / badge no.</th>
                   <th className="px-4 py-3 font-semibold">Department</th>
                   <th className="px-4 py-3 font-semibold">Mobile / branch</th>
                   <th className="px-4 py-3 font-semibold">Arrival / team</th>
@@ -375,7 +376,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                   const room = m.roomId ? roomById.get(m.roomId) : null;
                   return (
                     <tr key={m.id}>
-                      <td className="px-4 py-2.5"><div className="font-semibold">{m.name}</div><div className={cx('text-xs', muted)}>{m.serialNo || m.employeeCode || m.employeeId || '—'}</div></td>
+                      <td className="px-4 py-2.5"><div className="font-semibold">{m.name}</div><div className={cx('text-xs', muted)}>{[memberMeta(m), m.serialNo || m.employeeCode || m.employeeId].filter(Boolean).join(' · ') || '—'}</div></td>
                       <td className="px-4 py-2.5"><div>{m.memberType === 'salary_based' ? 'Salary based' : m.memberType === 'annual' ? 'Annual' : 'Monthly'}</div><div className={cx('text-xs', muted)}>{m.batchNo || '—'}</div></td>
                       <td className={cx('px-4 py-2.5', muted)}>{DEPT_LABEL[m.department] || '—'}</td>
                       <td className="px-4 py-2.5"><div>{m.mobile || '—'}</div><div className={cx('text-xs', muted)}>{[m.branch, m.villageCity].filter(Boolean).join(' · ')}</div></td>
@@ -439,9 +440,9 @@ const SummaryCard: React.FC<{
         <span className="text-mute">{metricLabel}</span>
         <span className="font-semibold tabular-nums">{metricValue}</span>
       </div>
-      <p className="mt-0.5 truncate text-[10px] text-mute" title={detail}>{detail}</p>
+      <p className="mt-0.5 truncate text-[10.5px] text-mute" title={detail}>{detail}</p>
     </div>
-    <div className="h-16 w-16 shrink-0 rounded-full p-[5px]" role="img" aria-label={`${title}: ${percent === null ? 'no data' : `${percent}% ${metricLabel.toLowerCase()}`}`} style={{ background: `conic-gradient(${color} ${percent ?? 0}%, rgba(148,163,184,.2) 0)` }}>
+    <div className="h-16 w-16 shrink-0 rounded-full p-[5px]" role="img" aria-label={`${title}: ${percent === null ? 'no data' : `${percent}% ${metricLabel.toLowerCase()}`}`} style={{ background: `conic-gradient(${color} ${percent ?? 0}%, rgb(var(--c-line)) 0)` }}>
       <div className="flex h-full w-full items-center justify-center rounded-full bg-surface text-xs font-bold tabular-nums">{percent === null ? '—' : `${percent}%`}</div>
     </div>
   </section>
@@ -469,7 +470,7 @@ const RoomForm: React.FC<{ dark: boolean; room: Room | null; teams: { id: string
           <div><label className={labelCls(dark)} htmlFor="rn">Room name / number</label><input id="rn" autoFocus required value={name} onChange={e => setName(e.target.value)} placeholder="e.g. A-101" className={inputCls(dark)} /></div>
           <div><label className={labelCls(dark)} htmlFor="rb">Block / camp (optional)</label><input id="rb" value={block} onChange={e => setBlock(e.target.value)} placeholder="e.g. Block A" className={inputCls(dark)} /></div>
         </div>
-        <div><label className={labelCls(dark)} htmlFor="rc">Room capacity (beds)</label><input id="rc" type="number" min={1} max={500} required value={capacity} onChange={e => setCapacity(e.target.value)} className={inputCls(dark)} /><p className={cx('mt-1 text-[11px]', dark ? 'text-gray-500' : 'text-gray-500')}>Capacity is used for member placement; beds are not room setup requirements.</p></div>
+        <div><label className={labelCls(dark)} htmlFor="rc">Room capacity (beds)</label><input id="rc" type="number" min={1} max={500} required value={capacity} onChange={e => setCapacity(e.target.value)} className={inputCls(dark)} /><p className={cx('mt-1 text-[11.5px]', dark ? 'text-gray-500' : 'text-gray-500')}>Capacity is used for member placement; beds are not room setup requirements.</p></div>
         <div><label className={labelCls(dark)} htmlFor="rno">Notes (optional)</label><input id="rno" value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. Ground floor, AC" className={inputCls(dark)} /></div>
         <div className="flex justify-end gap-2 pt-1"><button type="button" onClick={onClose} className={btnGhost(dark)}>Cancel</button><button type="submit" disabled={busy} className={btnPrimary}>{busy ? 'Saving…' : 'Save room'}</button></div>
       </form>
@@ -504,45 +505,55 @@ const RoomRequirementsModal: React.FC<{
     if (ok) onClose();
   };
   return (
-    <Modal title={`Room checklist · ${room.name}`} dark={dark} xl stickyHeader onClose={onClose}>
+    <Modal title={`Room checklist · ${room.name}`} dark={dark} xxl stickyHeader onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><p className={cx('text-xs', dark ? 'text-gray-400' : 'text-gray-600')}>{room.category === 'rest_room' ? 'Assign and prepare necessities before the event. After it ends, collect them and mark each one returned.' : `The ${room.responsibleTeam || 'assigned'} team prepares this room before the event and returns its necessities afterward.`}</p></div>
-          <span className={cx('shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-medium tabular-nums', dark ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600')}>{completeCount} / {items.length} {phase === 'prepare' ? 'prepared' : 'returned'}</span>
+          <span className={cx('shrink-0 rounded-md px-2.5 py-1.5 text-[11.5px] font-medium tabular-nums', dark ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600')}>{completeCount} / {items.length} {phase === 'prepare' ? 'prepared' : 'returned'}</span>
         </div>
 
         <div className={cx('grid grid-cols-2 gap-1 rounded-lg border p-1', dark ? 'border-gray-700 bg-gray-900/60' : 'border-gray-200 bg-gray-50')} role="group" aria-label="Room work phase">
           <button type="button" aria-pressed={phase === 'prepare'} onClick={() => setPhase('prepare')} className={cx('rounded-md px-3 py-2 text-xs font-semibold transition-colors', phase === 'prepare' ? 'bg-blue-600 text-white' : dark ? 'text-gray-400 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}><span className="mr-1.5">1</span>Before event · Prepare & accommodate</button>
           <button type="button" aria-pressed={phase === 'return'} onClick={() => setPhase('return')} className={cx('rounded-md px-3 py-2 text-xs font-semibold transition-colors', phase === 'return' ? 'bg-blue-600 text-white' : dark ? 'text-gray-400 hover:bg-gray-800' : 'text-gray-600 hover:bg-white')}><span className="mr-1.5">2</span>After event · Collect & return</button>
         </div>
-        <p className={cx('text-[11px]', dark ? 'text-gray-500' : 'text-gray-500')}>{phase === 'prepare' ? 'Complete each item as it is placed in the room. Room assignments are managed with Add people.' : isPostEvent ? 'Event is marked complete. Collect each prepared item from the room and mark it returned.' : 'After the event, collect each prepared item from the room. A return task can only be completed after preparation.'}</p>
+        <p className={cx('text-[11.5px]', dark ? 'text-gray-500' : 'text-gray-500')}>{phase === 'prepare' ? 'Complete each item as it is placed in the room. Room assignments are managed with Add people.' : isPostEvent ? 'Event is marked complete. Collect each prepared item from the room and mark it returned.' : 'After the event, collect each prepared item from the room. A return task can only be completed after preparation.'}</p>
 
         {items.length === 0 && <p className={cx('rounded-lg border border-dashed border-line px-3 py-8 text-center text-xs', dark ? 'text-gray-500' : 'text-gray-500')}>No necessities added yet. Add the items needed for this room before the event.</p>}
-        <div className="max-h-[58vh] space-y-2 overflow-y-auto pr-1">
-          {items.map((item, index) => {
-            const done = phase === 'prepare' ? isPrepared(item) : item.returned;
-            const editable = canDefine && phase === 'prepare';
-            return <article key={index} className={cx('rounded-lg border p-3', done ? dark ? 'border-emerald-500/30 bg-emerald-500/[0.04]' : 'border-emerald-500/30 bg-emerald-50/50' : 'border-line')}>
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_minmax(0,1fr)_auto] sm:items-end">
-                <label className={labelCls(dark)}>Necessity<input disabled={!editable} value={item.name} onChange={e => changeItem(index, { name: e.target.value })} placeholder="Fan, mattress, blanket…" className={cx(inputCls(dark), 'mt-1')} /></label>
-                <label className={labelCls(dark)}>Needed<input disabled={!editable} type="number" min={0} value={item.quantity} onChange={e => changeItem(index, { quantity: Number(e.target.value), readyQuantity: Math.min(item.readyQuantity, Number(e.target.value) || 0), returned: Number(e.target.value) > 0 && item.readyQuantity >= Number(e.target.value) ? item.returned : false })} className={cx(inputCls(dark), 'mt-1')} /></label>
-                <label className={labelCls(dark)}>Collect from<input disabled={!editable} value={item.collectFrom || ''} onChange={e => changeItem(index, { collectFrom: e.target.value })} placeholder="Store / block / contact" className={cx(inputCls(dark), 'mt-1')} /></label>
-                {editable && <button type="button" aria-label={`Remove ${item.name || 'necessity'}`} className={cx(btnGhost(dark), 'px-2 text-rose-400')} onClick={() => setItems(current => current.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></button>}
-              </div>
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-line/70 pt-2">
-                <div className="flex items-center gap-2 text-[11px]">
-                  {done ? <><CircleCheck className="h-4 w-4 text-emerald-400"/><span className="font-semibold text-emerald-400">Done · {phase === 'prepare' ? 'Prepared' : 'Returned'}</span></> : <><Circle className="h-4 w-4 text-amber-400"/><span className="font-medium text-amber-300">To do · {phase === 'prepare' ? 'Prepare' : 'Return'}</span></>}
-                  {phase === 'prepare' && <span className={cx('ml-1 tabular-nums', dark ? 'text-gray-500' : 'text-gray-500')}>{Math.min(item.readyQuantity, item.quantity)} / {item.quantity} ready</span>}
+        {/* One row per necessity: details first, status next, the Done action last. */}
+        {items.length > 0 && <div className="overflow-hidden rounded-lg border border-line">
+          <div className="hidden grid-cols-[2rem_minmax(0,2fr)_5.5rem_minmax(0,1.5fr)_2.25rem_minmax(9rem,1fr)_10.5rem] items-center gap-2 border-b border-line bg-raised px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wide text-mute sm:grid">
+            <span className="text-right">#</span><span>Necessity</span><span>Needed</span><span>Collect from</span><span /><span>Status</span><span className="text-right">Done</span>
+          </div>
+          <div className="max-h-[58vh] divide-y divide-line overflow-y-auto">
+            {items.map((item, index) => {
+              const done = phase === 'prepare' ? isPrepared(item) : item.returned;
+              const editable = canDefine && phase === 'prepare';
+              const cellInput = cx(inputCls(dark), 'h-9 !py-1 text-sm');
+              return <div key={index} className={cx('grid grid-cols-1 items-center gap-2 px-3 py-2.5 sm:grid-cols-[2rem_minmax(0,2fr)_5.5rem_minmax(0,1.5fr)_2.25rem_minmax(9rem,1fr)_10.5rem]', done && (dark ? 'bg-emerald-500/[0.05]' : 'bg-emerald-50/60'))}>
+                <span className="hidden text-right text-xs tabular-nums text-faint sm:block">{index + 1}</span>
+                <label className="block"><span className="mb-1 block text-[11px] text-mute sm:sr-only">Necessity</span><input disabled={!editable} value={item.name} onChange={e => changeItem(index, { name: e.target.value })} placeholder="Fan, mattress, blanket…" aria-label={`Necessity ${index + 1}`} className={cellInput} /></label>
+                <label className="block"><span className="mb-1 block text-[11px] text-mute sm:sr-only">Needed</span><input disabled={!editable} type="number" min={0} value={item.quantity} onChange={e => changeItem(index, { quantity: Number(e.target.value), readyQuantity: Math.min(item.readyQuantity, Number(e.target.value) || 0), returned: Number(e.target.value) > 0 && item.readyQuantity >= Number(e.target.value) ? item.returned : false })} aria-label={`Needed for necessity ${index + 1}`} className={cx(cellInput, 'text-right tabular-nums')} /></label>
+                <label className="block"><span className="mb-1 block text-[11px] text-mute sm:sr-only">Collect from</span><input disabled={!editable} value={item.collectFrom || ''} onChange={e => changeItem(index, { collectFrom: e.target.value })} placeholder="Store / block / contact" aria-label={`Collect from for necessity ${index + 1}`} className={cellInput} /></label>
+                <span className="flex sm:justify-center">{editable && <button type="button" aria-label={`Remove ${item.name || 'necessity'}`} title="Remove" className="grid h-8 w-8 place-items-center rounded-md text-rose-400 hover:bg-rose-500/10" onClick={() => setItems(current => current.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></button>}</span>
+                <div className="flex min-w-0 items-center gap-2 text-[11.5px]">
+                  {done ? <CircleCheck className="h-4 w-4 shrink-0 text-emerald-400"/> : <Circle className="h-4 w-4 shrink-0 text-amber-400"/>}
+                  <span className="min-w-0">
+                    <span className={cx('block font-semibold', done ? 'text-emerald-400' : 'text-amber-300')}>{done ? (phase === 'prepare' ? 'Prepared' : 'Returned') : (phase === 'prepare' ? 'To prepare' : 'To return')}</span>
+                    {phase === 'prepare' && <span className="block tabular-nums text-faint">{Math.min(item.readyQuantity, item.quantity)} / {item.quantity} ready</span>}
+                  </span>
                 </div>
-                {canFulfill && <button type="button" disabled={phase === 'prepare' ? item.quantity <= 0 : !isPrepared(item)} onClick={() => changeItem(index, phase === 'prepare' ? { readyQuantity: done ? 0 : item.quantity, returned: done ? false : item.returned } : { returned: !item.returned })} className={cx(btnGhost(dark), 'rounded-lg px-2.5 py-1.5', done && 'border-emerald-500/30 text-emerald-400')}>
-                  {done ? <><CircleCheck className="h-3.5 w-3.5"/>{phase === 'prepare' ? 'Mark to do' : 'Mark unreturned'}</> : <><Circle className="h-3.5 w-3.5"/>Mark {phase === 'prepare' ? 'prepared' : 'returned'}</>}
-                </button>}
-              </div>
-            </article>;
-          })}
-        </div>
+                <div className="flex sm:justify-end">
+                  {canFulfill ? <button type="button" disabled={phase === 'prepare' ? item.quantity <= 0 : !isPrepared(item)} onClick={() => changeItem(index, phase === 'prepare' ? { readyQuantity: done ? 0 : item.quantity, returned: done ? false : item.returned } : { returned: !item.returned })}
+                    className={cx('inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto', done ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20' : 'border-blue-500/40 bg-blue-600 text-white hover:bg-blue-500')}>
+                    {done ? <><CircleCheck className="h-3.5 w-3.5"/>Done · undo</> : <><Circle className="h-3.5 w-3.5"/>Mark {phase === 'prepare' ? 'prepared' : 'returned'}</>}
+                  </button> : <span className="text-[11.5px] text-faint">—</span>}
+                </div>
+              </div>;
+            })}
+          </div>
+        </div>}
         {canDefine && phase === 'prepare' && <button type="button" className={btnGhost(dark)} onClick={() => setItems(current => [...current, { name: '', quantity: 1, readyQuantity: 0, collectFrom: '', returned: false }])}><Plus className="h-3.5 w-3.5" />Add necessity</button>}
-        {!canDefine && <p className={cx('text-[11px]', dark ? 'text-gray-500' : 'text-gray-500')}>{canFulfill ? 'Room necessities are managed by Accommodation or the responsible control-room team. Update task status here.' : 'View only. Task updates are limited to Accommodation or the responsible team.'}</p>}
+        {!canDefine && <p className={cx('text-[11.5px]', dark ? 'text-gray-500' : 'text-gray-500')}>{canFulfill ? 'Room necessities are managed by Accommodation or the responsible control-room team. Update task status here.' : 'View only. Task updates are limited to Accommodation or the responsible team.'}</p>}
         <div className="flex justify-end gap-2 border-t border-line pt-3">
           <button type="button" onClick={onClose} className={btnGhost(dark)}>Close</button>
           {(canDefine || canFulfill) && <button type="submit" disabled={busy} className={btnPrimary}>{busy ? 'Saving…' : 'Save checklist'}</button>}
@@ -595,9 +606,9 @@ const RoomAssignmentModal: React.FC<{
               return (
                 <label key={member.id} className={cx('flex items-center gap-3 px-3 py-2.5 text-sm', elsewhere ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
                   <input type="checkbox" checked={checked} disabled={!!elsewhere || (!checked && selectedIds.length >= maxSelectable)} onChange={event => toggle(member.id, event.target.checked)} />
-                  <span className="min-w-0 flex-1 truncate font-medium">{member.name}</span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{member.name}{memberMeta(member) && <span className="ml-1.5 text-xs font-normal opacity-70">{memberMeta(member)}</span>}</span>
                   {member.department && <span className={cx('text-xs', dark ? 'text-gray-400' : 'text-gray-600')}>{DEPT_LABEL[member.department] || member.department}</span>}
-                  {elsewhere && <span className="text-[10px] text-amber-300">Already assigned</span>}
+                  {elsewhere && <span className="text-[10.5px] text-amber-300">Already assigned</span>}
                 </label>
               );
             })}
@@ -605,7 +616,7 @@ const RoomAssignmentModal: React.FC<{
           </div>
           </>
         )}
-        <p className={cx('text-[11px]', dark ? 'text-gray-500' : 'text-gray-500')}>{selectedIds.length} selected · {maxSelectable} bed(s) available</p>
+        <p className={cx('text-[11.5px]', dark ? 'text-gray-500' : 'text-gray-500')}>{selectedIds.length} selected · {maxSelectable} bed(s) available</p>
         <div className="flex justify-end gap-2 border-t border-line pt-3">
           <button type="button" onClick={onClose} className={btnGhost(dark)}>Cancel</button>
           <button type="submit" disabled={busy || !eventSelected} className={btnPrimary}>{busy ? 'Saving…' : 'Save room members'}</button>
@@ -667,7 +678,7 @@ const MemberForm: React.FC<{
         {edit && <div className="space-y-3 border-t border-line pt-3"><div className="text-xs font-semibold text-mute">Member record</div>
           <div className="grid grid-cols-2 gap-3"><div><label className={labelCls(dark)}>Member type</label><select value={detail.memberType} onChange={e => setDetail(p => ({ ...p, memberType: e.target.value as Member['memberType'] }))} className={inputCls(dark)}><option value="salary_based">Salary based (hired)</option><option value="monthly">Monthly</option><option value="annual">Annual (main event)</option></select></div>
             <div><label className={labelCls(dark)}>Sewa joining / promised date</label><input type="date" value={detail.joiningDate} onChange={e => setDetail(p => ({ ...p, joiningDate: e.target.value }))} className={inputCls(dark)} /></div></div>
-          <div className="grid grid-cols-2 gap-3">{([['serialNo','Sr. No.'],['batchNo','B. No. / Batch'],['relation','Relation'],['relationName','Relation name'],['mobile','Mobile'],['villageCity','Village / city'],['branch','Branch'],['occupation','Occupation'],['employeeCode','Employee code'],['employeeId','Employee ID'],['address','Address'],['address2','Address 2'],['remarks','Remarks'],['expectedArrival','Expected arrival date'],['teamName','Team'],['teamLead','Team lead']] as [keyof typeof detail,string][]).map(([key,label]) => <div key={key}><label className={labelCls(dark)}>{label}</label><input type={key === 'expectedArrival' ? 'date' : 'text'} value={detail[key] as string} onChange={e => setDetail(p => ({ ...p, [key]: e.target.value }))} className={inputCls(dark)} /></div>)}</div>
+          <div className="grid grid-cols-2 gap-3">{([['serialNo','Sr. No.'],['batchNo','Badge no.'],['relation','Relation'],['relationName','Relation name'],['mobile','Mobile'],['villageCity','Village / city'],['branch','Branch'],['occupation','Occupation'],['employeeCode','Employee code'],['employeeId','Employee ID'],['address','Address'],['address2','Address 2'],['remarks','Remarks'],['expectedArrival','Expected arrival date'],['teamName','Team'],['teamLead','Team lead']] as [keyof typeof detail,string][]).map(([key,label]) => <div key={key}><label className={labelCls(dark)}>{label}</label><input type={key === 'expectedArrival' ? 'date' : 'text'} value={detail[key] as string} onChange={e => setDetail(p => ({ ...p, [key]: e.target.value }))} className={inputCls(dark)} /></div>)}</div>
         </div>}
         <div className="flex justify-end gap-2 pt-1"><button type="button" onClick={onClose} className={btnGhost(dark)}>Cancel</button><button type="submit" disabled={busy} className={btnPrimary}>{busy ? 'Saving…' : edit ? 'Save' : `Add ${count > 1 ? count + ' members' : 'member'}`}</button></div>
       </form>

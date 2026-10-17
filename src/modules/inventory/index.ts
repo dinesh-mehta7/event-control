@@ -1,2 +1,2 @@
-export { InventoryProvider, useInventory } from './InventoryContext';
+export { InventoryProvider, useInventory, useInventoryMaybe } from './InventoryContext';
 export { InventoryApp } from './Inventory';

@@ -196,7 +196,7 @@ export const ControlRoomsApp: React.FC = () => {
 
       {eventId !== 'normal' && <section className="space-y-3 rounded-xl border border-line bg-surface p-4">
         <div><h3 className="text-sm font-semibold text-ink">Event control rooms · {activeEventName || 'Selected event'}</h3><p className="mt-1 text-xs text-mute">Rooms added under Event Planning → Requirement Management appear here. Rest rooms stay in Accommodation.</p></div>
-        {eventRooms.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{eventRooms.map(room => <article key={room.id} className="rounded-lg border border-line bg-raised/30 p-3"><div className="flex items-start justify-between gap-2"><div><h4 className="text-sm font-semibold text-ink">{room.name}</h4><p className="mt-1 text-xs text-mute">{room.block || 'Location not set'} · Capacity {room.capacity}{room.responsibleTeam ? ` · ${room.responsibleTeam}` : ''}</p></div><span className="rounded-full bg-blue-500/10 px-2 py-1 text-[10px] font-medium text-blue-300">Event room</span></div><div className="mt-3 border-t border-line pt-2">{room.requirements.length ? <ul className="space-y-1">{room.requirements.map((item,index)=><li key={`${item.name}-${index}`} className="flex justify-between gap-2 text-xs"><span className="text-ink-soft">{item.name}</span><span className="text-mute">{item.readyQuantity}/{item.quantity} ready</span></li>)}</ul> : <p className="text-xs text-mute">No necessities added yet.</p>}</div></article>)}</div> : <p className="rounded-lg border border-dashed border-line p-5 text-center text-xs text-mute">No control rooms added for this event yet.</p>}
+        {eventRooms.length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{eventRooms.map(room => <article key={room.id} className="rounded-lg border border-line bg-raised/30 p-3"><div className="flex items-start justify-between gap-2"><div><h4 className="text-sm font-semibold text-ink">{room.name}</h4><p className="mt-1 text-xs text-mute">{room.block || 'Location not set'} · Capacity {room.capacity}{room.responsibleTeam ? ` · ${room.responsibleTeam}` : ''}</p></div><span className="rounded-full bg-blue-500/10 px-2 py-1 text-[10.5px] font-medium text-blue-300">Event room</span></div><div className="mt-3 border-t border-line pt-2">{room.requirements.length ? <ul className="space-y-1">{room.requirements.map((item,index)=><li key={`${item.name}-${index}`} className="flex justify-between gap-2 text-xs"><span className="text-ink-soft">{item.name}</span><span className="text-mute">{item.readyQuantity}/{item.quantity} ready</span></li>)}</ul> : <p className="text-xs text-mute">No necessities added yet.</p>}</div></article>)}</div> : <p className="rounded-lg border border-dashed border-line p-5 text-center text-xs text-mute">No control rooms added for this event yet.</p>}
       </section>}
 
       {/* ── KPI strip ───────────────────────────────────────────────────────── */}
@@ -207,11 +207,11 @@ export const ControlRoomsApp: React.FC = () => {
           { icon: Boxes, label: 'Materials assigned', value: totalMaterial, sub: 'units linked / listed' },
         ].map(({ icon: I, label, value, sub }) => (
           <div key={label} className="rounded-lg border border-line bg-surface px-3 py-2.5">
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-mute uppercase tracking-wide mb-1">
+            <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-mute uppercase tracking-wide mb-1">
               <I size={12} className="text-blue-400" />{label}
             </div>
             <div className="text-lg font-bold text-ink tabular-nums">{value}</div>
-            <div className="text-[10px] text-mute">{sub}</div>
+            <div className="text-[10.5px] text-mute">{sub}</div>
           </div>
         ))}
       </div>
@@ -232,7 +232,7 @@ export const ControlRoomsApp: React.FC = () => {
       ) : (
         <div className="rounded-xl border border-line bg-surface overflow-hidden">
           {/* Table header */}
-          <div className="hidden lg:grid grid-cols-[2fr_1.5fr_1fr_1fr_auto] gap-4 px-4 py-2.5 border-b border-line bg-raised/50 text-[10px] font-semibold uppercase tracking-wider text-mute">
+          <div className="hidden lg:grid grid-cols-[2fr_1.5fr_1fr_1fr_auto] gap-4 px-4 py-2.5 border-b border-line bg-raised/50 text-[10.5px] font-semibold uppercase tracking-wider text-mute">
             <span>Temporary setup</span><span>Location / Lead</span><span>Members</span><span>Status</span><span></span>
           </div>
           <div className="divide-y divide-line">
@@ -374,7 +374,7 @@ export const ControlRoomsApp: React.FC = () => {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-4 text-[10px] text-mute">
+      <div className="flex flex-wrap gap-4 text-[10.5px] text-mute">
         <span className="flex items-center gap-1.5"><Activity size={12} className="text-blue-400" />{controlRooms.length} temporary setups · {operationalCount} active</span>
         <span>{totalMembers} members · {totalMaterial} material units assigned</span>
       </div>
