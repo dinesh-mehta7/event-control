@@ -416,7 +416,7 @@ export function AppProvider({ children }) {
         }
         setCurrentUser(profile);
         setCurrentTab('dashboard');
-        addToast(profile.approved ? `Welcome back, ${profile.name}!` : `Welcome, ${profile.name}. Your account is still pending approval.`, 'success');
+        // No toast here: the sign-in screen's welcome animation already greets the person.
         return true;
       }
     } catch (err) {
