@@ -10,6 +10,7 @@ import { useInventory } from '../../modules/inventory';
 import { useEventScope } from '../../context/EventScopeContext';
 import { useAccommodation } from '../../modules/accommodation';
 import type { ControlRoom } from '../../types';
+import { digitsOnly, phoneInputProps } from '../../lib/phone';
 
 // ── Shared style tokens ──────────────────────────────────────────────────────
 const input = 'bg-field border border-line-strong rounded-xl px-3 py-2 text-sm text-ink placeholder-faint w-full outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all';
@@ -95,7 +96,7 @@ const RoomForm: React.FC<{
       <Label text="Primary Lead" />
       <input className={input} placeholder="Full name" value={f.primaryLead} onChange={e => n('primaryLead', e.target.value)} />
       <Label text="Phone" />
-      <input className={input} placeholder="+91 …" value={f.phone} onChange={e => n('phone', e.target.value)} />
+      <input className={input} {...phoneInputProps} placeholder="Digits only" value={f.phone} onChange={e => n('phone', digitsOnly(e.target.value))} />
       <p className="mt-4 rounded-lg bg-raised/60 px-3 py-2 text-xs text-mute">Assign members and record room materials after saving the room.</p>
       <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-line">
         <button type="button" onClick={onClose} className={btnGhost}>Cancel</button>

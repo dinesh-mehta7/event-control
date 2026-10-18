@@ -108,6 +108,18 @@ tbody tr { transition-property: background-color, color, opacity; }
 /* 6. Hover underlines fade in rather than appearing. */
 .hover\:underline { text-decoration-line: underline; text-decoration-color: transparent; text-underline-offset: 2px; }
 .hover\:underline:hover { text-decoration-color: currentColor; }
+/* A field with a fixed height (h-8/h-9/h-10…) must not also keep its vertical padding: together they
+   leave less room than one line of text, and the browser cuts the text off at the bottom. */
+:is(select, input:not([type="checkbox"]):not([type="radio"]))[class~="h-7"],
+:is(select, input:not([type="checkbox"]):not([type="radio"]))[class~="h-8"],
+:is(select, input:not([type="checkbox"]):not([type="radio"]))[class~="h-9"],
+:is(select, input:not([type="checkbox"]):not([type="radio"]))[class~="h-10"],
+:is(select, input:not([type="checkbox"]):not([type="radio"]))[class~="!h-9"],
+:is(select, input:not([type="checkbox"]):not([type="radio"]))[class~="!h-10"] {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  line-height: 1.25;
+}
 :where(input, select, textarea) {
   transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out), outline-color var(--dur-fast) var(--ease-out), outline-offset var(--dur-fast) var(--ease-out);
 }
@@ -195,6 +207,8 @@ tbody tr { transition-property: background-color, color, opacity; }
 .animate-page-enter { animation: pageEnter 260ms var(--ease-out) both; }
 @keyframes toastExit { to { opacity: 0; transform: translateX(16px); } }
 .animate-toast-exit { animation: toastExit 180ms var(--ease-in-out) both; }
+@keyframes toastProgress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.toast-progress { animation-name: toastProgress; animation-timing-function: linear; animation-fill-mode: forwards; }
 
 /* Chart marks grow from their baseline once, on first paint. Delay via --i (index). */
 .chart-grow-y { transform-box: fill-box; transform-origin: 50% 100%; animation: growY var(--dur-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 35ms); }

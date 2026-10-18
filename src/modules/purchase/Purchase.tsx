@@ -12,6 +12,7 @@ import { INCOMING, PAYABLE, PAYREQ, PAY_MODES, STATUS, payModeLabel, poDue, poTo
 import type { PO, POStatus, Payment, PaymentRequest, Receipt, Vendor, VendorMode } from './types';
 import { supabase } from '../walkie/lib/supabaseClient';
 import { useWalkie } from '../walkie';
+import { digitsOnly, phoneInputProps } from '../../lib/phone';
 
 // Requests, Orders, Receiving and Payments are one flow now. This file holds the buying half of it: the buy list,
 // orders, receiving, vendors and payments. The Requests screen shows them as its tabs.
@@ -236,7 +237,7 @@ const VendorForm: React.FC<{ initial: Vendor | null; onClose: () => void; onSave
   const [busy, setBusy] = useState(false);
   const setText = (k: keyof Omit<VendorInput, 'vendorMode'>, v: string) => setF(p => ({ ...p, [k]: v }));
   const submit = async (e: React.FormEvent) => { e.preventDefault(); setBusy(true); const ok = await onSave(f); setBusy(false); if (ok) onClose(); };
-  const field = (id: string, label: string, k: keyof Omit<VendorInput, 'vendorMode' | 'name'>, type = 'text', required = false) => <div><label className={labelCls(D)} htmlFor={id}>{label}{required && <span className="ml-1 text-rose-300">*</span>}</label><input id={id} required={required} type={type} inputMode={k === 'accountNumber' ? 'numeric' : undefined} value={f[k]} onChange={e => setText(k, e.target.value)} className={inputCls(D)} /></div>;
+  const field = (id: string, label: string, k: keyof Omit<VendorInput, 'vendorMode' | 'name'>, type = 'text', required = false) => <div><label className={labelCls(D)} htmlFor={id}>{label}{required && <span className="ml-1 text-rose-300">*</span>}</label><input id={id} required={required} type={type} inputMode={k === 'accountNumber' ? 'numeric' : undefined} {...(type === 'tel' ? phoneInputProps : {})} value={f[k]} onChange={e => setText(k, type === 'tel' ? digitsOnly(e.target.value) : e.target.value)} className={inputCls(D)} /></div>;
   return (
     <Modal title={initial ? 'Edit vendor' : 'Add vendor'} dark={D} onClose={onClose} wide>
       <form onSubmit={submit} className="space-y-4">

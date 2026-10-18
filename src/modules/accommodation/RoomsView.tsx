@@ -9,6 +9,7 @@ import { supabase } from '../walkie/lib/supabaseClient';
 import { useWalkie } from '../walkie';
 import { useEventScope } from '../../context/EventScopeContext';
 import { useManpower } from '../manpower';
+import { digitsOnly, phoneInputProps } from '../../lib/phone';
 
 type Mode = 'rooms' | 'members';
 
@@ -678,7 +679,7 @@ const MemberForm: React.FC<{
         {edit && <div className="space-y-3 border-t border-line pt-3"><div className="text-xs font-semibold text-mute">Member record</div>
           <div className="grid grid-cols-2 gap-3"><div><label className={labelCls(dark)}>Member type</label><select value={detail.memberType} onChange={e => setDetail(p => ({ ...p, memberType: e.target.value as Member['memberType'] }))} className={inputCls(dark)}><option value="salary_based">Salary based (hired)</option><option value="monthly">Monthly</option><option value="annual">Annual (main event)</option></select></div>
             <div><label className={labelCls(dark)}>Sewa joining / promised date</label><input type="date" value={detail.joiningDate} onChange={e => setDetail(p => ({ ...p, joiningDate: e.target.value }))} className={inputCls(dark)} /></div></div>
-          <div className="grid grid-cols-2 gap-3">{([['serialNo','Sr. No.'],['batchNo','Badge no.'],['relation','Relation'],['relationName','Relation name'],['mobile','Mobile'],['villageCity','Village / city'],['branch','Branch'],['occupation','Occupation'],['employeeCode','Employee code'],['employeeId','Employee ID'],['address','Address'],['address2','Address 2'],['remarks','Remarks'],['expectedArrival','Expected arrival date'],['teamName','Team'],['teamLead','Team lead']] as [keyof typeof detail,string][]).map(([key,label]) => <div key={key}><label className={labelCls(dark)}>{label}</label><input type={key === 'expectedArrival' ? 'date' : 'text'} value={detail[key] as string} onChange={e => setDetail(p => ({ ...p, [key]: e.target.value }))} className={inputCls(dark)} /></div>)}</div>
+          <div className="grid grid-cols-2 gap-3">{([['serialNo','Sr. No.'],['batchNo','Badge no.'],['relation','Relation'],['relationName','Relation name'],['mobile','Mobile'],['villageCity','Village / city'],['branch','Branch'],['occupation','Occupation'],['employeeCode','Employee code'],['employeeId','Employee ID'],['address','Address'],['address2','Address 2'],['remarks','Remarks'],['expectedArrival','Expected arrival date'],['teamName','Team'],['teamLead','Team lead']] as [keyof typeof detail,string][]).map(([key,label]) => <div key={key}><label className={labelCls(dark)}>{label}</label><input type={key === 'expectedArrival' ? 'date' : 'text'} {...(key === 'mobile' ? phoneInputProps : {})} value={detail[key] as string} onChange={e => setDetail(p => ({ ...p, [key]: key === 'mobile' ? digitsOnly(e.target.value) : e.target.value }))} className={inputCls(dark)} /></div>)}</div>
         </div>}
         <div className="flex justify-end gap-2 pt-1"><button type="button" onClick={onClose} className={btnGhost(dark)}>Cancel</button><button type="submit" disabled={busy} className={btnPrimary}>{busy ? 'Saving…' : edit ? 'Save' : `Add ${count > 1 ? count + ' members' : 'member'}`}</button></div>
       </form>

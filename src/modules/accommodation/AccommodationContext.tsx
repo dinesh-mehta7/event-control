@@ -54,6 +54,7 @@ export const friendlyError = (error: any): string => {
   const msg: string = error?.message || 'Unknown error';
   if (/row-level security|permission denied/i.test(msg)) return "You don't have permission to do that.";
   if (error?.code === '23505' || /duplicate key|already exists/i.test(msg)) return 'That name already exists — pick a different one.';
+  if (/meal_menu_meal_check/i.test(msg)) return 'The database only allows breakfast, lunch, tea and dinner. Run supabase/migration_v9_custom_meals.sql in the Supabase SQL Editor to allow custom meals, then reload.';
   if (/meal_label/i.test(msg)) return 'The database is missing meal_menu.meal_label. Run supabase/migration_v23_meal_label_repair.sql in the Supabase SQL Editor, then reload the app.';
   if (/accommodation_rooms.*(category|responsible_team)|(category|responsible_team).*accommodation_rooms|accommodation_update_room_requirements/i.test(msg)) return 'Room categories and team-based requirements need migration v69. Run supabase/migration_v69_accommodation_room_categories.sql in the Supabase SQL Editor, then reload.';
   if (/event_requirement_id|accommodation_rooms.*event_id|event_requirements.*room_requirements|room_id.*accommodation_member_tasks/i.test(msg)) return 'Event room requirements need migration v79. Run supabase/migration_v79_event_room_requirements.sql in the Supabase SQL Editor, then reload.';

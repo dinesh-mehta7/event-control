@@ -33,6 +33,7 @@ interface Ctx {
   review: (userId: string, approve: boolean, level?: GrantLevel, sub?: SubDepartmentId | null, departmentId?: string | null) => Promise<string | null>;
   linkSewadar: (userId: string, memberId: string | null) => Promise<string | null>;
   regenerate: (sub: SubDepartmentId) => Promise<string | null>;
+  deleteMember: (userId: string) => Promise<{ error: string | null; result?: 'deleted' | 'disabled' }>;
   requestAccess: (code: string) => Promise<string | null>;
   refresh: () => Promise<void>;
 }
@@ -98,6 +99,14 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return null;
   }, [refresh]);
 
+  // Super Admin only. 'disabled' means records still need this person, so the account was locked instead.
+  const deleteMember = useCallback(async (userId: string) => {
+    const { data, error } = await supabase.rpc('delete_org_member', { p_user: userId });
+    if (error) return { error: /delete_org_member|schema cache/i.test(error.message || '') ? 'Run supabase/migration_v94_org_profile_and_delete_member.sql in the Supabase SQL Editor, then reload.' : dbMessage(error) };
+    await refresh();
+    return { error: null, result: data === 'disabled' ? 'disabled' as const : 'deleted' as const };
+  }, [refresh]);
+
   const requestAccess = useCallback(async (code: string) => {
     const { error } = await supabase.rpc('request_department_access', { p_code: code });
     return error ? dbMessage(error) : null;
@@ -106,8 +115,8 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Waiting for a decision: not approved yet, or approved but asked for a department. Declined sign-ups are inactive and drop out.
   const requests = useMemo(() => members.filter(m => m.isActive && (!m.approved || m.requestedSub)), [members]);
 
-  const value = useMemo<Ctx>(() => ({ members, requests, codes, isOwner, loading, sewadarMembers, review, linkSewadar, regenerate, requestAccess, refresh }),
-    [members, requests, codes, isOwner, loading, sewadarMembers, review, linkSewadar, regenerate, requestAccess, refresh]);
+  const value = useMemo<Ctx>(() => ({ members, requests, codes, isOwner, loading, sewadarMembers, review, linkSewadar, regenerate, deleteMember, requestAccess, refresh }),
+    [members, requests, codes, isOwner, loading, sewadarMembers, review, linkSewadar, regenerate, deleteMember, requestAccess, refresh]);
   return <C.Provider value={value}>{children}</C.Provider>;
 };
 

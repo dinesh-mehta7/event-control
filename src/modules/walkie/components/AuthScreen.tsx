@@ -29,12 +29,11 @@ const RULES: Record<string, (v: string, all: Record<string, string>) => string> 
   name: v => (v.trim().length >= 2 ? '' : 'Please enter your name'),
   newPassword: v => (v.length >= 8 ? '' : 'Use at least 8 characters'),
   confirm: (v, all) => (v && v === (all.newPassword || '') ? '' : 'Passwords do not match'),
-  orgName: v => (v.trim() ? '' : 'Please name your organization'),
   joinCode: v => (v.trim() ? '' : "Enter your organization's join code"),
 };
 const RULE_OF: Record<string, string> = {
   'si-email': 'email', 'si-pass': 'password', 'su-name': 'name', 'su-email': 'email', 'su-pass': 'newPassword', 'su-confirm': 'confirm',
-  'su-org': 'orgName', 'su-code': 'joinCode', 'fp-email': 'email', 'rp-pass': 'newPassword', 'rp-confirm': 'confirm',
+  'su-code': 'joinCode', 'fp-email': 'email', 'rp-pass': 'newPassword', 'rp-confirm': 'confirm',
 };
 const STRENGTH: [string, string][] = [['—', '#555'], ['Weak', '#ff5d6c'], ['Fair', '#ff9a2a'], ['Good', '#ffc23d'], ['Strong', '#33d17a']];
 const strengthOf = (v: string) => {
@@ -52,8 +51,6 @@ const I = {
   mail: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="3" /><path d="m4 7 8 6 8-6" /></svg>,
   lock: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="10" width="16" height="11" rx="3" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /><circle cx="12" cy="15.5" r="1.4" fill="currentColor" /></svg>,
   user: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg>,
-  org: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M16 9h2a2 2 0 0 1 2 2v10M3 21h18M8 7h4M8 11h4M8 15h4" /></svg>,
-  team: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6" /></svg>,
   key: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="7.5" cy="15.5" r="4.5" /><path d="m10.7 12.3 9.3-9.3M17 6l3 3M15 8l2 2" /></svg>,
   arrow: <svg className="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>,
   back: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M11 18l-6-6 6-6" /></svg>,
@@ -129,7 +126,6 @@ export default function AuthScreen({ onCeremony, onFinished }: { onCeremony: (on
   const [shake, setShake] = useState<Record<string, boolean>>({});
   const [formErr, setFormErr] = useState<Partial<Record<View, string>>>({});
   const [busy, setBusy] = useState<View | null>(null);
-  const [orgMode, setOrgMode] = useState<'create' | 'join'>('join');
   const [typing, setTyping] = useState('');
   const typingRun = useRef(0);
 
@@ -383,17 +379,15 @@ export default function AuthScreen({ onCeremony, onFinished }: { onCeremony: (on
 
   const submitSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    const org = orgMode === 'create' ? 'su-org' : 'su-code';
-    if (busy || !validate([org, 'su-name', 'su-email', 'su-pass', 'su-confirm'])) return;
+    // Everyone joins the existing organization with a join code; new organizations cannot be created here.
+    if (busy || !validate(['su-code', 'su-name', 'su-email', 'su-pass', 'su-confirm'])) return;
     setBusy('signup');
-    if (orgMode === 'join') {
-      try {
-        const { data, error } = await supabase.rpc('check_department_code', { p_code: valueOf('su-code').trim() });
-        if (!error && data && data.valid === false) { setBusy(null); failed('signup', 'That code is not valid. Ask your department head for the current code.', 'su-code'); return; }
-      } catch { /* let sign-up decide */ }
-    }
+    try {
+      const { data, error } = await supabase.rpc('check_department_code', { p_code: valueOf('su-code').trim() });
+      if (!error && data && data.valid === false) { setBusy(null); failed('signup', 'That code is not valid. Ask your department head for the current code.', 'su-code'); return; }
+    } catch { /* let sign-up decide */ }
     onCeremony(true);
-    const ok = await signUp(valueOf('su-name'), valueOf('su-email'), valueOf('su-pass'), orgMode, valueOf(org));
+    const ok = await signUp(valueOf('su-name'), valueOf('su-email'), valueOf('su-pass'), 'join', valueOf('su-code'));
     const { data } = await supabase.auth.getSession();
     if (!ok || !data.session) {
       onCeremony(false); setBusy(null);
@@ -532,15 +526,8 @@ export default function AuthScreen({ onCeremony, onFinished }: { onCeremony: (on
             {/* CREATE ACCOUNT */}
             <form className={viewCls('signup')} data-view="signup" ref={setViewRef('signup')} onSubmit={submitSignUp} noValidate>
               <div className="ea-head ea-f" style={{ '--i': 0 } as any}><h2>Create your account</h2><p>Join your organization's operations team in under a minute.</p></div>
-              <div className="ea-seg ea-f" data-at={orgMode} style={{ '--i': 1 } as any}>
-                <span className="ea-segpill" />
-                <button type="button" aria-pressed={orgMode === 'join'} onClick={() => { setOrgMode('join'); setFormErr({}); }}>{I.team}Join existing</button>
-                <button type="button" aria-pressed={orgMode === 'create'} onClick={() => { setOrgMode('create'); setFormErr({}); }}>{I.org}New organization</button>
-              </div>
-              {orgMode === 'join'
-                ? <Field key="code" {...fieldProps('su-code', 2)} label="Join code" icon={I.key} upper autoComplete="off" />
-                : <Field key="org" {...fieldProps('su-org', 2)} label="Organization name" icon={I.org} autoComplete="organization" />}
-              <p className="ea-hint ea-f" style={{ '--i': 3 } as any}>{orgMode === 'join' ? 'Ask your department head for the code. They approve you before you can sign in.' : "You'll be this organization's admin, approved instantly."}</p>
+              <Field {...fieldProps('su-code', 2)} label="Join code" icon={I.key} upper autoComplete="off" />
+              <p className="ea-hint ea-f" style={{ '--i': 3 } as any}>Ask your department head for the code. They approve you before you can sign in.</p>
               <div className="ea-row2 ea-f" style={{ '--i': 4 } as any}>
                 <Field {...fieldProps('su-name', 0)} bare label="Full name" icon={I.user} autoComplete="name" />
                 <Field {...fieldProps('su-email', 0)} bare label="Business email" icon={I.mail} type="email" autoComplete="email" />

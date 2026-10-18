@@ -25,7 +25,7 @@ const MeetingsButton: React.FC = () => {
   const alarm = emergencies.some(e => e.status === 'live');
   return (
     <button onClick={openPanel} aria-label={`Meetings${unreadMeetings ? `, ${unreadMeetings} new` : ''}`} title="Meetings"
-      className={`relative p-2 rounded-lg transition-colors ${alarm ? 'text-red-400 hover:bg-red-500/10' : 'text-mute hover:bg-raised hover:text-ink'}`}>
+      className={`relative p-1.5 sm:p-2 rounded-lg transition-colors ${alarm ? 'text-red-400 hover:bg-red-500/10' : 'text-mute hover:bg-raised hover:text-ink'}`}>
       <CalendarClock size={18} />
       {(unreadMeetings > 0 || alarm) && <span className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full text-white text-xs font-bold leading-4 text-center ${alarm ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`}>{alarm && !unreadMeetings ? '!' : unreadMeetings > 9 ? '9+' : unreadMeetings}</span>}
     </button>
@@ -37,7 +37,7 @@ const RequestsButton: React.FC = () => {
   const { actionCount } = useRequests();
   return (
     <a href="#/requests" aria-label={`Requests${actionCount ? `, ${actionCount} waiting for you` : ''}`} title="Requests"
-      className="relative p-2 rounded-lg transition-colors text-mute hover:bg-raised hover:text-ink">
+      className="relative p-1.5 sm:p-2 rounded-lg transition-colors text-mute hover:bg-raised hover:text-ink">
       <ClipboardList size={18} />
       {actionCount > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-xs font-bold leading-4 text-center">{actionCount > 9 ? '9+' : actionCount}</span>}
     </a>
@@ -74,7 +74,7 @@ const Bell_: React.FC = () => {
       <button aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} aria-expanded={open}
         onPointerDown={e => { last.current = e.pointerType; }}
         onClick={() => { if (last.current !== 'mouse') setOpen(o => !o); last.current = ''; }}
-        className={`relative p-2 rounded-lg transition-colors ${open ? 'bg-raised text-ink' : 'text-mute hover:bg-raised hover:text-ink'}`}>
+        className={`relative p-1.5 sm:p-2 rounded-lg transition-colors ${open ? 'bg-raised text-ink' : 'text-mute hover:bg-raised hover:text-ink'}`}>
         <Bell size={18} />
         {unread > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-xs font-bold leading-4 text-center">{unread > 9 ? '9+' : unread}</span>}
       </button>

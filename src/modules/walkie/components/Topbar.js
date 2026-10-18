@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { ProfileMenu } from '../../../components/ProfileMenu';
-import { Search, Menu, LogOut, Database, RotateCcw, ClipboardList } from 'lucide-react';
+import { Search, Menu, LogOut, ClipboardList } from 'lucide-react';
 
 export default function Topbar({ extra = null }) {
   const {
@@ -12,10 +12,7 @@ export default function Topbar({ extra = null }) {
     currentTab,
     currentUser,
     logout,
-    clearAllData,
-    resetAllData
   } = useApp();
-  const isAdmin = currentUser?.role === 'Admin';
 
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
@@ -82,23 +79,8 @@ export default function Topbar({ extra = null }) {
           <ClipboardList className="w-4 h-4" /><span className="hidden sm:inline">Requests</span>
         </a>
 
-        {/* Account menu: Command Center, theme, admin data tools, Sign out */}
-        <ProfileMenu extra={isAdmin ? (
-          <>
-            <button
-              onClick={() => { if (window.confirm('Clear ALL departments, walkies and allocations to start fresh?')) clearAllData(); }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left text-rose-500 hover:bg-rose-500/10"
-            >
-              <Database className="w-4 h-4" />Clear all data
-            </button>
-            <button
-              onClick={() => { if (window.confirm('Restore default demo data?')) resetAllData(); }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left text-ink-soft hover:bg-raised"
-            >
-              <RotateCcw className="w-4 h-4 text-slate-400" />Restore demo data
-            </button>
-          </>
-        ) : null} />
+        {/* Account menu: Command Center, theme, Sign out */}
+        <ProfileMenu />
       </div>
 
       {/* Mobile Drawer Menu */}

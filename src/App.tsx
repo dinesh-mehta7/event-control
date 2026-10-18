@@ -6,7 +6,7 @@ import { roleLabel } from './lib/roles';
 import { HelpdeskApp } from './modules/helpdesk/HelpdeskApp';
 import { DutiesShiftsPage } from './modules/manpower/DutiesShifts';
 import { applyTheme } from './hooks/useMotion';
-import { Menu, LayoutDashboard, CalendarClock, CalendarDays, Users, BarChart3, Video, Wifi, Radio, Monitor, Boxes, BedDouble, HeartHandshake, LifeBuoy, ClipboardList, PanelLeftClose, PanelLeftOpen, ChevronDown, ShoppingCart, PhoneCall, BadgeCheck, UsersRound, ListTodo, Clock3, Headset, ShieldCheck } from 'lucide-react';
+import { Menu, X, LayoutDashboard, CalendarClock, CalendarDays, Users, BarChart3, Video, Wifi, Radio, Monitor, Boxes, BedDouble, HeartHandshake, LifeBuoy, ClipboardList, PanelLeftClose, PanelLeftOpen, ChevronDown, ShoppingCart, PhoneCall, BadgeCheck, UsersRound, ListTodo, Clock3, Headset, ShieldCheck } from 'lucide-react';
 import { AppProvider, useApp } from './context/AppContext';
 import type { UserProfile } from './types';
 import { DEPTS } from './views/orgData';
@@ -39,6 +39,7 @@ import { MeetingsProvider } from './context/MeetingsContext';
 import { AccessProvider } from './context/AccessContext';
 import { RequestsProvider, RequestsApp, useRequests } from './modules/requests';
 import { EventScopeProvider, useEventScope } from './context/EventScopeContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const APP_VIEWS: Record<string, [React.ComponentType, any]> = {
   cctv: [CCTVApp, Video], wifi: [WiFiApp, Wifi], walkie: [Walkie as any, Radio], control: [ControlRoomsApp, Monitor],
@@ -151,7 +152,11 @@ const Shell: React.FC<{ out: () => void }> = ({ out }) => {
   const perms = usePermissions();
   const { actionCount } = useRequests();
   const { isDark } = useTheme();
-  const palette = (useWalkie() as any).settings?.palette;
+  const wk: any = useWalkie();
+  const palette = wk.settings?.palette;
+  // Sidebar brand: the organization's name and initials (falls back to the app name while it loads).
+  const orgName: string = wk.currentOrganization?.name || (wk.settings?.orgName !== 'Apex Security & Logistics' && wk.settings?.orgName) || 'Event Command';
+  const orgInitials = orgName.split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0]).join('').toUpperCase() || 'EC';
   const royal = isDark && palette === 'saffron';
   const eventScope = useEventScope();
   const route = useRoute();
@@ -207,6 +212,14 @@ const Shell: React.FC<{ out: () => void }> = ({ out }) => {
   const activeGroup: Group | null = key === 'events' ? 'events' : isVolunteerManagementPage ? 'volunteer' : ['inventory', 'requests', 'purchase'].includes(key) ? 'stocks'
     : isOperationsPage ? 'operations' : ['users', 'permissions', 'reports'].includes(key) ? 'admin' : null;
   useEffect(() => { setOpenGroup(activeGroup); }, [activeGroup]);
+  // Mobile drawer: close after choosing a page, and on Escape.
+  useEffect(() => { setOpen(false); }, [key, tab]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
   const showWorkspaceNav = u.role === 'owner' || u.role === 'dept_head';
   const canOpenCctvControlRoom = showWorkspaceNav || perms.can('cctv-control-room');
   const canOpenProcurement = showWorkspaceNav || perms.can('purchase');
@@ -226,14 +239,15 @@ const Shell: React.FC<{ out: () => void }> = ({ out }) => {
   return (
     <div className="app-root flex h-screen bg-canvas text-ink">
       {royal && <RoyalEmbers />}
-      {hasNav && <div aria-hidden="true" className={`md:hidden fixed inset-0 z-30 bg-black/50 transition-opacity duration-200 ease-out ${open ? 'opacity-100' : 'pointer-events-none opacity-0'}`} />}
+      {hasNav && <div aria-hidden="true" onClick={() => setOpen(false)} className={`md:hidden fixed inset-0 z-30 bg-black/50 transition-opacity duration-200 ease-out ${open ? 'opacity-100' : 'pointer-events-none opacity-0'}`} />}
       {hasNav && <aside {...({ inert: !open && window.matchMedia('(max-width: 767px)').matches } as any)} className={`print:hidden flex fixed md:static inset-y-0 left-0 z-40 ${open ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 pointer-events-none'} md:translate-x-0 md:opacity-100 md:pointer-events-auto ${collapsed ? 'md:w-16' : 'md:w-72'} w-56 shrink-0 min-h-0 flex-col border border-line bg-surface p-2 md:p-1 shadow-sm md:my-3 md:ml-3 md:mr-3 md:h-[calc(100vh-1.5rem)] md:rounded-xl transition-[width,transform,opacity] duration-200 ease-out`}>
         <div className={`flex items-center ${collapsed ? 'md:justify-between md:gap-0 md:px-0' : 'gap-2.5'} gap-2.5 min-w-0 px-1 pb-3 border-b border-line`}>
-            <a href="#/" title="Owner Dashboard" aria-label="Owner Dashboard"
-              className={`grid place-items-center w-9 h-9 rounded-md bg-blue-600 text-white text-xs font-bold shrink-0 ${collapsed ? 'md:h-7 md:w-7' : ''}`}>
-              EC
+            <a href="#/" title={`${orgName} · Dashboard`} aria-label={`${orgName} dashboard`}
+              className={`grid place-items-center w-9 h-9 rounded-md bg-blue-600 text-white text-xs font-bold shrink-0 overflow-hidden ${collapsed ? 'md:h-7 md:w-7' : ''}`}>
+              {wk.currentOrganization?.logoUrl ? <img src={wk.currentOrganization.logoUrl} alt="" className="h-full w-full rounded-md object-contain bg-white" /> : orgInitials}
             </a>
-            <span className={`min-w-0 flex-1 ${collapsed ? 'md:hidden' : ''}`}><span className="block text-[13.5px] font-semibold text-ink truncate">Event Command</span><span className="block text-[10.5px] text-faint truncate">IT OPERATIONS</span></span>
+            <span className={`min-w-0 flex-1 ${collapsed ? 'md:hidden' : ''}`}><span className="block text-[13.5px] font-semibold text-ink truncate" title={orgName}>{orgName}</span><span className="block text-[10.5px] text-faint truncate">IT OPERATIONS</span></span>
+            <button type="button" onClick={() => setOpen(false)} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-mute hover:bg-raised hover:text-ink md:hidden" title="Close menu" aria-label="Close menu"><X size={18} /></button>
             <button type="button" onClick={toggleCollapsed} className="hidden h-7 w-7 place-items-center rounded-md text-mute hover:bg-blue-600/10 hover:text-blue-300 md:grid md:h-6 md:w-6" title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
               {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
             </button>
@@ -332,19 +346,19 @@ const Shell: React.FC<{ out: () => void }> = ({ out }) => {
         </nav></SideNavCtx.Provider>
       </aside>}
       <div className="app-frame flex-1 flex flex-col min-w-0 md:my-3 md:mr-3 md:min-h-0 md:overflow-hidden md:rounded-xl md:border md:border-line">
-        <header className={`app-header print:hidden h-14 shrink-0 flex items-center justify-between gap-3 px-5 bg-surface ${key === 'requests' ? '' : 'border-b border-line'}`}>
+        <header className={`app-header print:hidden h-14 shrink-0 flex items-center justify-between gap-2 px-3 sm:gap-3 sm:px-5 bg-surface ${key === 'requests' ? '' : 'border-b border-line'}`}>
           <div className="flex items-center gap-3 min-w-0">
             {hasNav && <button className="md:hidden p-2 -ml-2 rounded-lg text-mute hover:bg-raised" onClick={() => setOpen(!open)} aria-label="Open menu"><Menu size={18} /></button>}
             {!hasNav && home !== 'requests' && (key === 'meetings' || key === 'requests') && <a href={'#/' + home} className="text-sm text-blue-400 hover:underline shrink-0">← Back</a>}
             <div className="min-w-0"><div className="hidden sm:block text-[10.5px] font-semibold uppercase tracking-wider text-faint">{u.designation}</div><h1 className="page-title text-base font-semibold text-ink truncate">{title}</h1></div>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {eventScope.events.length > 0 && <label className="flex min-w-0 items-center gap-1.5 rounded-full border border-line bg-raised/60 px-2 py-1.5 text-[11.5px] text-mute sm:gap-2 sm:px-3 sm:text-xs"><span className="whitespace-nowrap">Working on</span><select aria-label="Event in focus" className="max-w-[55vw] cursor-pointer rounded-md border-0 bg-transparent py-0.5 pl-1 pr-5 font-semibold text-ink outline-none focus:ring-1 focus:ring-blue-500 sm:max-w-[22rem]" style={{ colorScheme: isDark ? 'dark' : 'light' }} value={activeEventId} onChange={e => eventScope.setScopeFor(headerScopeModule, e.target.value)}><option className="bg-surface text-ink" value="">Normal</option>{eventScope.events.map(event => <option className="bg-surface text-ink" key={event.id} value={event.id}>{event.name}</option>)}</select></label>}
+          <div className="flex min-w-0 items-center gap-1 sm:gap-1.5">
+            {eventScope.events.length > 0 && <label className="flex min-w-0 items-center gap-1.5 rounded-full border border-line bg-raised/60 px-2 py-1.5 text-[11.5px] text-mute sm:gap-2 sm:px-3 sm:text-xs"><span className="hidden whitespace-nowrap sm:inline">Working on</span><select aria-label="Event in focus" className="max-w-[28vw] cursor-pointer rounded-md border-0 bg-transparent py-0.5 pl-1 pr-5 font-semibold text-ink outline-none focus:ring-1 focus:ring-blue-500 sm:max-w-[22rem]" style={{ colorScheme: isDark ? 'dark' : 'light' }} value={activeEventId} onChange={e => eventScope.setScopeFor(headerScopeModule, e.target.value)}><option className="bg-surface text-ink" value="">Normal</option>{eventScope.events.map(event => <option className="bg-surface text-ink" key={event.id} value={event.id}>{event.name}</option>)}</select></label>}
             <span className="hidden sm:block mr-1"><LiveMealChip dark={isDark} /></span>
             <ProfileMenu />
           </div>
         </header>
-        <main ref={mainRef} className="flex-1 overflow-y-auto [scrollbar-gutter:stable] p-4 sm:p-6"><Swap k={key === 'sewadars' ? `${key}/${tab || ''}` : key} indexOf={navIndex} className="w-full max-w-[1600px] mx-auto">{view}</Swap></main>
+        <main ref={mainRef} className="flex-1 overflow-y-auto [scrollbar-gutter:stable] p-4 sm:p-6"><Swap k={key === 'sewadars' ? `${key}/${tab || ''}` : key} indexOf={navIndex} className="w-full max-w-[1600px] mx-auto"><ErrorBoundary page key={`${key}/${tab || ''}`}>{view}</ErrorBoundary></Swap></main>
       </div>
       <ToastContainer />
     </div>
@@ -378,7 +392,7 @@ const Gate: React.FC = () => {
 };
 export default function App() {
   return (
-    <WalkieProvider><WorkspaceProviders /></WalkieProvider>
+    <ErrorBoundary><WalkieProvider><WorkspaceProviders /></WalkieProvider></ErrorBoundary>
   );
 }
 

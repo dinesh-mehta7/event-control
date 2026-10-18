@@ -12,6 +12,7 @@ import type { SewadarInput } from './ManpowerContext';
 import { DEVICES, DEVICE_LABEL, OUTCOMES, OUTCOME_LABEL, OUTCOME_TONE } from './types';
 import type { Arrival, ArrivalTimeOfDay, CallLog, DeviceType, Sewadar, SewadarMemberType } from './types';
 import { useEventScope } from '../../context/EventScopeContext';
+import { digitsOnly, phoneInputProps } from '../../lib/phone';
 
 // The command-center shell is always dark, so this module is dark-only.
 const D = true;
@@ -795,6 +796,46 @@ const sewadarInput = (s: Sewadar): SewadarInput => ({
   deviceType: s.deviceType, deviceRef: s.deviceRef,
 });
 
+// Tag input for skills: type one and press Enter or comma (or pick a suggestion) to add it; × or Backspace removes.
+const SkillsInput: React.FC<{ value: string[]; onChange: (skills: string[]) => void }> = ({ value, onChange }) => {
+  const { sewadars } = useManpower();
+  const [draft, setDraft] = useState('');
+  const known = useMemo(() => {
+    const seen = new Map<string, string>();
+    sewadars.forEach(s => (s.skills || []).forEach(skill => { const k = skill.trim().toLocaleLowerCase(); if (k && !seen.has(k)) seen.set(k, skill.trim()); }));
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
+  }, [sewadars]);
+  const has = (skill: string) => value.some(v => v.toLocaleLowerCase() === skill.toLocaleLowerCase());
+  const add = (raw: string) => {
+    const next = raw.split(/[,;]/).map(s => s.trim()).filter(s => s && !has(s));
+    if (next.length) onChange([...value, ...next.filter((s, i) => next.findIndex(o => o.toLocaleLowerCase() === s.toLocaleLowerCase()) === i)]);
+    setDraft('');
+  };
+  const suggestions = known.filter(s => !has(s));
+  return (
+    <div className="text-xs text-mute sm:col-span-2 lg:col-span-3">Skills
+      <div className={cx(inputCls(D), 'mt-1 flex flex-wrap items-center gap-1.5 !py-1.5')}>
+        {value.map(skill => (
+          <span key={skill} className="inline-flex items-center gap-1 rounded-md bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-300">
+            {skill}
+            <button type="button" className="rounded text-blue-300/80 hover:text-white" aria-label={`Remove ${skill}`} onClick={() => onChange(value.filter(v => v !== skill))}>×</button>
+          </span>))}
+        <input list="sewadar-skill-suggestions" value={draft} aria-label="Add a skill"
+          placeholder={value.length ? 'Add another skill…' : 'e.g. First aid — press Enter to add'}
+          onChange={e => { const v = e.target.value; if (/[,;]/.test(v)) add(v); else if (suggestions.some(s => s === v)) add(v); else setDraft(v); }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); if (draft.trim()) add(draft); }
+            else if (e.key === 'Backspace' && !draft && value.length) onChange(value.slice(0, -1));
+          }}
+          onBlur={() => { if (draft.trim()) add(draft); }}
+          className="min-w-[10rem] flex-1 bg-transparent py-0.5 text-sm text-ink outline-none placeholder:text-faint" />
+        <datalist id="sewadar-skill-suggestions">{suggestions.map(s => <option key={s} value={s} />)}</datalist>
+      </div>
+      <span className="mt-1 block text-[11px] text-faint">Add as many as you need. Press Enter or comma after each skill.</span>
+    </div>
+  );
+};
+
 const SewadarForm: React.FC<{
   initial: Sewadar | null;
   defaultMemberType?: SewadarMemberType;
@@ -824,7 +865,7 @@ const SewadarForm: React.FC<{
   const ownLeaderTeams = teams.filter(team => team.lead.trim().toLocaleLowerCase() === f.name.trim().toLocaleLowerCase());
   const filteredTeams = teams.filter(team => team.name.toLowerCase().includes(teamQuery.trim().toLowerCase()) && (!ownLeaderTeams.length || ownLeaderTeams.some(own => own.id === team.id)));
   const set = <K extends keyof SewadarInput,>(k: K, v: SewadarInput[K]) => setF(p => ({ ...p, [k]: v }));
-  const field = (k: Exclude<keyof SewadarInput, 'memberType' | 'deviceType' | 'skills'>, label: string, type = 'text') => <label key={k} className="text-xs text-mute">{label}<input required={k === 'name'} autoFocus={k === 'name' && !initial} type={type} value={f[k]} onChange={e => set(k, e.target.value)} className={cx(inputCls(D), 'mt-1')} /></label>;
+  const field = (k: Exclude<keyof SewadarInput, 'memberType' | 'deviceType' | 'skills'>, label: string, type = 'text') => <label key={k} className="text-xs text-mute">{label}<input required={k === 'name'} autoFocus={k === 'name' && !initial} type={type} {...(type === 'tel' ? phoneInputProps : {})} value={f[k]} onChange={e => set(k, type === 'tel' ? digitsOnly(e.target.value) : e.target.value)} className={cx(inputCls(D), 'mt-1')} /></label>;
   const submit = async (e: React.FormEvent) => { e.preventDefault(); setBusy(true); const saved = ownLeaderTeams.length ? { ...f, teams: (f.teams || []).filter(name => ownLeaderTeams.some(team => team.name.toLocaleLowerCase() === name.toLocaleLowerCase())), teamName: ownLeaderTeams[0].name, teamLead: ownLeaderTeams[0].lead } : f; const ok = await onSave(saved); setBusy(false); if (ok) onClose(); };
   const downloadRecord = () => {
     if (!initial) return;
@@ -850,7 +891,7 @@ const SewadarForm: React.FC<{
           {field('phone', 'Mobile', 'tel')}{field('villageCity', 'Village / city')}{field('branch', 'Branch')}{field('occupation', 'Occupation')}
           {field('employeeCode', 'Employee code')}{field('employeeId', 'Employee ID')}{field('address', 'Address')}{field('address2', 'Address 2')}
           {field('remarks', 'Remarks')}
-          <label className="text-xs text-mute">Skills<input value={(f.skills || []).join(', ')} onChange={e => set('skills', e.target.value.split(',').map(skill => skill.trim()).filter(Boolean))} placeholder="e.g. First aid, crowd management" className={cx(inputCls(D), 'mt-1')} /></label>
+          <SkillsInput value={f.skills || []} onChange={skills => set('skills', skills)} />
         </div></section>
         <section className="space-y-3 border-t border-line pt-4"><h3 className="text-xs font-semibold uppercase tracking-wider text-mute">Sewa and team assignment</h3><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="text-xs text-mute">Sub-department<select value={f.department} onChange={e => set('department', e.target.value)} className={cx(inputCls(D), 'mt-1')}><option value="">Not assigned</option>{DEPT_OPTIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>

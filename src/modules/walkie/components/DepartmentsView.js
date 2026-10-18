@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import { digitsOnly, phoneInputProps } from '../../../lib/phone';
 import {
   Plus,
   Edit3,
@@ -447,9 +448,9 @@ export default function DepartmentsView() {
                           />
                           <Phone className="w-4 h-4 text-slate-400 shrink-0" />
                           <input
-                            type="text"
+                            {...phoneInputProps}
                             value={editingHeadMobile}
-                            onChange={(e) => setEditingHeadMobile(e.target.value)}
+                            onChange={(e) => setEditingHeadMobile(digitsOnly(e.target.value))}
                             className={`w-32 shrink-0 p-1.5 rounded-lg border outline-none text-xs ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}
                           />
                           <button type="button" onClick={handleSaveHeadEdit} className="text-xs font-bold text-emerald-500 shrink-0">Save</button>
@@ -484,10 +485,10 @@ export default function DepartmentsView() {
                     className={`flex-1 min-w-0 p-2 rounded-xl border outline-none text-xs ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}
                   />
                   <input
-                    type="text"
+                    {...phoneInputProps}
                     placeholder="Mobile number"
                     value={newHeadMobile}
-                    onChange={(e) => setNewHeadMobile(e.target.value)}
+                    onChange={(e) => setNewHeadMobile(digitsOnly(e.target.value))}
                     className={`w-32 shrink-0 p-2 rounded-xl border outline-none text-xs ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}
                   />
                   <button

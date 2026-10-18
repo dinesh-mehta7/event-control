@@ -173,12 +173,13 @@ export function AppProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
   // Helper: Toast notifications
+  // The toast itself handles auto-dismiss (it pauses while hovered); this only adds and removes.
   const addToast = useCallback((message, type = 'success') => {
     const id = Date.now() + Math.random();
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
+    setToasts(prev => [...prev.filter(t => !(t.message === message && t.type === type)), { id, message, type }]);
+  }, []);
+  const dismissToast = useCallback((id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
   // Helper: Log Action
@@ -302,6 +303,8 @@ export function AppProvider({ children }) {
     }
   }, [currentUser]);
 
+  const mapOrganization = (o) => ({ id: o.id, name: o.name, joinCode: o.join_code, logoUrl: o.logo_url || null });
+
   // Fetch the current user's organization (name + join code for Admins to
   // share) whenever it becomes known, and keep it live via realtime so a
   // renamed org / regenerated join code shows up without a refresh.
@@ -314,7 +317,7 @@ export function AppProvider({ children }) {
     supabase.from('organizations').select('*').eq('id', currentUser.organizationId).maybeSingle()
       .then(({ data }) => {
         if (isMounted && data) {
-          setCurrentOrganization({ id: data.id, name: data.name, joinCode: data.join_code });
+          setCurrentOrganization(mapOrganization(data));
         }
       });
 
@@ -322,7 +325,7 @@ export function AppProvider({ children }) {
       .channel(`org-${currentUser.organizationId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'organizations', filter: `id=eq.${currentUser.organizationId}` }, (payload) => {
         if (isMounted && payload.new) {
-          setCurrentOrganization({ id: payload.new.id, name: payload.new.name, joinCode: payload.new.join_code });
+          setCurrentOrganization(mapOrganization(payload.new));
         }
       })
       .subscribe();
@@ -427,22 +430,16 @@ export function AppProvider({ children }) {
     return false;
   };
 
-  // New accounts either CREATE a brand-new organization (signer becomes its
-  // Admin, auto-approved) or JOIN an existing one by join code (signer
-  // becomes a Client, pending approval from that organization's Admin).
-  // The actual decision is enforced server-side in the handle_new_user()
-  // trigger — this metadata is just the request.
-  const signUp = async (name, email, password, orgMode, orgNameOrJoinCode) => {
+  // New accounts JOIN an existing organization by join code (signer becomes a
+  // Client, pending approval from that organization's head). Creating a new
+  // organization is not allowed — the handle_new_user() trigger enforces this
+  // server-side; this metadata is just the request.
+  const signUp = async (name, email, password, _orgMode, joinCode) => {
     const cleanEmail = email.toLowerCase().trim();
     setAuthLoading(true);
     setAuthNotice(null);
     try {
-      const metaData = { name: name.trim(), org_mode: orgMode };
-      if (orgMode === 'create') {
-        metaData.org_name = (orgNameOrJoinCode || '').trim();
-      } else {
-        metaData.join_code = (orgNameOrJoinCode || '').trim().toUpperCase();
-      }
+      const metaData = { name: name.trim(), org_mode: 'join', join_code: (joinCode || '').trim().toUpperCase() };
 
       const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
@@ -712,39 +709,24 @@ export function AppProvider({ children }) {
       return false;
     }
     if (data) {
-      setCurrentOrganization({ id: data.id, name: data.name, joinCode: data.join_code });
+      setCurrentOrganization(mapOrganization(data));
     }
     logAction('Join Code Regenerated', `${currentUser.name} regenerated the organization's join code`, 'info');
     addToast('New join code generated.', 'success');
     return true;
   };
 
-  // Admin only: rename the organization.
-  const renameOrganization = async (newName) => {
-    if (currentUser?.role !== 'Admin' || !currentUser.organizationId) {
-      addToast('Only Administrators can rename the organization.', 'error');
-      return false;
-    }
-    const trimmed = (newName || '').trim();
-    if (!trimmed) {
-      addToast('Organization name cannot be empty.', 'error');
-      return false;
-    }
-    const { data, error } = await supabase
-      .from('organizations')
-      .update({ name: trimmed })
-      .eq('id', currentUser.organizationId)
-      .select()
-      .maybeSingle();
+  // Super Admin only: change the organization's name and logo (logo is a data URL, or null to remove it).
+  const updateOrganization = async (name, logoUrl) => {
+    const { error } = await supabase.rpc('update_organization_profile', { p_name: name, p_logo: logoUrl || null });
     if (error) {
-      addToast(`Failed to rename organization: ${error.message}`, 'error');
-      return false;
+      return /update_organization_profile|schema cache/i.test(error.message || '')
+        ? 'Run supabase/migration_v94_org_profile_and_delete_member.sql in the Supabase SQL Editor, then reload.'
+        : error.message;
     }
-    if (data) {
-      setCurrentOrganization({ id: data.id, name: data.name, joinCode: data.join_code });
-    }
-    addToast('Organization renamed.', 'success');
-    return true;
+    setCurrentOrganization(prev => (prev ? { ...prev, name: name.trim(), logoUrl: logoUrl || null } : prev));
+    logAction('Organization Updated', `${currentUser?.name} updated the organization name/logo`, 'info');
+    return null;
   };
 
   useEffect(() => {
@@ -1823,83 +1805,6 @@ export function AppProvider({ children }) {
     return true;
   };
 
-  const resetAllData = async () => {
-    if (currentUser?.role !== 'Admin') {
-      addToast('Only Administrators can perform database wipes.', 'error');
-      return;
-    }
-
-    const orgId = currentUser.organizationId;
-    const suf = Date.now().toString(36);
-
-    await supabase.from('maintenance').delete().neq('id', '');
-    await supabase.from('allocations').delete().neq('id', '');
-    await supabase.from('walkies').delete().neq('id', '');
-    await supabase.from('departments').delete().neq('id', '');
-    await supabase.from('history').delete().neq('id', '');
-
-    await supabase.from('departments').insert([
-      { id: `dept-1-${suf}`, name: 'Security Patrol', description: 'Campus security and night watch patrol teams', channel_number: 'CH-04', organization_id: orgId },
-      { id: `dept-2-${suf}`, name: 'Logistics & Warehouse', description: 'Inventory management and delivery crew', channel_number: 'CH-07', organization_id: orgId },
-      { id: `dept-3-${suf}`, name: 'Facilities & Ops', description: 'Campus grounds keeping and building repair', channel_number: 'CH-11', organization_id: orgId }
-    ]);
-
-    await supabase.from('walkies').insert([
-      { id: `WT-101-${suf}`, label: 'Security Alpha', model: 'Motorola CP200', status: 'Allocated', department_id: `dept-1-${suf}`, channel: 'CH-04', assigned_person_name: 'Marcus Webb', assigned_person_contact: '555-0142', notes: 'Main gate patrol unit', organization_id: orgId },
-      { id: `WT-102-${suf}`, label: 'Security Beta', model: 'Motorola CP200', status: 'Available', department_id: null, channel: '', notes: 'Backup gate unit', organization_id: orgId },
-      { id: `WT-103-${suf}`, label: 'Logistics Lead', model: 'Kenwood NX-3220', status: 'Allocated', department_id: `dept-2-${suf}`, channel: 'CH-07', assigned_person_name: 'Priya Anand', assigned_person_contact: '555-0198', notes: 'Warehouse coordinator', organization_id: orgId },
-      { id: `WT-104-${suf}`, label: 'Events Coordinator', model: 'Baofeng UV-5R', status: 'Under Maintenance', department_id: null, channel: '', notes: 'Needs battery replacement', organization_id: orgId },
-      { id: `WT-105-${suf}`, label: 'Medical Response', model: 'Motorola CP200', status: 'Available', department_id: null, channel: '', notes: 'First aid team', organization_id: orgId },
-      { id: `WT-106-${suf}`, label: 'Facilities Staff', model: 'Kenwood NX-3220', status: 'Allocated', department_id: `dept-3-${suf}`, channel: 'CH-11', assigned_person_name: 'Dana Osei', assigned_person_contact: '555-0163', notes: 'Maintenance crew', organization_id: orgId }
-    ]);
-
-    await supabase.from('allocations').insert([
-      { id: `alloc-1-${suf}`, department_id: `dept-1-${suf}`, walkie_ids: [`WT-101-${suf}`], date: '2023-11-01', allocated_by: 'Chief Inspector', remarks: 'Assigned for night watch shift A', status: 'Active', organization_id: orgId },
-      { id: `alloc-2-${suf}`, department_id: `dept-2-${suf}`, walkie_ids: [`WT-103-${suf}`], date: '2023-11-02', allocated_by: 'Warehouse Mgr', remarks: 'Forklift operations area', status: 'Active', organization_id: orgId },
-      { id: `alloc-3-${suf}`, department_id: `dept-3-${suf}`, walkie_ids: [`WT-106-${suf}`], date: '2023-11-03', allocated_by: 'Admin', remarks: 'General facilities maintenance work', status: 'Active', organization_id: orgId }
-    ]);
-
-    await supabase.from('maintenance').insert([
-      { id: `maint-1-${suf}`, walkie_id: `WT-104-${suf}`, issue: 'Battery holding charge for only 1 hour', date: '2023-11-04', technician: 'Sarah Jenkins (Tech Ops)', status: 'In Progress', organization_id: orgId }
-    ]);
-
-    await supabase.from('history').insert([
-      { id: `hist-${Date.now()}-1`, action: 'System Initialized', details: 'Walkie Talkie Management System configured with defaults', type: 'info', organization_id: orgId },
-      { id: `hist-${Date.now()}-2`, action: 'Walkie Added', details: 'Added Security Alpha (WT-101)', type: 'success', organization_id: orgId },
-      { id: `hist-${Date.now()}-3`, action: 'Allocation Created', details: 'Allocated WT-101 to Security Patrol', type: 'success', organization_id: orgId }
-    ]);
-
-    addToast('System data reset to default demo data.', 'info');
-    logAction('System Reset', `All databases reverted to demo state by ${currentUser.name}`, 'warning');
-  };
-
-  const clearAllData = async () => {
-    if (currentUser?.role !== 'Admin') {
-      addToast('Only Administrators can clear database records.', 'error');
-      return;
-    }
-
-    // Delete in dependency order; stop and report if anything fails instead of
-    // pretending the wipe worked. (Row-level security limits this to your org.)
-    const tables = ['maintenance', 'allocations', 'deliveries', 'department_heads', 'walkies', 'departments', 'history'];
-    for (const table of tables) {
-      const { error } = await supabase.from(table).delete().neq('id', '');
-      if (error) {
-        addToast(`Could not clear ${table}: ${describeDbError(error)}`, 'error');
-        return;
-      }
-    }
-    setWalkies([]);
-    setDepartments([]);
-    setAllocations([]);
-    setMaintenance([]);
-    setHistory([]);
-    setDepartmentHeads([]);
-    setDeliveries([]);
-
-    addToast('All database records cleared! Database is now empty and ready for fresh entries.', 'info');
-  };
-
   return (
     <AppContext.Provider value={{
       currentUser,
@@ -1925,7 +1830,7 @@ export function AppProvider({ children }) {
       denyUser,
       currentOrganization,
       regenerateJoinCode,
-      renameOrganization,
+      updateOrganization,
       walkies,
       departments,
       allocations,
@@ -1938,6 +1843,7 @@ export function AppProvider({ children }) {
       globalSearch,
       setGlobalSearch,
       toasts,
+      dismissToast,
       addToast,
       logAction,
       addWalkie,
@@ -1955,8 +1861,6 @@ export function AppProvider({ children }) {
       assignPersonToWalkie,
       sendToMaintenance,
       completeMaintenance,
-      resetAllData,
-      clearAllData,
       departmentHeads,
       addDepartmentHead,
       editDepartmentHead,
