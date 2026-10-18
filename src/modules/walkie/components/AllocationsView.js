@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
+import AllocationSlip from './AllocationSlip';
 import {
   Send,
   Radio,
   CheckCircle,
-  Printer,
   ArrowRightLeft,
   Lock,
   Hash,
@@ -12,8 +12,7 @@ import {
   Search,
   PackageCheck,
   Users,
-  Building2,
-  X
+  Building2
 } from 'lucide-react';
 
 export default function AllocationsView() {
@@ -647,90 +646,8 @@ export default function AllocationsView() {
         </div>
       </div>
 
-      {/* Print Slip Modal */}
-      {showSlip && lastAllocatedRecord && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className={`w-full max-w-md rounded-xl shadow-2xl p-6 transition-all ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}>
-            <div className="flex justify-end -mt-2 -mr-2">
-              <button onClick={() => setShowSlip(false)} className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="text-center border-b pb-4 mb-4 -mt-4">
-              <span className="text-4xl">{settings.logo}</span>
-              <h3 className="text-lg font-bold uppercase tracking-wide mt-2">{settings.orgName}</h3>
-              <p className="text-xs text-slate-400">Official Radio Allocation Slip</p>
-            </div>
-
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="font-semibold text-slate-400">Slip ID:</span>
-                <span className="font-bold font-mono">{lastAllocatedRecord.id}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-semibold text-slate-400">Department:</span>
-                <span className="font-bold">
-                  {departments.find(d => d.id === lastAllocatedRecord.departmentId)?.name}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-semibold text-slate-400">Channel:</span>
-                <span className="font-bold">
-                  {departments.find(d => d.id === lastAllocatedRecord.departmentId)?.channelNumber || 'N/A'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-semibold text-slate-400">Allocated By:</span>
-                <span className="font-bold">{lastAllocatedRecord.allocatedBy}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-semibold text-slate-400">Dispatch Date:</span>
-                <span className="font-bold">{lastAllocatedRecord.date}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-semibold text-slate-400">Chargers / Earphones:</span>
-                <span className="font-bold">{lastAllocatedRecord.chargerCount || 0} / {lastAllocatedRecord.earphoneCount || 0}</span>
-              </div>
-              <div className="border-t pt-3">
-                <p className="font-semibold text-slate-400 mb-1">Allocated Radios ({lastAllocatedRecord.walkieIds.length}):</p>
-                <ul className="list-disc list-inside text-xs space-y-1 max-h-40 overflow-y-auto">
-                  {lastAllocatedRecord.walkieIds.map(id => {
-                    const walkie = walkies.find(w => w.id === id);
-                    return (
-                      <li key={id} className="font-semibold">
-                        {walkie ? `${getWalkieDisplayName(walkie)}${walkie.model ? ` • ${walkie.model}` : ''}` : id}
-                        {walkie?.assignedPerson?.name ? ` — Held by ${walkie.assignedPerson.name}` : ''}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-              {lastAllocatedRecord.remarks && (
-                <div className="border-t pt-3">
-                  <p className="font-semibold text-slate-400 text-xs">Remarks:</p>
-                  <p className="text-xs italic">"{lastAllocatedRecord.remarks}"</p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-3 pt-6 border-t mt-6">
-              <button
-                onClick={() => window.print()}
-                className="px-4 py-2 text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-lg flex items-center gap-1.5"
-              >
-                <Printer className="w-4 h-4" />
-                Print Slip
-              </button>
-              <button
-                onClick={() => setShowSlip(false)}
-                className="px-4 py-2 text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 rounded-lg"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Printable allocation slip */}
+      {showSlip && lastAllocatedRecord && <AllocationSlip record={lastAllocatedRecord} onClose={() => setShowSlip(false)} />}
     </div>
   );
 }
