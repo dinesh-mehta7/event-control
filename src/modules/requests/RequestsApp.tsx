@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, FileSpreadsheet, Inbox, Plus, X } from 'lucide-react';
 import { Empty, Tabs, btnGhost, inputCls, btnPrimary } from '../../components/ui';
 import { Swap } from '../../components/Swap';
@@ -71,7 +72,8 @@ const NewRequestDialog: React.FC<{ children: React.ReactNode; onClose: () => voi
     return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', onKeyDown); previouslyFocused?.focus(); };
   }, [onClose]);
 
-  return (
+  // Portal to <body>: the page-switch animation (Swap) uses transforms, which would trap a fixed overlay inside the page panel.
+  return createPortal(
     <div className="fixed inset-0 z-[100] grid place-items-center p-3 sm:p-6" role="presentation">
       <button type="button" aria-label="Close new request" onClick={onClose} className="absolute inset-0 bg-black/70 backdrop-blur-md animate-fade-in" />
       <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="new-request-title" className="dark relative flex max-h-[min(92dvh,900px)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/[0.08] bg-surface text-white shadow-[0_28px_100px_rgba(0,0,0,.6)] animate-pop-in">
@@ -81,7 +83,8 @@ const NewRequestDialog: React.FC<{ children: React.ReactNode; onClose: () => voi
         </div>
         <div className="min-h-0 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7">{children}</div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 };
 

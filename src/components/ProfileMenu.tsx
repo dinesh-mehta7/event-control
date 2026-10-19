@@ -34,13 +34,12 @@ export const ProfileMenu: React.FC<{ extra?: React.ReactNode }> = ({ extra }) =>
         <User size={17} />
       </button>
       {present && (
-        <div role="menu" aria-hidden={!open} {...({ inert: !open } as any)} className={`absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-line bg-surface shadow-xl overflow-hidden transition-[opacity,transform] duration-200 ease-out ${open ? 'animate-pop-in translate-y-0 scale-100 opacity-100' : '-translate-y-1 scale-[0.98] opacity-0 pointer-events-none'}`}>
+        <div role="menu" aria-hidden={!open} {...({ inert: !open } as any)} className={`absolute right-0 top-full mt-2 z-50 w-72 max-w-[calc(100vw-1.5rem)] rounded-xl border border-line bg-surface shadow-xl overflow-hidden transition-[opacity,transform] duration-200 ease-out ${open ? 'animate-pop-in translate-y-0 scale-100 opacity-100' : '-translate-y-1 scale-[0.98] opacity-0 pointer-events-none'}`}>
           <div className="px-4 py-3 border-b border-line">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-sm font-semibold text-ink truncate">{u?.name || 'Account'}</span>
-              <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400">{roleLabel(u?.level, u?.subDepartment, (w.departments || []).find((d: any) => d.id === u?.departmentId)?.name)}</span>
-            </div>
-            {u?.email && <div className="text-xs text-mute truncate">{u.email}</div>}
+            {/* Role badge on top (wraps so long roles always fit), then name and email on their own lines. */}
+            <span className="mb-2 inline-block max-w-full break-words rounded-md bg-blue-500/15 px-2 py-0.5 text-[11.5px] font-medium leading-snug text-blue-400">{roleLabel(u?.level, u?.subDepartment, (w.departments || []).find((d: any) => d.id === u?.departmentId)?.name)}</span>
+            <div className="text-sm font-semibold text-ink truncate" title={u?.name || undefined}>{u?.name || 'Account'}</div>
+            {u?.email && <div className="text-xs text-mute truncate" title={u.email}>{u.email}</div>}
           </div>
           {(u?.level === 'owner' || u?.level === 'dept_head') && <a role="menuitem" href="#/" onClick={() => setOpen(false)} className={item}><LayoutDashboard size={16} className="text-blue-400" />Command Center</a>}
           <div className="px-4 py-3 border-t border-line">

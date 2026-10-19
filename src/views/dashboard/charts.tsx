@@ -190,7 +190,7 @@ export const MiniColumns: React.FC<{ rows: DayPoint[]; height?: number; label: s
             {(on || today) && <rect x={m.l + band * i + 1} y={m.t - 12} width={Math.max(0, band - 2)} height={plotH + 12} rx={6} className={on ? 'fill-ink/[0.05]' : 'fill-ink/[0.025]'} />}
             <path d={colPath(cx - barW / 2, y(r.value), barW, base - y(r.value))} fill={`url(#${gid}-a)`} className="chart-grow-y" style={{ ['--i' as any]: i }} />
             {two && <path d={colPath(cx - innerW / 2, y(r.value2 || 0), innerW, base - y(r.value2 || 0))} fill={`url(#${gid}-b)`} className="chart-grow-y stroke-surface" strokeWidth={1.5} paintOrder="stroke" style={{ ['--i' as any]: i + 0.4 }} />}
-            {on && (r.value > 0 || (r.value2 || 0) > 0) && <text x={cx} y={top - 6} textAnchor="middle" className="animate-fade-in fill-ink font-semibold tabular-nums" style={{ fontSize: 11 }}>{two ? `${r.value} · ${r.value2 || 0}` : r.value}</text>}
+            {on && (r.value > 0 || (r.value2 || 0) > 0) && <text x={cx} y={top - 6} textAnchor="middle" className="animate-fade-in fill-ink font-semibold tabular-nums" style={{ fontSize: 11 }}>{two ? `${r.value2 || 0}/${r.value}` : r.value}</text>}
             {(i % labelEvery === 0 || today) && <text x={cx} y={height - 6} textAnchor="middle" className={today ? 'fill-ink font-semibold' : on ? 'fill-ink' : 'fill-mute'} style={{ fontSize: 10.5 }}>{today ? 'Today' : fmtDay(r.date)}</text>}
             <rect x={m.l + band * i} y={0} width={band} height={height} fill="transparent" tabIndex={0} className="outline-none" role={onSelect ? 'button' : undefined}
               aria-label={`${fmtDay(r.date)}: ${r.value} ${unit}${two ? `, ${r.value2 || 0} ${unit2}` : ''}${onSelect ? '. Open details' : ''}`}

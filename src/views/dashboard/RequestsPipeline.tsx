@@ -5,7 +5,7 @@ import type { ReqStatus } from '../../modules/requests/types';
 import { DashboardDialog, Segmented, StatTile } from './Dialog';
 import { Legend, MiniColumns, dayKey, lastDays } from './charts';
 
-const DAY_LEGEND = [{ label: 'Raised', cls: 'bg-chart-1' }, { label: 'Approved', cls: 'bg-chart-2' }];
+const DAY_LEGEND = [{ label: 'Raised', cls: 'bg-chart-1' }, { label: 'Approved so far', cls: 'bg-chart-2' }];
 
 // Pipeline order. One hue, light → full as a request moves toward delivery; finished-without-delivery is muted.
 const STAGES: { key: ReqStatus | 'closed'; label: string; cls: string }[] = [
@@ -25,13 +25,14 @@ const usePipeline = () => {
     const stages = STAGES.map(s => ({ ...s, n: count(s.key) }));
     const delivered = requests.filter(r => r.status === 'fulfilled');
     const avgDays = delivered.length ? delivered.reduce((t, r) => t + Math.max(0, (new Date(r.updatedAt).getTime() - new Date(r.createdAt).getTime()) / 864e5), 0) / delivered.length : null;
-    // Raised = created that day. Approved = the day of the request's first "approved" decision in its history.
+    // Both series are grouped by the day a request was RAISED: how many were raised that day, and how many of
+    // those same requests have been approved so far. So "approved" can never exceed "raised" for a day.
     const perDay = (n: number) => {
       const days = lastDays(n); const raised = new Map<string, number>(); const approved = new Map<string, number>();
       requests.forEach(r => {
         const k = dayKey(r.createdAt); raised.set(k, (raised.get(k) || 0) + 1);
-        const first = r.events.filter(e => e.kind === 'approved').sort((a, b) => a.at.localeCompare(b.at))[0];
-        if (first) { const a = dayKey(first.at); approved.set(a, (approved.get(a) || 0) + 1); }
+        const wasApproved = r.status === 'approved' || r.status === 'fulfilled' || r.events.some(e => e.kind === 'approved');
+        if (wasApproved) approved.set(k, (approved.get(k) || 0) + 1);
       });
       return days.map(date => ({ date, value: raised.get(date) || 0, value2: approved.get(date) || 0 }));
     };
@@ -74,8 +75,8 @@ export const RequestsPipelineCard: React.FC<{ onOpen: () => void }> = ({ onOpen 
       </div>
       {p.total ? <>
         <div className="mt-3"><StageBar stages={p.stages} total={p.total} /></div>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2"><span className="text-[11.5px] font-medium text-mute">Raised vs approved per day · last 14 days</span><Legend items={DAY_LEGEND} /></div>
-        <MiniColumns rows={p.perDay(14)} height={130} label="Requests raised and approved per day over the last 14 days" unit="raised" unit2="approved" highlight={today} onSelect={onOpen} />
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2"><span className="text-[11.5px] font-medium text-mute">Requests raised per day · last 14 days, and how many of them are approved</span><Legend items={DAY_LEGEND} /></div>
+        <MiniColumns rows={p.perDay(14)} height={130} label="Requests raised per day over the last 14 days, and how many of them have been approved" unit="raised" unit2="approved" highlight={today} onSelect={onOpen} />
       </> : <div className="mt-3 flex min-h-28 flex-1 items-center justify-center rounded-lg border border-dashed border-line px-3 text-center text-[11.5px] text-mute">{p.loading ? 'Loading requests…' : 'No requests have been raised yet.'}</div>}
       <div className="mt-2 flex items-center justify-between gap-2 border-t border-line pt-2 text-[11.5px] text-mute">
         <span>{p.avgDays !== null ? <>Delivered in <b className="tabular-nums text-ink">{p.avgDays.toFixed(1)}</b> days on average</> : 'No deliveries yet'}</span>
@@ -100,9 +101,9 @@ export const RequestsPipelineDialog: React.FC<{ onClose: () => void }> = ({ onCl
         <StatTile label="Avg. days to deliver" value={p.avgDays !== null ? p.avgDays.toFixed(1) : '—'} hint="raised → delivered" />
       </div>
       {p.total > 0 && <div className="mt-5"><StageBar stages={p.stages} total={p.total} tall /></div>}
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-2"><h3 className="text-xs font-semibold text-ink">Raised vs approved per day</h3>
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-xs font-semibold text-ink">Requests raised per day</h3><p className="mt-0.5 text-[11.5px] text-mute">Each bar is the requests raised that day; the inner bar is how many of them are approved so far.</p></div>
         <div className="flex flex-wrap items-center gap-3"><Legend items={DAY_LEGEND} /><Segmented<"14" | "30"> label="Range" value={range} onChange={setRange} options={[{ id: '14', label: '14 days' }, { id: '30', label: '30 days' }]} /></div></div>
-      <MiniColumns key={range} rows={p.perDay(Number(range))} height={190} label={`Requests raised and approved per day over the last ${range} days`} unit="raised" unit2="approved" highlight={today} />
+      <MiniColumns key={range} rows={p.perDay(Number(range))} height={190} label={`Requests raised per day over the last ${range} days, and how many of them have been approved`} unit="raised" unit2="approved" highlight={today} />
       <h3 className="mt-6 text-xs font-semibold text-ink">By stage</h3>
       <div className="mt-2 overflow-hidden rounded-lg border border-line">
         <table className="w-full text-left text-xs">

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useInventory } from '../../modules/inventory';
+import { MOVE } from '../../modules/inventory/types';
 import { usePurchase } from '../../modules/purchase';
 import { useRequests } from '../../modules/requests';
 import { useManpower } from '../../modules/manpower';
@@ -115,12 +116,26 @@ export const ReportsView: React.FC = () => {
   const live = pur.orders.filter(o => PAYABLE.includes(o.status));
   const committed = live.reduce((t, o) => t + poTotal(o), 0); const paid = live.reduce((t, o) => t + o.paid, 0); const due = live.reduce((t, o) => t + poDue(o), 0);
   const low = inv.items.filter(i => i.minLevel > 0 && i.inStock <= i.minLevel);
+  // Stock movements as people read them: item and location names (not ids), the movement's label, and a clear local date & time.
+  const movementRows = useMemo(() => {
+    const itemName = new Map(inv.items.map(i => [i.id, i.name]));
+    const when = (value?: string) => { const d = value ? new Date(value) : null; return d && !Number.isNaN(d.getTime()) ? d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '—'; };
+    return (extraReports.inventoryMovements || []).slice()
+      .sort((a: any, b: any) => String(b.done_at || '').localeCompare(String(a.done_at || '')))
+      .map((m: any) => ({
+        ...m,
+        item_name: m.item_name || itemName.get(m.item_id) || (m.item_id ? 'Deleted item' : ''),
+        type: (MOVE as Record<string, { label: string }>)[m.type]?.label || m.type,
+        location: m.location ? inv.locationLabel(m.location) : '',
+        done_at: when(m.done_at),
+      }));
+  }, [extraReports.inventoryMovements, inv.items, inv.locationLabel]);
   const beds = acc.rooms.reduce((t, r) => t + r.capacity, 0); const placed = acc.members.filter(m => m.roomId).length;
 
   const exportCsv = () => {
     if (tab === 'requests') download('requests.csv', [['Number', 'Title', 'Requested by', 'Status', 'Items', 'Raised'], ...req.requests.map(r => [r.number, r.title, r.requesterName, STATUS_LABEL[r.status], r.items.length, r.createdAt.slice(0, 10)])]);
     else if (tab === 'purchase') download('purchase-orders.csv', [['Record type', 'PO', 'Title / note', 'Vendor / paid by', 'Status / item', 'Total / quantity', 'Paid / received by', 'Due / date'], ...pur.orders.map(o => ['Order', o.number, o.title, pur.vendorName(o.vendorId), PO_STATUS[o.status].label, poTotal(o), o.paid, poDue(o)]), ...(extraReports.purchaseReceipts || []).map(r => ['Receipt', r.po_id, r.note, r.given_by, r.item_id, r.qty, r.received_by, r.done_at]), ...(extraReports.purchasePayments || []).map(p => ['Payment', p.po_id, p.note, p.done_by, p.status, p.amount, p.done_by, p.done_at])]);
-    else if (tab === 'inventory') download('inventory.csv', [['Record type', 'Item', 'Code / movement', 'Category / location', 'In stock / quantity', 'Issued by', 'Received by', 'Date'], ...inv.items.map(i => ['Stock', i.name, i.code, i.category, i.inStock, '', '', '']), ...(extraReports.inventoryMovements || []).map(m => ['Movement', m.item_name || m.item_id, m.type, m.location, m.qty, m.given_by, m.received_by, m.done_at])]);
+    else if (tab === 'inventory') download('inventory.csv', [['Record type', 'Item', 'Code / movement', 'Category / location', 'In stock / quantity', 'Issued by', 'Received by', 'Date'], ...inv.items.map(i => ['Stock', i.name, i.code, i.category, i.inStock, '', '', '']), ...movementRows.map(m => ['Movement', m.item_name, m.type, m.location, m.qty, m.given_by, m.received_by, m.done_at])]);
     else if (tab === 'wifi') {
       const rows = wifiRows.filter(row => wifiReportEventId === 'all' || (wifiReportEventId === 'none' ? !row.event_id : row.event_id === wifiReportEventId));
       download('wifi-event-usage.csv', [['Event', 'Network', 'Access point / location', 'Recipient', 'Department', 'Issued', 'Valid through', 'Status'], ...rows.map(row => [eventScope.events.find(event => event.id === row.event_id)?.name || (row.event_id ? 'Archived event' : 'General / no event'), row.network_name, row.access_point, row.recipient_name, row.department, row.created_at.slice(0, 10), row.valid_until || 'No expiry', wifiStatus(row)])]);
@@ -141,7 +156,7 @@ export const ReportsView: React.FC = () => {
     addSheet('Purchase Receipts', extraReports.purchaseReceipts || []); addSheet('Purchase Payments', extraReports.purchasePayments || []);
     addSheet('Request Items', req.requests.flatMap(r => r.items.map(item => ({ Request: r.number, Title: r.title, ...item }))));
     addSheet('Inventory', inv.items.map(i => ({ Name: i.name, Code: i.code, Category: i.category, InStock: i.inStock, Issued: i.issued, Damaged: i.damaged, Minimum: i.minLevel })));
-    addSheet('Inventory Movements', extraReports.inventoryMovements || []);
+    addSheet('Inventory Movements', movementRows.map(m => ({ Item: m.item_name, Movement: m.type, Quantity: m.qty, Location: m.location, 'Given by': m.given_by, 'Received by': m.received_by, 'Date & time': m.done_at, Note: m.note || '' })));
     addSheet('Request Activity', extraReports.requestEvents || []); addSheet('Request Fulfilments', extraReports.requestFulfilments || []);
     addSheet('Wi-Fi Access', wifiRows.map(r => ({ Event: eventScope.events.find(e => e.id === r.event_id)?.name || 'General / no event', Network: r.network_name, Location: r.access_point, Recipient: r.recipient_name, Department: r.department, Status: wifiStatus(r), Issued: r.created_at, ValidUntil: r.valid_until })));
     addSheet('Sewadars', mp.sewadars.map(s => ({ Name: s.name, Phone: s.phone, Department: s.department, Type: s.memberType, Arrival: s.arrival, ExpectedArrival: s.expectedArrival, Team: s.teamName, CallCount: s.callCount })));
@@ -206,7 +221,7 @@ export const ReportsView: React.FC = () => {
             <ul className="divide-y divide-line">{low.map(i => <li key={i.id} className="py-2 flex justify-between text-sm"><span className="text-ink">{i.name}<span className="text-xs text-mute"> · {i.category}</span></span><span className="tabular-nums text-amber-300">{i.inStock} / min {i.minLevel}</span></li>)}
               {!low.length && <li><Empty>Everything is above its minimum level.</Empty></li>}</ul>
           </Card>
-          <Card title="Recent stock movements"><ReportTable rows={(extraReports.inventoryMovements || []).slice().sort((a, b) => String(b.done_at || '').localeCompare(String(a.done_at || '')))} columns={[["item_name", "Item"], ["type", "Movement"], ["qty", "Quantity"], ["location", "Location"], ["given_by", "Given by"], ["received_by", "Received by"], ["done_at", "Date"]]} empty={extraLoading ? "Loading inventory movements…" : "No stock movements recorded."} /></Card>
+          <Card title="Recent stock movements"><ReportTable rows={movementRows} columns={[["item_name", "Item"], ["type", "Movement"], ["qty", "Quantity"], ["location", "Location"], ["given_by", "Given by"], ["received_by", "Received by"], ["done_at", "Date & time"]]} empty={extraLoading ? "Loading inventory movements…" : "No stock movements recorded."} /></Card>
         </div>)}
 
       {tab === 'wifi' && (() => {
