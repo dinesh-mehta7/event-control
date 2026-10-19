@@ -20,7 +20,7 @@ const SHIFTS = [
 type Shift = { key: string; label: string; start: string; end: string };
 // CCTV members are rostered into a CCTV control room; everyone else gets a general duty shift.
 const CCTV_DEPTS = ['cctv'];
-const DEPT_ORDER = Object.keys(DEPTS);
+const deptOrder = () => Object.keys(DEPTS);
 
 type Assignment = { id: string; source: 'cctv' | 'general'; memberId: string; shiftKey: string; label: string; start: string; end: string; place: string };
 type Room = { id: string; name: string; eventId: string | null; scopeKey: string };
@@ -116,7 +116,7 @@ export const DutiesShiftsPage: React.FC = () => {
       && (view === 'all' || (view === 'assigned' ? byMember.has(m.id) : !byMember.has(m.id)))
       && (!shiftFilter || (byMember.get(m.id) || []).some(a => (shiftFilter === 'special' ? a.shiftKey.startsWith('special-') : a.shiftKey === shiftFilter)))
       && (!t || [m.name, m.batchNo, m.branch, m.phone].some(v => (v || '').toLowerCase().includes(t))))
-    .sort((a, b) => ((a.department ? DEPT_ORDER.indexOf(a.department) : 99) - (b.department ? DEPT_ORDER.indexOf(b.department) : 99)) || a.name.localeCompare(b.name)),
+    .sort((a, b) => ((a.department ? deptOrder().indexOf(a.department) : 99) - (b.department ? deptOrder().indexOf(b.department) : 99)) || a.name.localeCompare(b.name)),
   [arrived, dept, view, t, byMember, shiftFilter]);
   const deptCounts = useMemo(() => { const c = new Map<string, number>(); arrived.forEach(m => c.set(m.department || '', (c.get(m.department || '') || 0) + 1)); return c; }, [arrived]);
   const shiftCounts = SHIFTS.map(s => ({ ...s, n: assignments.filter(a => a.shiftKey === s.key && arrived.some(m => m.id === a.memberId)).length }));
@@ -218,7 +218,7 @@ export const DutiesShiftsPage: React.FC = () => {
             </label>
             <select value={dept} onChange={e => setDept(e.target.value)} aria-label="Sub-department" className={cx(ctl, 'w-full min-w-0')}>
               <option value="all">All sub-departments · {arrived.length}</option>
-              {[...DEPT_ORDER, ''].filter(d => deptCounts.has(d)).map(d => <option key={d || 'none'} value={d}>{deptLabel(d)} · {deptCounts.get(d)}</option>)}
+              {[...deptOrder(), ''].filter(d => deptCounts.has(d)).map(d => <option key={d || 'none'} value={d}>{deptLabel(d)} · {deptCounts.get(d)}</option>)}
             </select>
             <div role="group" aria-label="Assignment filter" className="inline-flex h-8 w-max items-stretch rounded-md border border-line bg-raised/40 p-0.5">
               {(['all', 'unassigned', 'assigned'] as const).map(v => <button key={v} type="button" aria-pressed={view === v} onClick={() => setView(v)} className={cx('flex items-center rounded px-3 text-[11.5px] font-medium capitalize', view === v ? 'bg-surface text-ink shadow-sm' : 'text-mute hover:text-ink')}>{v}</button>)}
@@ -240,6 +240,11 @@ export const DutiesShiftsPage: React.FC = () => {
           <span className="text-mute">Assign to</span>
           {SHIFTS.map(s => <button key={s.key} disabled={busy} className={cx(btn, 'h-8 py-0')} onClick={() => pick(selectedIds, s.key)}>{s.label}<span className="text-faint">{timeRange(s)}</span></button>)}
           <button disabled={busy} className={cx(btn, 'h-8 py-0')} onClick={() => pick(selectedIds, 'special')}>Special…</button>
+          <select value="" disabled={busy} aria-label="Set sub-department for selected" onChange={async e => { const v = e.target.value; if (!v) return; setBusy(true); await manpower.setDepartment(selectedIds, v === 'none' ? '' : v); setBusy(false); }} className={cx(ctl, 'w-auto')}>
+            <option value="">Set sub-department…</option>
+            {deptOrder().map(d => <option key={d} value={d}>{deptLabel(d)}</option>)}
+            <option value="none">No sub-department</option>
+          </select>
           {selectedHasCctv && <span className="text-[11.5px] text-blue-200">CCTV members go to {rooms.find(r => r.id === roomId)?.name || '— choose a room'}</span>}
           <button className="ml-auto text-mute hover:text-ink" onClick={() => setSelected(new Set())}>Clear</button>
         </div>}
@@ -279,7 +284,13 @@ export const DutiesShiftsPage: React.FC = () => {
                       <td className="max-w-[200px] truncate whitespace-nowrap border border-line/70 px-2.5 py-1.5 font-semibold text-ink" title={m.name}>{m.name}</td>
                       <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 tabular-nums text-ink-soft">{m.batchNo || '—'}</td>
                       <td className="max-w-[160px] truncate whitespace-nowrap border border-line/70 px-2.5 py-1.5 text-ink-soft" title={m.branch}>{m.branch || '—'}</td>
-                      <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 text-ink-soft">{deptLabel(m.department || '')}{cctv && <Monitor className="ml-1 inline h-3 w-3 text-blue-300" aria-label="Synced with CCTV Control Room" />}</td>
+                      <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 text-ink-soft">{canManage
+                        ? <select value={m.department || ''} disabled={busy} aria-label={`Sub-department for ${m.name}`} onChange={e => void manpower.setDepartment([m.id], e.target.value)}
+                            className="-mx-1 max-w-[170px] cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-ink-soft outline-none hover:border-line focus:border-blue-500">
+                            <option className="bg-surface" value="">No sub-department</option>
+                            {deptOrder().map(d => <option className="bg-surface" key={d} value={d}>{deptLabel(d)}</option>)}
+                          </select>
+                        : deptLabel(m.department || '')}{cctv && <Monitor className="ml-1 inline h-3 w-3 text-blue-300" aria-label="Synced with CCTV Control Room" />}</td>
                       <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 text-ink-soft">{m.phone ? <a href={`tel:${m.phone}`} className="hover:text-blue-300">{m.phone}</a> : '—'}</td>
                       {SHIFTS.map(sh => {
                         const a = mine.find(x => x.shiftKey === sh.key);

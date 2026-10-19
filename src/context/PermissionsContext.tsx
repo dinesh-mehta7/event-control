@@ -3,6 +3,8 @@ import { supabase } from '../modules/walkie/lib/supabaseClient';
 import { useApp as useWalkie } from '../modules/walkie/context/AppContext';
 import { isAllowed, permKey } from '../lib/permissions';
 import type { ModuleKey, ModuleQuery, PermissionMap } from '../lib/permissions';
+import { applyCustomSubDepartments } from '../views/orgData';
+import type { CustomSubDepartment } from '../views/orgData';
 
 // Which modules each sub-department can open. Super Admin and Department Heads always see everything.
 interface Ctx {
@@ -11,6 +13,13 @@ interface Ctx {
   allowedFor: (sub: string, module: ModuleKey) => boolean;               // any sub-department (admin grid)
   setAccess: (sub: string, module: ModuleKey, allowed: boolean | null) => Promise<boolean>; // null = back to default
   resetSub: (sub: string) => Promise<boolean>;
+  // The organization's own sub-departments (built-in ones are in BUILT_IN_DEPTS). Errors come back as text.
+  customSubs: CustomSubDepartment[]; subsError: string;
+  createSub: (name: string) => Promise<string | null>;
+  renameSub: (key: string, name: string) => Promise<string | null>;
+  deleteSub: (key: string) => Promise<string | null>;
+  hideSub: (key: string, hidden: boolean) => Promise<string | null>;
+  resetSubName: (key: string) => Promise<string | null>; // built-in: back to its original name, visible
 }
 const C = createContext<Ctx | null>(null);
 export const usePermissions = (): Ctx => { const c = useContext(C); if (!c) throw new Error('usePermissions must be used inside <PermissionsProvider>'); return c; };
@@ -24,6 +33,8 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [map, setMap] = useState<PermissionMap>({});
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [customSubs, setCustomSubs] = useState<CustomSubDepartment[]>([]);
+  const [subsError, setSubsError] = useState('');
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -34,6 +45,33 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setReady(true);
   }, [orgId]);
   useEffect(() => { void load(); }, [load]);
+
+  const loadSubs = useCallback(async () => {
+    if (!orgId) return;
+    const { data, error } = await supabase.from('org_sub_departments').select('key,name,hidden').eq('organization_id', orgId).order('name');
+    setSubsError(error ? `${error.message} — run supabase/migration_v96_custom_sub_departments.sql and migration_v97_sub_department_rename_hide.sql in the Supabase SQL Editor, then reload.` : '');
+    const list = (data || []).map((r: any) => ({ key: r.key as string, name: r.name as string, hidden: !!r.hidden }));
+    applyCustomSubDepartments(list);
+    setCustomSubs(list);
+  }, [orgId]);
+  useEffect(() => { void loadSubs(); }, [loadSubs]);
+  useEffect(() => {
+    if (!orgId) return;
+    const ch = supabase.channel(`org-sub-depts-${orgId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'org_sub_departments', filter: `organization_id=eq.${orgId}` }, () => void loadSubs())
+      .subscribe();
+    return () => { void supabase.removeChannel(ch); };
+  }, [orgId, loadSubs]);
+  const subRpc = async (fn: string, args: Record<string, string | boolean>) => {
+    const { error } = await supabase.rpc(fn, args);
+    if (error) return error.message;
+    await loadSubs(); return null;
+  };
+  const createSub = (name: string) => subRpc('create_sub_department', { p_name: name });
+  const renameSub = (key: string, name: string) => subRpc('rename_sub_department', { p_key: key, p_name: name });
+  const hideSub = (key: string, hidden: boolean) => subRpc('set_sub_department_hidden', { p_key: key, p_hidden: hidden });
+  const resetSubName = (key: string) => subRpc('reset_sub_department', { p_key: key });
+  const deleteSub = async (key: string) => { const e = await subRpc('delete_sub_department', { p_key: key }); if (!e) await load(); return e; };
   useEffect(() => {
     if (!orgId) return;
     const ch = supabase.channel(`sub-dept-perms-${orgId}`)
@@ -66,6 +104,6 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
     await load(); return true;
   };
 
-  const value = useMemo<Ctx>(() => ({ map, ready, loadError, canEdit: exec, can, allowedFor, setAccess, resetSub }), [map, ready, loadError, exec, can, allowedFor]); // eslint-disable-line
+  const value = useMemo<Ctx>(() => ({ map, ready, loadError, canEdit: exec, can, allowedFor, setAccess, resetSub, customSubs, subsError, createSub, renameSub, deleteSub, hideSub, resetSubName }), [map, ready, loadError, exec, can, allowedFor, customSubs, subsError]); // eslint-disable-line
   return <C.Provider value={value}>{children}</C.Provider>;
 };

@@ -2,11 +2,12 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PermissionsProvider, usePermissions } from './context/PermissionsContext';
 import type { ModuleKey, ModuleQuery } from './lib/permissions';
 import { SubDeptPermissionsView } from './components/owner/SubDeptPermissionsView';
+import { SubDepartmentsView } from './components/owner/SubDepartmentsView';
 import { roleLabel } from './lib/roles';
 import { HelpdeskApp } from './modules/helpdesk/HelpdeskApp';
 import { DutiesShiftsPage } from './modules/manpower/DutiesShifts';
 import { applyTheme } from './hooks/useMotion';
-import { Menu, X, LayoutDashboard, CalendarClock, CalendarDays, Users, BarChart3, Video, Wifi, Radio, Monitor, Boxes, BedDouble, HeartHandshake, LifeBuoy, ClipboardList, PanelLeftClose, PanelLeftOpen, ChevronDown, ShoppingCart, PhoneCall, BadgeCheck, UsersRound, ListTodo, Clock3, Headset, ShieldCheck } from 'lucide-react';
+import { Menu, X, Layers, LayoutDashboard, CalendarClock, CalendarDays, Users, BarChart3, Video, Wifi, Radio, Monitor, Boxes, BedDouble, HeartHandshake, LifeBuoy, ClipboardList, PanelLeftClose, PanelLeftOpen, ChevronDown, ShoppingCart, PhoneCall, BadgeCheck, UsersRound, ListTodo, Clock3, Headset, ShieldCheck } from 'lucide-react';
 import { AppProvider, useApp } from './context/AppContext';
 import type { UserProfile } from './types';
 import { DEPTS } from './views/orgData';
@@ -58,6 +59,7 @@ const ORG_PAGES: Record<string, OrgPage> = {
   events: { label: 'Event Planning & Coordination', icon: CalendarDays, roles: ['owner', 'dept_head', 'sub_dept_head', 'staff'], render: t => <EventPlanning section={t} /> },
   users: { label: 'Users & Access', icon: Users, roles: ['owner', 'dept_head'], render: t => <UserManagementView initialTab={t === 'audit' ? 'audit' : 'users_all'} /> },
   reports: { label: 'Reports', icon: BarChart3, roles: ['owner', 'dept_head'], render: () => <ReportsView /> },
+  subdepartments: { label: 'Sub-departments', icon: Layers, roles: ['owner', 'dept_head'], render: () => <SubDepartmentsView /> },
   permissions: { label: 'Sub-department Permissions', icon: ShieldCheck, roles: ['owner', 'dept_head'], render: () => <SubDeptPermissionsView /> },
   issues: { label: 'Issues & Reports', icon: ClipboardList, roles: ['owner', 'dept_head'], render: () => <IssuesReportsPage /> },
   'networking-support': { label: 'Networking Support', icon: Wifi, roles: ['owner', 'dept_head'], render: () => <section className="mx-auto max-w-4xl space-y-3 p-6"><div className="rounded-xl border border-line bg-surface p-8"><Wifi className="mb-4 h-8 w-8 text-blue-400" /><h1 className="text-2xl font-bold text-ink">Networking Support</h1><p className="mt-2 text-mute">Coming soon</p></div></section> },
@@ -210,7 +212,7 @@ const Shell: React.FC<{ out: () => void }> = ({ out }) => {
   const isVolunteerManagementPage = key === 'accommodation' || key === 'sewadars' || key === 'tasks';
   // Going to a page opens the group that holds it and folds the others away.
   const activeGroup: Group | null = key === 'events' ? 'events' : isVolunteerManagementPage ? 'volunteer' : ['inventory', 'requests', 'purchase'].includes(key) ? 'stocks'
-    : isOperationsPage ? 'operations' : ['users', 'permissions', 'reports'].includes(key) ? 'admin' : null;
+    : isOperationsPage ? 'operations' : ['users', 'subdepartments', 'permissions', 'reports'].includes(key) ? 'admin' : null;
   useEffect(() => { setOpenGroup(activeGroup); }, [activeGroup]);
   // Mobile drawer: close after choosing a page, and on Escape.
   useEffect(() => { setOpen(false); }, [key, tab]);
@@ -276,9 +278,9 @@ const Shell: React.FC<{ out: () => void }> = ({ out }) => {
                   <SubItem href="#/sewadars/roster" label="Sewadar Master" Icon={Users} active={key === 'sewadars' && (tab === 'roster' || !tab)} />
                   <SubItem href="#/sewadars/permanent" label="IT Department Permanent Staff" Icon={BadgeCheck} active={key === 'sewadars' && tab === 'permanent'} />
                   <SubItem href="#/sewadars/calling" label="Calling" Icon={PhoneCall} active={key === 'sewadars' && tab === 'calling'} />
+                  <SubItem href="#/sewadars/attendance" label="Attendance" Icon={CalendarClock} active={key === 'sewadars' && tab === 'attendance'} />
                   <SubItem href="#/sewadars/duties" label="Duties & Shifts" Icon={Clock3} active={key === 'sewadars' && tab === 'duties'} />
                   <SubItem href="#/sewadars/teams" label="Teams" Icon={UsersRound} active={key === 'sewadars' && tab === 'teams'} />
-                  <SubItem href="#/sewadars/attendance" label="Attendance" Icon={CalendarClock} active={key === 'sewadars' && tab === 'attendance'} />
                 </>}
                 <Item id="tasks" label="Tasks" Icon={ListTodo} />
               </div></div>
@@ -317,9 +319,9 @@ const Shell: React.FC<{ out: () => void }> = ({ out }) => {
               {perms.can('sewadars:roster') && <SubItem href="#/sewadars/roster" label="Sewadar Master" Icon={Users} active={key === 'sewadars' && (tab === 'roster' || !tab)} />}
               {perms.can('sewadars:permanent') && <SubItem href="#/sewadars/permanent" label="IT Department Permanent Staff" Icon={BadgeCheck} active={key === 'sewadars' && tab === 'permanent'} />}
               {perms.can('sewadars:calling') && <SubItem href="#/sewadars/calling" label="Calling" Icon={PhoneCall} active={key === 'sewadars' && tab === 'calling'} />}
+              {perms.can('sewadars:attendance') && <SubItem href="#/sewadars/attendance" label="Attendance" Icon={CalendarClock} active={key === 'sewadars' && tab === 'attendance'} />}
               {perms.can('sewadars:duties') && <SubItem href="#/sewadars/duties" label="Duties & Shifts" Icon={Clock3} active={key === 'sewadars' && tab === 'duties'} />}
               {perms.can('sewadars:teams') && <SubItem href="#/sewadars/teams" label="Teams" Icon={UsersRound} active={key === 'sewadars' && tab === 'teams'} />}
-              {perms.can('sewadars:attendance') && <SubItem href="#/sewadars/attendance" label="Attendance" Icon={CalendarClock} active={key === 'sewadars' && tab === 'attendance'} />}
             </div>}
             {canOpenProcurement && <Item id="purchase" label="Procurement" Icon={ShoppingCart} />}
             <Label t="Shared" />
@@ -333,12 +335,12 @@ const Shell: React.FC<{ out: () => void }> = ({ out }) => {
             {perms.can('reports') && <Item id="reports" label="Reports" Icon={BarChart3} />}
           </>}
           {orgKeys.some(k => ['users','reports'].includes(k)) && <section className="mt-1" {...hoverProps('admin')}>
-            <button type="button" title="Administration" aria-label="Administration" aria-expanded={administrationOpen} onClick={() => setAdministrationOpen(value => !value)} className={head(['users','permissions','reports'].includes(key))}>
+            <button type="button" title="Administration" aria-label="Administration" aria-expanded={administrationOpen} onClick={() => setAdministrationOpen(value => !value)} className={head(['users','subdepartments','permissions','reports'].includes(key))}>
               <Users size={16} className="shrink-0" /><span className={`flex-1 truncate text-left ${collapsed ? 'md:hidden' : ''}`}>Administration</span><ChevronDown size={14} className={`shrink-0 transition-transform ${administrationOpen ? 'rotate-180' : ''} ${collapsed ? 'md:hidden' : ''}`} />
             </button>
             <div className={`overflow-hidden transition-[max-height,opacity] duration-200 ease-in-out ${administrationOpen ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'}`}>
               <div className={sub}>
-                {orgKeys.filter(k => ['users','permissions','reports'].includes(k)).map(k => <Item key={k} id={k} label={k === 'users' ? 'Manage User Access' : ORG_PAGES[k].label} Icon={ORG_PAGES[k].icon} />)}
+                {orgKeys.filter(k => ['users','subdepartments','permissions','reports'].includes(k)).map(k => <Item key={k} id={k} label={k === 'users' ? 'Manage User Access' : ORG_PAGES[k].label} Icon={ORG_PAGES[k].icon} />)}
               </div>
             </div>
           </section>}
