@@ -50,7 +50,7 @@ interface Ctx {
   me: { id: string; level: string; team: SubDepartmentId | null; departmentId: string | null; isOwner: boolean; isExec: boolean };
   orders: Record<string, OrderInfo>;               // by purchase_items.id
   // what this person can do
-  canReviewSub: (r: Req) => boolean; canReviewIt: (r: Req) => boolean; canOwnerReview: (r: Req) => boolean; canCancel: (r: Req) => boolean;
+  canReviewSub: (r: Req) => boolean; canReviewIt: (r: Req) => boolean; canAssignDelivery: (r: Req) => boolean; canOwnerReview: (r: Req) => boolean; canCancel: (r: Req) => boolean;
   canArrange: (kind: 'item' | 'radio') => boolean; canDecideArrangement: boolean; canOrder: boolean; canConfirm: (r: Req) => boolean;
   // queues (drive the badges)
   waitingForMe: Req[]; toArrange: Req[]; actionCount: number;
@@ -164,7 +164,10 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const me = useMemo(() => ({ id: uid || '', level, team, departmentId, isOwner, isExec }), [uid, level, team, departmentId, isOwner, isExec]);
 
   const canReviewSub = useCallback((r: Req) => r.status === 'pending_sub' && (isOwner || (level === 'sub_dept_head' && team === r.subDepartment)), [isOwner, level, team]);
-  const canReviewIt = useCallback((r: Req) => r.status === 'pending_it' && level === 'dept_head', [level]);
+  // A Department Head reviews only requests sent to their own department (old requests without one: any head).
+  const isMyDepartment = useCallback((r: Req) => level === 'dept_head' && (!r.departmentId || r.departmentId === departmentId), [level, departmentId]);
+  const canReviewIt = useCallback((r: Req) => r.status === 'pending_it' && isMyDepartment(r), [isMyDepartment]);
+  const canAssignDelivery = useCallback((r: Req) => r.status === 'approved' && isMyDepartment(r), [isMyDepartment]);
   const canOwnerReview = useCallback((r: Req) => isOwner && r.status === 'pending_owner', [isOwner]);
   const canCancel = useCallback((r: Req) => r.requesterId === uid && ['pending_sub', 'pending_it', 'pending_owner'].includes(r.status), [uid]);
   const canArrange = useCallback((kind: 'item' | 'radio') => isExec || (kind === 'item' ? team === 'inventory' : team === 'walkie'), [isExec, team]);
@@ -175,8 +178,8 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Requests that are waiting for THIS person's decision.
   const waitingForMe = useMemo(() => requests.filter(r =>
     (isOwner && r.status === 'pending_owner') ||
-    (level === 'dept_head' && r.status === 'pending_it') ||
-    (level === 'sub_dept_head' && r.status === 'pending_sub' && team === r.subDepartment)), [requests, isOwner, level, team, departmentId]);
+    (r.status === 'pending_it' && isMyDepartment(r)) ||
+    (level === 'sub_dept_head' && r.status === 'pending_sub' && team === r.subDepartment)), [requests, isOwner, level, team, isMyDepartment]);
   // Department Admin decides the source for every approved quantity. Purchase allocations
   // leave this queue and appear in the shared Procurement buy list instead.
   const toArrange = useMemo(() => canDecideArrangement ? requests.filter(r => r.status === 'approved' && r.items.some(i => (i.approved ?? 0) > 0 &&
@@ -228,9 +231,9 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   const value = useMemo<Ctx>(() => ({
-    requests, loading, loadError, ready, me, orders, catalogue, canReviewSub, canReviewIt, canOwnerReview, canCancel, canArrange, canDecideArrangement, canOrder, canConfirm,
+    requests, loading, loadError, ready, me, orders, catalogue, canReviewSub, canReviewIt, canAssignDelivery, canOwnerReview, canCancel, canArrange, canDecideArrangement, canOrder, canConfirm,
     waitingForMe, toArrange, actionCount, submit, subReview, itDecide, ownerReview, assignDelivery, cancel, planLine, createPO, deliver, returnPart, confirmReceipt, loadAvailability, refresh: load,
-  }), [requests, loading, loadError, ready, me, orders, catalogue, canReviewSub, canReviewIt, canOwnerReview, canCancel, canArrange, canDecideArrangement, canOrder, canConfirm, waitingForMe, toArrange, actionCount,
+  }), [requests, loading, loadError, ready, me, orders, catalogue, canReviewSub, canReviewIt, canAssignDelivery, canOwnerReview, canCancel, canArrange, canDecideArrangement, canOrder, canConfirm, waitingForMe, toArrange, actionCount,
     submit, subReview, itDecide, ownerReview, assignDelivery, cancel, planLine, createPO, deliver, returnPart, confirmReceipt, loadAvailability, load]);
   return <C.Provider value={value}>{children}</C.Provider>;
 };

@@ -14,7 +14,7 @@ const Info: React.FC<{ label: string; children: React.ReactNode }> = ({ label, c
 );
 
 export const RequestDetail: React.FC<{ id: string; onBack: () => void; onCopy: (c: { title: string; purpose: string; deliverTo: string; lines: NewLine[] }) => void }> = ({ id, onBack, onCopy }) => {
-  const { requests, ready, me, orders, canReviewIt, canOwnerReview, canCancel, canArrange, canOrder, cancel, loadAvailability } = useRequests();
+  const { requests, ready, me, orders, canReviewIt, canAssignDelivery, canOwnerReview, canCancel, canArrange, canOrder, cancel, loadAvailability } = useRequests();
   const r = requests.find(x => x.id === id);
   const [err, setErr] = useState('');
   const [savingAction, setSavingAction] = useState<'cancel' | null>(null);
@@ -86,7 +86,7 @@ export const RequestDetail: React.FC<{ id: string; onBack: () => void; onCopy: (
 
       {canOwnerReview(r) && <div className="print:hidden"><OwnerReviewPanel r={r} /></div>}
       {canReviewIt(r) && <div className="print:hidden"><ItReviewPanel r={r} /></div>}
-      {r.status === 'approved' && me.level === 'dept_head' && r.items.some(i => (i.approved ?? 0) > 0) && <div className="print:hidden"><DeliveryAssignmentPanel r={r} /></div>}
+      {canAssignDelivery(r) && r.items.some(i => (i.approved ?? 0) > 0) && <div className="print:hidden"><DeliveryAssignmentPanel r={r} /></div>}
       <Card title="Activity"><Timeline events={r.events} /></Card>
       {r.status === 'pending_it' && r.requesterId === me.id && <p className="text-xs text-mute print:hidden">The IT Department Head is reviewing this request. They can approve the plan or escalate it to the Super Admin.</p>}
       {r.status === 'pending_owner' && me.isOwner === false && r.requesterId === me.id && <p className="text-xs text-mute print:hidden">The Super Admin is reviewing this request for final approval.</p>}
