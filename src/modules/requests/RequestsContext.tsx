@@ -185,7 +185,15 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setOrders(out);
     }
     if (!cat.error)
-      setCatalogue((cat.data || []).map((c: any) => ({ id: c.id, name: c.name, unit: c.unit, category: c.category })));
+      setCatalogue(
+        (cat.data || []).map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          unit: c.unit,
+          category: c.category,
+          departmentId: c.department_id || null,
+        })),
+      );
     setLoading(false);
     setReady(true);
   }, [uid, walkieDepartments]);

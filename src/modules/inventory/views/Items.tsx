@@ -53,7 +53,9 @@ export const ItemsView: React.FC<{ a: Actions; stage: Stage; setStage: (s: Stage
   stage,
   setStage,
 }) => {
-  const { items, stats, canManage, loading, holdingsOf, locationLabel, categories } = useInventory();
+  const { items, stats, canManage, loading, holdingsOf, locationLabel, categories, ...inv } = useInventory();
+  // Super Admin looking at every department: show whose stock each row is.
+  const showDept = inv.showDepartments && inv.departmentFilter === 'all';
   const [cat, setCat] = useState('all');
   const [q, setQ] = useState('');
   const [size, setSize] = useState(100);
@@ -291,6 +293,7 @@ export const ItemsView: React.FC<{ a: Actions; stage: Stage; setStage: (s: Stage
             <tr>
               <th className={cx(th, 'w-10 text-right')}>#</th>
               {sortTh('name', 'Item')}
+              {showDept && <th className={th}>Department</th>}
               {sortTh('code', 'Code')}
               {sortTh('category', 'Category')}
               <th className={th}>Unit</th>
@@ -321,6 +324,11 @@ export const ItemsView: React.FC<{ a: Actions; stage: Stage; setStage: (s: Stage
                       {i.name}
                     </button>
                   </td>
+                  {showDept && (
+                    <td className={cx(td, 'whitespace-nowrap text-ink-soft')}>
+                      {inv.departmentName(i.departmentId) || '—'}
+                    </td>
+                  )}
                   <td className={cx(td, 'font-mono text-mute')}>{i.code || '—'}</td>
                   <td className={cx(td, 'text-ink-soft')}>{i.category}</td>
                   <td className={cx(td, 'text-mute')}>{i.unit}</td>

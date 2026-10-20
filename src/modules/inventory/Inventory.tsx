@@ -3,6 +3,7 @@ import { LockKeyhole, Package } from 'lucide-react';
 import { ConfirmModal } from '../accommodation/ui';
 import { ServiceInbox } from '../requests/ServiceInbox';
 import { useInventory } from './InventoryContext';
+import { useWalkie } from '../walkie';
 import type { Item, MoveType } from './types';
 import type { Stage } from './lib/stock';
 import { ALL_TABS, GROUPS, groupOf } from './nav';
@@ -34,6 +35,7 @@ const readTab = (): Tab => {
 // The CRM shell owns the global navigation; inventory uses grouped local sections.
 export const InventoryApp: React.FC = () => {
   const inv = useInventory();
+  const departments: { id: string; name: string }[] = (useWalkie() as any).departments || [];
   const { items, stats, canManage, loadError } = inv;
   const [tab, setTabRaw] = useState<Tab>(readTab);
   const [stage, setStage] = useState<Stage>('all');
@@ -83,9 +85,27 @@ export const InventoryApp: React.FC = () => {
               <p className="mt-0.5 truncate text-xs text-mute">Stock, movements and requests for the store.</p>
             </div>
           </div>
-          <span className="rounded-md border border-line bg-raised/50 px-2.5 py-1.5 text-xs text-mute">
-            <b className="tabular-nums text-ink">{items.length}</b> catalogue items
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Super Admin: each department keeps its own stock; pick one to view and add to, or see all. */}
+            {inv.showDepartments && (
+              <select
+                aria-label="Department"
+                value={inv.departmentFilter}
+                onChange={e => inv.setDepartmentFilter(e.target.value)}
+                className="h-8 max-w-[14rem] rounded-md border border-line bg-field px-2 text-xs font-medium text-ink outline-none focus:border-blue-500"
+              >
+                <option value="all">All departments</option>
+                {departments.map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <span className="rounded-md border border-line bg-raised/50 px-2.5 py-1.5 text-xs text-mute">
+              <b className="tabular-nums text-ink">{items.length}</b> catalogue items
+            </span>
+          </div>
         </div>
         <SlideNav className="flex gap-1 overflow-x-auto px-2 pb-2" aria-label="Inventory sections">
           {GROUPS.map(({ id, label, icon: Icon, tabs }) => {

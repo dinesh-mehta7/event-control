@@ -5,6 +5,7 @@ export { uid } from '../../lib/ids';
 export const mapVendor = (r: any): Vendor => ({
   id: r.id,
   name: r.name,
+  departmentId: r.department_id || null,
   vendorMode: r.vendor_mode || null,
   contact: r.contact_person || '',
   phone: r.phone || '',
@@ -34,6 +35,7 @@ export const mapItem = (r: any): POItem => ({
 export const mapPO = (r: any, items: POItem[]): PO => ({
   id: r.id,
   number: r.po_number || '',
+  departmentId: r.department_id || null,
   vendorId: r.vendor_id || null,
   vendorMode: r.vendor_mode || null,
   title: r.title,

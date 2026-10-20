@@ -29,6 +29,7 @@ import {
 
 export interface VendorInput {
   name: string;
+  departmentId: string; // '' = Shared by every department
   vendorMode: VendorMode | '';
   contact: string;
   phone: string;
@@ -81,7 +82,14 @@ export interface PStats {
 
 interface Ctx {
   vendors: Vendor[];
-  orders: PO[];
+  orders: PO[]; // in the chosen department (Super Admin) or the person's own
+  // Super Admin only: which department Procurement shows ('all' = everything).
+  showDepartments: boolean;
+  departmentFilter: string;
+  setDepartmentFilter: (departmentId: string) => void;
+  departmentName: (departmentId?: string | null) => string;
+  // Is a request / order of this department mine to buy for? (Super Admin: every department)
+  inMyDepartment: (departmentId?: string | null) => boolean;
   payRequests: PaymentRequest[];
   trackings: PurchaseTracking[];
   loading: boolean;
@@ -136,6 +144,15 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [orders, setOrders] = useState<PO[]>([]);
+  const isOwner = user?.level === 'owner';
+  const departments: { id: string; name: string; itServices?: boolean }[] = w.departments || [];
+  const itDepartment = departments.find(d => d.itServices)?.id || null;
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const departmentName = (id?: string | null) => departments.find(d => d.id === id)?.name || '';
+  // Requests made before departments existed belong to the IT department.
+  const inMyDepartment = (id?: string | null) => isOwner || (id || itDepartment) === user?.departmentId;
+  const ordersInView =
+    isOwner && departmentFilter !== 'all' ? orders.filter(o => o.departmentId === departmentFilter) : orders;
   const [payRequests, setPayRequests] = useState<PaymentRequest[]>([]);
   const [trackings, setTrackings] = useState<PurchaseTracking[]>([]);
   const [loading, setLoading] = useState(false);
@@ -271,6 +288,7 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // ---- vendors --------------------------------------------------------------
   const vbody = (v: VendorInput) => ({
     name: v.name.trim(),
+    department_id: v.departmentId || null,
     vendor_mode: v.vendorMode || null,
     contact_person: v.contact.trim(),
     phone: v.phone.trim(),
@@ -360,7 +378,7 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       toast('Choose at least one item from the buy list.', 'error');
       return null;
     }
-    const { data, error } = await supabase.rpc('purchase_create_po', { p_parts: partIds });
+    const { data, error } = await supabase.rpc('purchase_create_po_for_parts', { p_parts: partIds });
     if (error) {
       toast(friendlyError(error), 'error');
       return null;
@@ -643,7 +661,12 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const value: Ctx = {
     vendors,
-    orders,
+    orders: ordersInView,
+    showDepartments: isOwner,
+    departmentFilter,
+    setDepartmentFilter,
+    departmentName,
+    inMyDepartment,
     payRequests,
     trackings,
     loading,

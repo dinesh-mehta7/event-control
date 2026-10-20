@@ -8,15 +8,17 @@ import { D, Empty, StatusChip, day, money, panel } from './shared';
 // ---- the buy list: everything approved that the store team said must be bought -------------------------
 export const BuyListView: React.FC<{ editOrder: (id: string) => void }> = ({ editOrder }) => {
   const { requests } = useRequests();
-  const { orders, createOrder, canManage, vendorName } = usePurchase();
+  const { orders, createOrder, canManage, vendorName, inMyDepartment } = usePurchase();
+  // Each department buys for the requests made to it (the Super Admin sees every department's).
+  const myRequests = useMemo(() => requests.filter(r => inMyDepartment(r.departmentId)), [requests, inMyDepartment]);
   const lines = useMemo(
     () =>
-      requests.flatMap(r =>
+      myRequests.flatMap(r =>
         unlinkedPurchaseParts(r)
           .map(p => ({ part: p, req: r, item: r.items.find(i => i.id === p.itemId) }))
           .filter(x => !!x.item),
       ) as { part: any; req: any; item: any }[],
-    [requests],
+    [myRequests],
   );
   const seenParts = useRef(new Set<string>());
   const createOrderRef = useRef(createOrder);
@@ -40,7 +42,7 @@ export const BuyListView: React.FC<{ editOrder: (id: string) => void }> = ({ edi
   }, [lines, canManage]);
   const approvedRequests = useMemo(
     () =>
-      requests.filter(request => {
+      myRequests.filter(request => {
         if (
           request.status !== 'approved' ||
           !request.parts.some(part => part.source === 'purchase' && part.status === 'planned')
@@ -54,7 +56,7 @@ export const BuyListView: React.FC<{ editOrder: (id: string) => void }> = ({ edi
           (!tickets.length && unlinkedPurchaseParts(request).length > 0)
         );
       }),
-    [requests, orders],
+    [myRequests, orders],
   );
 
   return (

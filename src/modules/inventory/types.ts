@@ -11,6 +11,7 @@ export interface Item {
   inStock: number;
   issued: number;
   damaged: number;
+  departmentId?: string | null; // the department that holds this stock
 }
 export interface Holding {
   itemId: string;

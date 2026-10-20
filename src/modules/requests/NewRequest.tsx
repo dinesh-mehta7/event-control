@@ -47,10 +47,25 @@ export const NewRequest: React.FC<{
   const [err, setErr] = useState('');
 
   const set = (i: number, p: Partial<NewLine>) => setLines(ls => ls.map((l, k) => (k === i ? { ...l, ...p } : l)));
-  // Typing the exact name of a catalogue item links the line to it (and fills the unit). Anything else is a free-text item.
+  // Typing the exact name of an item in the requested department's catalogue links the line to it (and fills
+  // the unit). Anything else is a free-text item.
+  const findInCatalogue = (name: string, dept: string) =>
+    catalogue.find(
+      c => (!c.departmentId || c.departmentId === dept) && c.name.toLowerCase() === name.trim().toLowerCase(),
+    );
   const setName = (i: number, name: string) => {
-    const hit = catalogue.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+    const hit = findInCatalogue(name, departmentId);
     set(i, hit ? { name: hit.name, unit: hit.unit, inventoryItemId: hit.id } : { name, inventoryItemId: null });
+  };
+  // Another department: link the lines to that department's items instead.
+  const changeDepartment = (dept: string) => {
+    setDepartmentId(dept);
+    setLines(ls =>
+      ls.map(l => {
+        const hit = l.name.trim() ? findInCatalogue(l.name, dept) : undefined;
+        return hit ? { ...l, inventoryItemId: hit.id } : { ...l, inventoryItemId: null };
+      }),
+    );
   };
   const today = (() => {
     const date = new Date();
@@ -140,7 +155,7 @@ export const NewRequest: React.FC<{
   };
 
   const route =
-    'Every request goes to the IT Department Head first, regardless of the selected department. They set the budget and stock-versus-purchase arrangement, then approve it or escalate it to the Super Admin.';
+    "The request goes to the Department Head of the department you request from. They set the budget and decide what comes from that department's stock or is bought, then approve it or escalate it to the Super Admin.";
   const handleEnter = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Enter' || event.defaultPrevented || event.nativeEvent.isComposing) return;
     const target = event.target;
@@ -211,8 +226,8 @@ export const NewRequest: React.FC<{
                 placeholder="Place or counter"
               />
             </Field>
-            <Field label="Department">
-              <select className={inputCls} value={departmentId} onChange={e => setDepartmentId(e.target.value)}>
+            <Field label="Request from department">
+              <select className={inputCls} value={departmentId} onChange={e => changeDepartment(e.target.value)}>
                 <option value="">Choose a department</option>
                 {departments.map(d => (
                   <option key={d.id} value={d.id}>

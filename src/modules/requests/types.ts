@@ -120,6 +120,7 @@ export interface CatalogueItem {
   name: string;
   unit: string;
   category: string;
+  departmentId: string | null; // whose stock it is
 }
 export interface NewRequest {
   title: string;

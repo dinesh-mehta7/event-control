@@ -30,13 +30,15 @@ const LineArranger: React.FC<{ r: Req; item: ReqItem; avail: Record<string, Avai
   const planned = r.parts.filter(p => p.itemId === item.id && p.status === 'planned');
   const radio = item.kind === 'radio';
 
-  // A request can only be fulfilled from its matching catalogue product.
+  // A request can only be fulfilled from its matching catalogue product, in the requested department's stock.
   const matchingItems = useMemo(
     () =>
-      inv.items.filter(i =>
-        item.inventoryItemId ? i.id === item.inventoryItemId : productKey(i.name) === productKey(item.name),
+      inv.allItems.filter(
+        i =>
+          (!r.departmentId || i.departmentId === r.departmentId) &&
+          (item.inventoryItemId ? i.id === item.inventoryItemId : productKey(i.name) === productKey(item.name)),
       ),
-    [inv.items, item.inventoryItemId, item.name],
+    [inv.allItems, r.departmentId, item.inventoryItemId, item.name],
   );
   const guess = useMemo(() => {
     if (radio) return null;

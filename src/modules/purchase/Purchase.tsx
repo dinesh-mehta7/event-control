@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Check, ClipboardList, Search, ShoppingCart, Truck, Wallet } from 'lucide-react';
 import { cx } from '../accommodation/ui';
 import { usePurchase } from './PurchaseContext';
+import { useApp as useWalkie } from '../walkie/context/AppContext';
 import { PAYABLE, poDue, poTotal } from './types';
 import type { POStatus } from './types';
 import { money, panel } from './views/shared';
@@ -90,7 +91,8 @@ const PURCHASE_TABS: { id: DeskView; label: string; icon: React.ComponentType<{ 
 
 // Standalone Procurement workspace for approved request lines.
 export const PurchaseApp: React.FC<{ initialTab?: DeskView }> = ({ initialTab = 'orders' }) => {
-  const { orders } = usePurchase();
+  const { orders, showDepartments, departmentFilter, setDepartmentFilter } = usePurchase();
+  const departments: { id: string; name: string }[] = (useWalkie() as any).departments || [];
   const navRef = useRef<HTMLElement>(null);
   const tabRefs = useRef<Partial<Record<DeskView, HTMLButtonElement | null>>>({});
   const [indicator, setIndicator] = useState({ left: 0, width: 0 });
@@ -138,6 +140,22 @@ export const PurchaseApp: React.FC<{ initialTab?: DeskView }> = ({ initialTab = 
           <h2 className="text-base font-semibold text-ink">Procurement</h2>
           <p className="text-xs text-mute">Order, receive, and pay for approved department requests.</p>
         </div>
+        {/* Super Admin: each department buys for itself; pick one or see all. */}
+        {showDepartments && (
+          <select
+            aria-label="Department"
+            value={departmentFilter}
+            onChange={e => setDepartmentFilter(e.target.value)}
+            className="h-8 max-w-[14rem] rounded-md border border-line bg-field px-2 text-xs font-medium text-ink outline-none focus:border-blue-500"
+          >
+            <option value="all">All departments</option>
+            {departments.map(d => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        )}
       </header>
       <section aria-label="Purchase totals" className={cx(panel, 'overflow-x-auto')}>
         <table className="w-full min-w-[520px] text-xs">

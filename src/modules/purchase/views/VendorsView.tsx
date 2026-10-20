@@ -1,3 +1,4 @@
+import { useApp as useWalkie } from '../../walkie/context/AppContext';
 import React, { useState } from 'react';
 import { Edit3, Plus, Trash2 } from 'lucide-react';
 import { Modal, ConfirmModal, btnGhost, cx, inputCls, labelCls } from '../../accommodation/ui';
@@ -11,7 +12,7 @@ import { digitsOnly, phoneInputProps } from '../../../lib/phone';
 import { D, Empty, money, panel, primary, vendorModeLabel } from './shared';
 
 export const VendorsView: React.FC = () => {
-  const { vendors, orders, canManage, addVendor, updateVendor, deleteVendor } = usePurchase();
+  const { vendors, orders, canManage, addVendor, updateVendor, deleteVendor, departmentName } = usePurchase();
   const { requests } = useRequests();
   const [form, setForm] = useState<Vendor | 'new' | null>(null);
   const [del, setDel] = useState<Vendor | null>(null);
@@ -70,7 +71,12 @@ export const VendorsView: React.FC = () => {
                 );
                 return (
                   <tr key={v.id} className="hover:bg-raised/30">
-                    <td className="px-3 py-3 font-semibold text-ink">{v.name}</td>
+                    <td className="px-3 py-3 font-semibold text-ink">
+                      {v.name}
+                      <span className="block text-[10.5px] font-normal text-faint">
+                        {v.departmentId ? `Only ${departmentName(v.departmentId) || 'one department'}` : 'Shared'}
+                      </span>
+                    </td>
                     <td className="px-3 py-3 whitespace-nowrap">{vendorModeLabel(v.vendorMode)}</td>
                     <td className="px-3 py-3">{v.contact || '—'}</td>
                     <td className="px-3 py-3 whitespace-nowrap">{v.phone || '—'}</td>
@@ -145,8 +151,13 @@ const VendorForm: React.FC<{
   onClose: () => void;
   onSave: (v: VendorInput) => Promise<boolean>;
 }> = ({ initial, onClose, onSave }) => {
+  const w: any = useWalkie();
+  const departments: { id: string; name: string }[] = w.departments || [];
+  const isOwner = w.currentUser?.level === 'owner';
+  const myDepartment: string = w.currentUser?.departmentId || '';
   const [f, setF] = useState<VendorInput>({
     name: initial?.name || '',
+    departmentId: initial?.departmentId || '',
     vendorMode: initial?.vendorMode || '',
     contact: initial?.contact || '',
     phone: initial?.phone || '',
@@ -161,7 +172,8 @@ const VendorForm: React.FC<{
     notes: initial?.notes || '',
   });
   const [busy, setBusy] = useState(false);
-  const setText = (k: keyof Omit<VendorInput, 'vendorMode'>, v: string) => setF(p => ({ ...p, [k]: v }));
+  const setText = (k: keyof Omit<VendorInput, 'vendorMode' | 'departmentId'>, v: string) =>
+    setF(p => ({ ...p, [k]: v }));
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -172,7 +184,7 @@ const VendorForm: React.FC<{
   const field = (
     id: string,
     label: string,
-    k: keyof Omit<VendorInput, 'vendorMode' | 'name'>,
+    k: keyof Omit<VendorInput, 'vendorMode' | 'name' | 'departmentId'>,
     type = 'text',
     required = false,
   ) => (
@@ -227,6 +239,26 @@ const VendorForm: React.FC<{
             </select>
             <p className="mt-1 text-[10.5px] text-mute">Amazon / Flipkart or local supplier</p>
           </div>
+        </div>
+        <div>
+          <label className={labelCls(D)} htmlFor="vn-dept">
+            Visible to
+          </label>
+          <select
+            id="vn-dept"
+            value={f.departmentId}
+            onChange={e => setF(p => ({ ...p, departmentId: e.target.value }))}
+            className={inputCls(D)}
+          >
+            <option value="">Shared · every department</option>
+            {departments
+              .filter(d => isOwner || d.id === myDepartment || d.id === f.departmentId)
+              .map(d => (
+                <option key={d.id} value={d.id}>
+                  Only {d.name}
+                </option>
+              ))}
+          </select>
         </div>
         <div className="grid grid-cols-2 gap-3">
           {field('vn-c', 'Contact person', 'contact', 'text', f.vendorMode === 'offline')}

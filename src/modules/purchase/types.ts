@@ -4,6 +4,7 @@ export type VendorMode = 'online' | 'offline';
 export interface Vendor {
   id: string;
   name: string;
+  departmentId: string | null; // null = Shared by every department
   vendorMode: VendorMode | null;
   contact: string;
   phone: string;
@@ -46,6 +47,7 @@ export interface PurchaseTracking {
 export interface PO {
   id: string;
   number: string;
+  departmentId: string | null;
   vendorId: string | null;
   vendorMode: VendorMode | null;
   title: string;

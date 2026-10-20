@@ -14,6 +14,7 @@ export const mapItem = (r: any): Item => ({
   inStock: r.in_stock || 0,
   issued: r.issued || 0,
   damaged: r.damaged || 0,
+  departmentId: r.department_id || null,
 });
 
 export const mapHolding = (r: any): Holding => ({ itemId: r.item_id, location: r.location, qty: r.qty });

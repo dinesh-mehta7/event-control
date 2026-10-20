@@ -24,7 +24,8 @@ const OrdersView: React.FC<{
   setFilter: (f: POStatus | 'all') => void;
   open: (id: string) => void;
 }> = ({ filter, setFilter, open }) => {
-  const { orders, vendorName, canManage, loading } = usePurchase();
+  const { orders, vendorName, canManage, loading, showDepartments, departmentFilter, departmentName } = usePurchase();
+  const showDept = showDepartments && departmentFilter === 'all';
   const [q, setQ] = useState('');
   const count = (k: POStatus | 'all') => (k === 'all' ? orders.length : orders.filter(o => o.status === k).length);
   const rows = useMemo(() => {
@@ -92,6 +93,9 @@ const OrdersView: React.FC<{
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-xs text-blue-400 font-bold">{o.number}</span>
+                      {showDept && o.departmentId && (
+                        <span className="block text-[10.5px] text-faint">{departmentName(o.departmentId)}</span>
+                      )}
                       <span className="font-semibold text-sm">{o.title}</span>
                       <StatusChip s={o.status} />
                       {o.vendorMode && (

@@ -43,8 +43,10 @@ export const ItReviewPanel: React.FC<{ r: Req }> = ({ r }) => {
   const lineTotal = (item: ReqItem) => qtyFor(item) * (Number(budgets[item.id]) || 0);
   const total = r.items.reduce((sum, item) => sum + lineTotal(item), 0) + (Number(miscBudget) || 0);
   const matchingItems = (item: ReqItem) =>
-    inventory.items.filter(it =>
-      item.inventoryItemId ? it.id === item.inventoryItemId : productKey(it.name) === productKey(item.name),
+    inventory.allItems.filter(
+      it =>
+        (!r.departmentId || it.departmentId === r.departmentId) &&
+        (item.inventoryItemId ? it.id === item.inventoryItemId : productKey(it.name) === productKey(item.name)),
     );
   const go = async (action: 'approve' | 'escalate' | 'reject') => {
     if (action === 'reject' && !note.trim()) return setErr('Say why you are rejecting it.');

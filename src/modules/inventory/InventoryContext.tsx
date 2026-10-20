@@ -8,6 +8,7 @@ import { collator, friendlyError, mapHolding, mapItem, mapMove, sortItems, uid }
 export interface Loc {
   id: string;
   name: string;
+  departmentId?: string | null;
 }
 
 export interface ItemInput {
@@ -40,7 +41,13 @@ export interface Stats {
 }
 
 interface Ctx {
-  items: Item[];
+  items: Item[]; // in the chosen department (Super Admin) or the person's own department
+  allItems: Item[]; // every item this person may see (request screens pick the request's department)
+  // Super Admin only: which department Inventory shows and adds to ('all' = everything, adding needs a choice).
+  showDepartments: boolean;
+  departmentFilter: string;
+  setDepartmentFilter: (departmentId: string) => void;
+  departmentName: (departmentId?: string | null) => string;
   holdings: Holding[];
   loading: boolean;
   loadError: string;
@@ -89,10 +96,26 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     ready && (user.level === 'owner' || user.level === 'dept_head' || user.subDepartment === 'inventory');
 
   const [items, setItems] = useState<Item[]>([]);
+  const isOwner = user?.level === 'owner';
+  const departments: { id: string; name: string }[] = w.departments || [];
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const departmentName = (id?: string | null) => departments.find(d => d.id === id)?.name || '';
+  const inView = <T extends { departmentId?: string | null }>(list: T[]) =>
+    isOwner && departmentFilter !== 'all' ? list.filter(x => x.departmentId === departmentFilter) : list;
+  // New records: a department member's go to their department (the database does that); the Super Admin's to
+  // the department chosen at the top of Inventory.
+  const target = (): Record<string, string> | null => {
+    if (!isOwner) return {};
+    if (departmentFilter === 'all') {
+      w.addToast?.('Choose a department at the top of Inventory first, then add.', 'error');
+      return null;
+    }
+    return { department_id: departmentFilter };
+  };
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
-  const [catRows, setCatRows] = useState<{ id: string; name: string }[]>([]);
+  const [catRows, setCatRows] = useState<{ id: string; name: string; departmentId?: string | null }[]>([]);
   const [locations, setLocations] = useState<Loc[]>([]);
   const [extrasReady, setExtrasReady] = useState(true); // false until migration_v12 has been run
   const itemsRef = useRef(items);
@@ -149,9 +172,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (c.error || d.error) setExtrasReady(false);
     else {
       setExtrasReady(true);
-      setCatRows(c.data.map((r: any) => ({ id: r.id, name: r.name })));
+      setCatRows(c.data.map((r: any) => ({ id: r.id, name: r.name, departmentId: r.department_id || null })));
       setLocations(
-        d.data.map((r: any) => ({ id: r.id, name: r.name })).sort((a: Loc, b: Loc) => collator.compare(a.name, b.name)),
+        d.data
+          .map((r: any) => ({ id: r.id, name: r.name, departmentId: r.department_id || null }))
+          .sort((a: Loc, b: Loc) => collator.compare(a.name, b.name)),
       );
     }
     setLoading(false);
@@ -245,9 +270,11 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       toast('Item name is required.', 'error');
       return false;
     }
+    const dept = target();
+    if (!dept) return false;
     const { data, error } = await supabase
       .from('inventory_items')
-      .insert({ id: uid('item'), organization_id: orgId, ...body(i) })
+      .insert({ id: uid('item'), organization_id: orgId, ...body(i), ...dept })
       .select()
       .single();
     if (error) {
@@ -279,14 +306,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       deny();
       return { added: 0, skipped: rows.length };
     }
-    const taken = new Set(itemsRef.current.map(x => x.name.trim().toLowerCase()));
+    const dept = target();
+    if (!dept) return { added: 0, skipped: rows.length };
+    const taken = new Set(inView(itemsRef.current).map(x => x.name.trim().toLowerCase()));
     let added = 0;
     for (const r of rows) {
       const key = r.name.trim().toLowerCase();
       if (!key || taken.has(key)) continue;
       const { data, error } = await supabase
         .from('inventory_items')
-        .insert({ id: uid('item'), organization_id: orgId, ...body(r) })
+        .insert({ id: uid('item'), organization_id: orgId, ...body(r), ...dept })
         .select()
         .single();
       if (error) {
@@ -397,14 +426,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // ---- categories -----------------------------------------------------------
   const categories = useMemo(() => {
     const names = [
-      ...catRows.map(c => c.name),
-      ...items.map(i => i.category),
+      ...inView(catRows).map(c => c.name),
+      ...inView(items).map(i => i.category),
       ...(extrasReady ? [] : CATEGORIES),
     ].filter(Boolean);
     return Array.from(new Map(names.map(n => [n.toLowerCase(), n] as [string, string])).values()).sort(
       collator.compare,
     );
-  }, [catRows, items, extrasReady]);
+  }, [catRows, items, extrasReady, departmentFilter]); // eslint-disable-line
   const needMigration = () => {
     toast('Run supabase/migration_v12 and migration_v13 (inventory) in the Supabase SQL Editor, then reload.', 'error');
     return false;
@@ -424,16 +453,18 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       toast('That category already exists.', 'error');
       return false;
     }
+    const dept = target();
+    if (!dept) return false;
     const { data, error } = await supabase
       .from('inventory_categories')
-      .insert({ id: uid('cat'), organization_id: orgId, name: n })
+      .insert({ id: uid('cat'), organization_id: orgId, name: n, ...dept })
       .select()
       .single();
     if (error) {
       toast(friendlyError(error), 'error');
       return false;
     }
-    setCatRows(p => [...p, { id: data.id, name: data.name }]);
+    setCatRows(p => [...p, { id: data.id, name: data.name, departmentId: data.department_id || null }]);
     toast(`${n} added.`);
     return true;
   };
@@ -454,7 +485,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const row = catRows.find(c => c.name === oldName);
       const r = row
         ? await supabase.from('inventory_categories').update({ name: n }).eq('id', row.id)
-        : await supabase.from('inventory_categories').insert({ id: uid('cat'), organization_id: orgId, name: n });
+        : await supabase
+            .from('inventory_categories')
+            .insert({ id: uid('cat'), organization_id: orgId, name: n, ...(target() || {}) });
       if (r.error) {
         toast(friendlyError(r.error), 'error');
         return false;
@@ -520,14 +553,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
     const { data, error } = await supabase
       .from('inventory_locations')
-      .insert({ id: uid('loc'), organization_id: orgId, name: n })
+      .insert({ id: uid('loc'), organization_id: orgId, name: n, ...(target() || {}) })
       .select()
       .single();
     if (error) {
       toast(friendlyError(error), 'error');
       return false;
     }
-    setLocations(p => [...p, { id: data.id, name: data.name }].sort(byName));
+    setLocations(p => [...p, { id: data.id, name: data.name, departmentId: data.department_id || null }].sort(byName));
     log('Inventory Location Added', `${user.name} added location ${n}`, 'success');
     toast(`${n} added.`);
     return true;
@@ -552,14 +585,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (hit) return hit.id;
     const { data, error } = await supabase
       .from('inventory_locations')
-      .insert({ id: uid('loc'), organization_id: orgId, name: n })
+      .insert({ id: uid('loc'), organization_id: orgId, name: n, ...(target() || {}) })
       .select()
       .single();
     if (error) {
       toast(friendlyError(error), 'error');
       return null;
     }
-    setLocations(p => [...p, { id: data.id, name: data.name }].sort(byName));
+    setLocations(p => [...p, { id: data.id, name: data.name, departmentId: data.department_id || null }].sort(byName));
     return data.id as string;
   };
 
@@ -604,8 +637,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const holdingsOf = useCallback((id: string) => holdings.filter(h => h.itemId === id && h.qty > 0), [holdings]);
 
   const stats = useMemo<Stats>(() => {
-    const s: Stats = { total: items.length, low: 0, out: 0, withIssued: 0, withDamaged: 0, needRestock: 0 };
-    for (const x of items) {
+    const shown = inView(items);
+    const s: Stats = { total: shown.length, low: 0, out: 0, withIssued: 0, withDamaged: 0, needRestock: 0 };
+    for (const x of shown) {
       if (x.inStock === 0) s.out++;
       else if (x.minLevel > 0 && x.inStock <= x.minLevel) s.low++;
       if (x.issued > 0) s.withIssued++;
@@ -613,10 +647,15 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
     s.needRestock = s.low + s.out;
     return s;
-  }, [items]);
+  }, [items, departmentFilter]); // eslint-disable-line
 
   const value: Ctx = {
-    items,
+    items: inView(items),
+    allItems: items,
+    showDepartments: isOwner,
+    departmentFilter,
+    setDepartmentFilter,
+    departmentName,
     holdings,
     loading,
     loadError,
@@ -632,7 +671,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     fetchMovements,
     fetchRecent,
     categories,
-    locations,
+    locations: inView(locations),
     extrasReady,
     locationLabel,
     addCategory,
