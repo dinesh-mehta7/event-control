@@ -39,6 +39,7 @@ import { OtherDept } from '../views/Pages';
 import { CCTVControlRoomApp } from '../components/apps/CCTVControlRoomApp';
 import { InventoryApp } from '../modules/inventory';
 import { Accommodation, LiveMealChip } from '../modules/accommodation';
+import { AddingToDepartment } from './AddingToDepartment';
 import { ManpowerApp } from '../modules/manpower';
 import { AttendancePage } from '../modules/manpower/AttendancePage';
 import { useRequests } from '../modules/requests';
@@ -713,6 +714,7 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
             </div>
           </div>
           <div className="flex min-w-0 items-center gap-1 sm:gap-1.5">
+            <AddingToDepartment dark={isDark} />
             {eventScope.events.length > 0 && (
               <label className="flex min-w-0 items-center gap-1.5 rounded-full border border-line bg-raised/60 px-2 py-1.5 text-[11.5px] text-mute sm:gap-2 sm:px-3 sm:text-xs">
                 <span className="hidden whitespace-nowrap sm:inline">Working on</span>

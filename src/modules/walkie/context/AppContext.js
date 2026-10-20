@@ -229,6 +229,8 @@ export function AppProvider({ children }) {
             level: data.level || (data.role === 'Admin' ? 'owner' : 'other'),
             subDepartment: data.sub_department || null,
             departmentId: data.department_id || null,
+            // Super Admin: the department new sewadars, rooms, tasks, events… go to ("Adding to" in the top bar).
+            workingDepartmentId: data.working_department_id || null,
           };
         }
       } catch (e) {
@@ -404,6 +406,7 @@ export function AppProvider({ children }) {
                   level: row.level || prev.level,
                   subDepartment: row.sub_department || null,
                   departmentId: row.department_id || null,
+                  workingDepartmentId: row.working_department_id || null,
                 }
               : prev,
           );

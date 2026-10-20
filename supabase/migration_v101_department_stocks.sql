@@ -13,6 +13,7 @@
 --   person's own department. A Super Admin (no department) must say which department.
 -- Access: one extra RESTRICTIVE policy per table (ANDed with the existing ones).
 -- Existing data goes to the IT department. Apply after migration_v100_department_sub_departments.sql.
+-- Safe to re-run (a failed earlier run of this file can simply be run again).
 -- ============================================================================
 
 -- ── 1. Columns + backfill ───────────────────────────────────────────────────
@@ -25,14 +26,20 @@ begin
     execute format('alter table public.%I add column if not exists department_id text references public.departments(id) on delete restrict', t);
     execute format('create index if not exists %I on public.%I (department_id)', t || '_department_idx', t);
     if t <> 'purchase_vendors' then  -- vendors stay Shared unless someone assigns them
+      -- One-time fill of existing rows: switch the tables' own guard triggers off for it (e.g. purchase_items_guard
+      -- refuses any change to a placed order), then back on.
+      execute format('alter table public.%I disable trigger user', t);
       execute format('update public.%I x set department_id = public._it_department(x.organization_id) where x.department_id is null', t);
+      execute format('alter table public.%I enable trigger user', t);
     end if;
   end loop;
 end $$;
 
 -- Request fulfilments belong to the request's department when it has one.
+alter table public.request_fulfilments disable trigger user;
 update public.request_fulfilments f set department_id = r.department_id
 from public.requests r where r.id = f.request_id and r.department_id is not null and f.department_id is distinct from r.department_id;
+alter table public.request_fulfilments enable trigger user;
 
 -- Not null where every row could be filled (organizations without an IT department keep nulls and get a notice).
 do $$
