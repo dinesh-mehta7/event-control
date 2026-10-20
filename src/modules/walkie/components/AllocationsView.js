@@ -12,7 +12,7 @@ import {
   Search,
   PackageCheck,
   Users,
-  Building2
+  Building2,
 } from 'lucide-react';
 
 export default function AllocationsView() {
@@ -27,7 +27,7 @@ export default function AllocationsView() {
     transferWalkie,
     settings,
     currentUser,
-    addToast
+    addToast,
   } = useApp();
 
   const isDark = settings.theme === 'dark';
@@ -70,22 +70,20 @@ export default function AllocationsView() {
   const compareByName = (a, b) => collator.compare(a.label || '', b.label || '');
   const sortedAvailableWalkies = useMemo(() => [...availableWalkies].sort(compareByName), [availableWalkies, collator]);
 
-  const availableModels = useMemo(
-    () => [...new Set(availableWalkies.map(w => w.model))].sort(),
-    [availableWalkies]
-  );
+  const availableModels = useMemo(() => [...new Set(availableWalkies.map(w => w.model))].sort(), [availableWalkies]);
 
   const matchingForBulk = useMemo(
     () => sortedAvailableWalkies.filter(w => !bulkModel || w.model === bulkModel),
-    [sortedAvailableWalkies, bulkModel]
+    [sortedAvailableWalkies, bulkModel],
   );
 
   const filteredPickList = useMemo(() => {
     const term = pickSearch.toLowerCase();
-    return sortedAvailableWalkies.filter(w =>
-      w.id.toLowerCase().includes(term) ||
-      w.label.toLowerCase().includes(term) ||
-      w.model.toLowerCase().includes(term)
+    return sortedAvailableWalkies.filter(
+      w =>
+        w.id.toLowerCase().includes(term) ||
+        w.label.toLowerCase().includes(term) ||
+        w.model.toLowerCase().includes(term),
     );
   }, [sortedAvailableWalkies, pickSearch]);
 
@@ -104,10 +102,9 @@ export default function AllocationsView() {
   // The allocation batch the selected radio currently belongs to — this is
   // where transferred chargers / earphones are taken from.
   const transferSourceAlloc = useMemo(
-    () => (transferWalkieId
-      ? allocations.find(a => a.status === 'Active' && a.walkieIds.includes(transferWalkieId))
-      : null),
-    [allocations, transferWalkieId]
+    () =>
+      transferWalkieId ? allocations.find(a => a.status === 'Active' && a.walkieIds.includes(transferWalkieId)) : null,
+    [allocations, transferWalkieId],
   );
   const heldChargers = transferSourceAlloc?.chargerCount || 0;
   const heldEarphones = transferSourceAlloc?.earphoneCount || 0;
@@ -115,10 +112,12 @@ export default function AllocationsView() {
   const leftoverChargers = Math.max(0, heldChargers - (Number(transferChargers) || 0));
   const leftoverEarphones = Math.max(0, heldEarphones - (Number(transferEarphones) || 0));
   const transferAccessoriesValid =
-    (Number(transferChargers) || 0) >= 0 && (Number(transferChargers) || 0) <= heldChargers &&
-    (Number(transferEarphones) || 0) >= 0 && (Number(transferEarphones) || 0) <= heldEarphones;
+    (Number(transferChargers) || 0) >= 0 &&
+    (Number(transferChargers) || 0) <= heldChargers &&
+    (Number(transferEarphones) || 0) >= 0 &&
+    (Number(transferEarphones) || 0) <= heldEarphones;
 
-  const selectTransferWalkie = (id) => {
+  const selectTransferWalkie = id => {
     setTransferWalkieId(id);
     setTransferChargers(0);
     setTransferEarphones(0);
@@ -136,7 +135,7 @@ export default function AllocationsView() {
     setPickSearch('');
   };
 
-  const handleAllocationSubmit = async (e) => {
+  const handleAllocationSubmit = async e => {
     e.preventDefault();
     if (isClient) {
       addToast('Access Denied: Clients cannot allocate radios.', 'error');
@@ -145,9 +144,28 @@ export default function AllocationsView() {
 
     let record;
     if (allocMode === 'count') {
-      record = await allocateByCount(selectedDept, Number(bulkCount), allocatedBy, remarks, holderName, holderContact, bulkModel, chargers, earphones);
+      record = await allocateByCount(
+        selectedDept,
+        Number(bulkCount),
+        allocatedBy,
+        remarks,
+        holderName,
+        holderContact,
+        bulkModel,
+        chargers,
+        earphones,
+      );
     } else {
-      record = await allocateWalkies(selectedDept, selectedWalkies, allocatedBy, remarks, holderName, holderContact, chargers, earphones);
+      record = await allocateWalkies(
+        selectedDept,
+        selectedWalkies,
+        allocatedBy,
+        remarks,
+        holderName,
+        holderContact,
+        chargers,
+        earphones,
+      );
     }
 
     if (record) {
@@ -157,7 +175,7 @@ export default function AllocationsView() {
     }
   };
 
-  const handleTransferSubmit = async (e) => {
+  const handleTransferSubmit = async e => {
     e.preventDefault();
     if (isClient) {
       addToast('Access Denied: Clients cannot transfer radios.', 'error');
@@ -168,7 +186,7 @@ export default function AllocationsView() {
       transferTargetDept,
       transferRemarks,
       Number(transferChargers) || 0,
-      Number(transferEarphones) || 0
+      Number(transferEarphones) || 0,
     );
     if (success) {
       setTransferWalkieId('');
@@ -179,15 +197,15 @@ export default function AllocationsView() {
     }
   };
 
-  const handleWalkieSelect = (id) => {
-    setSelectedWalkies(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  const handleWalkieSelect = id => {
+    setSelectedWalkies(prev => (prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]));
   };
 
-  const getWalkieDisplayName = (walkie) => {
+  const getWalkieDisplayName = walkie => {
     return walkie?.label?.trim() || walkie?.id?.trim() || 'Untitled walkie';
   };
 
-  const getWalkieDetailLine = (walkie) => {
+  const getWalkieDetailLine = walkie => {
     return walkie?.model?.trim() || '';
   };
 
@@ -211,50 +229,61 @@ export default function AllocationsView() {
   const inputCls = `w-full p-2.5 rounded-xl border outline-none text-sm ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`;
   const labelCls = 'block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5';
 
-  const canSubmitAllocation = allocMode === 'count'
-    ? selectedDept && Number(bulkCount) > 0 && Number(bulkCount) <= matchingForBulk.length
-    : selectedDept && selectedWalkies.length > 0;
+  const canSubmitAllocation =
+    allocMode === 'count'
+      ? selectedDept && Number(bulkCount) > 0 && Number(bulkCount) <= matchingForBulk.length
+      : selectedDept && selectedWalkies.length > 0;
 
   return (
     <div className="space-y-8 relative">
-
       {/* Read-Only Client Overlay Lock */}
       {isClient && (
         <div className="absolute inset-0 bg-slate-100/50 dark:bg-slate-900/60 backdrop-blur-[1px] rounded-xl z-30 flex flex-col items-center justify-center p-6 text-center">
           <Lock className="w-12 h-12 text-blue-500 mb-2 animate-bounce" />
           <h4 className="font-bold text-lg">Allocations Panel Locked</h4>
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mt-1">
-            Your current Client account is authorized for read-only tracking. Only Administrators and Operators can dispatch assets.
+            Your current Client account is authorized for read-only tracking. Only Administrators and Operators can
+            dispatch assets.
           </p>
         </div>
       )}
 
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Allocate & Dispatch Radios</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Assign walkie talkies to a department individually or in bulk by quantity, or transfer active units.</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Assign walkie talkies to a department individually or in bulk by quantity, or transfer active units.
+        </p>
       </div>
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+        <div
+          className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}
+        >
           <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
             <PackageCheck className="w-3.5 h-3.5 text-emerald-500" /> Available
           </div>
           <p className="text-2xl font-bold mt-1">{availableWalkies.length}</p>
         </div>
-        <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+        <div
+          className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}
+        >
           <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
             <Radio className="w-3.5 h-3.5 text-blue-500" /> Allocated
           </div>
           <p className="text-2xl font-bold mt-1">{allocatedWalkies.length}</p>
         </div>
-        <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+        <div
+          className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}
+        >
           <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
             <Building2 className="w-3.5 h-3.5 text-blue-500" /> Departments
           </div>
           <p className="text-2xl font-bold mt-1">{departments.length}</p>
         </div>
-        <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+        <div
+          className={`p-3.5 rounded-xl border ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}
+        >
           <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
             <Users className="w-3.5 h-3.5 text-amber-500" /> Currently Held
           </div>
@@ -263,10 +292,11 @@ export default function AllocationsView() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-
         {/* New Allocation Panel */}
-        <div className={`p-6 rounded-xl border flex flex-col justify-between
-          ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+        <div
+          className={`p-6 rounded-xl border flex flex-col justify-between
+          ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}
+        >
           <div>
             <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-600">
               <Send className="w-5 h-5" />
@@ -302,12 +332,15 @@ export default function AllocationsView() {
                   required
                   disabled={isClient}
                   value={selectedDept}
-                  onChange={(e) => setSelectedDept(e.target.value)}
+                  onChange={e => setSelectedDept(e.target.value)}
                   className={`${inputCls} ${isDark ? 'text-slate-100' : ''}`}
                 >
                   <option value="">-- Select Department --</option>
                   {departments.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}{d.channelNumber ? ` — Channel ${d.channelNumber}` : ''}</option>
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                      {d.channelNumber ? ` — Channel ${d.channelNumber}` : ''}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -315,7 +348,8 @@ export default function AllocationsView() {
               {selectedDept && (
                 <div className="p-3 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-semibold flex items-center gap-2">
                   <Radio className="w-4 h-4" />
-                  Selected radios will be set to Channel {departments.find(d => d.id === selectedDept)?.channelNumber || 'N/A'}
+                  Selected radios will be set to Channel{' '}
+                  {departments.find(d => d.id === selectedDept)?.channelNumber || 'N/A'}
                 </div>
               )}
 
@@ -326,19 +360,22 @@ export default function AllocationsView() {
                     <select
                       disabled={isClient}
                       value={bulkModel}
-                      onChange={(e) => { setBulkModel(e.target.value); setBulkCount(1); }}
+                      onChange={e => {
+                        setBulkModel(e.target.value);
+                        setBulkCount(1);
+                      }}
                       className={`${inputCls} ${isDark ? 'text-slate-100' : ''}`}
                     >
                       <option value="">Any model</option>
                       {availableModels.map(m => (
-                        <option key={m} value={m}>{m}</option>
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className={labelCls}>
-                      Quantity to Allocate ({matchingForBulk.length} available)
-                    </label>
+                    <label className={labelCls}>Quantity to Allocate ({matchingForBulk.length} available)</label>
                     {matchingForBulk.length === 0 ? (
                       <div className="p-4 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs">
                         No available walkies match that model. Return some units or pick another model.
@@ -351,12 +388,13 @@ export default function AllocationsView() {
                         required
                         disabled={isClient}
                         value={bulkCount}
-                        onChange={(e) => setBulkCount(e.target.value)}
+                        onChange={e => setBulkCount(e.target.value)}
                         className={inputCls}
                       />
                     )}
                     <p className="text-xs text-slate-400 mt-1">
-                      The system automatically picks the oldest {Number(bulkCount) || 0} available units{bulkModel ? ` of ${bulkModel}` : ''} — no need to select each one by hand.
+                      The system automatically picks the oldest {Number(bulkCount) || 0} available units
+                      {bulkModel ? ` of ${bulkModel}` : ''} — no need to select each one by hand.
                     </p>
                   </div>
                 </div>
@@ -377,7 +415,7 @@ export default function AllocationsView() {
                           type="text"
                           placeholder="Filter available units..."
                           value={pickSearch}
-                          onChange={(e) => setPickSearch(e.target.value)}
+                          onChange={e => setPickSearch(e.target.value)}
                           className={`w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border outline-none ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}
                         />
                       </div>
@@ -386,25 +424,30 @@ export default function AllocationsView() {
                           type="checkbox"
                           id="select-all-visible"
                           disabled={isClient || filteredPickList.length === 0}
-                          checked={filteredPickList.length > 0 && filteredPickList.every(w => selectedWalkies.includes(w.id))}
+                          checked={
+                            filteredPickList.length > 0 && filteredPickList.every(w => selectedWalkies.includes(w.id))
+                          }
                           onChange={handleSelectAllFiltered}
                           className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
                         />
-                        <label htmlFor="select-all-visible" className="text-xs font-semibold text-slate-600 dark:text-slate-300 cursor-pointer">
+                        <label
+                          htmlFor="select-all-visible"
+                          className="text-xs font-semibold text-slate-600 dark:text-slate-300 cursor-pointer"
+                        >
                           Select all
                         </label>
-                        <span className="ml-auto text-xs text-slate-400">
-                          {filteredPickList.length} visible
-                        </span>
+                        <span className="ml-auto text-xs text-slate-400">{filteredPickList.length} visible</span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 max-h-44 overflow-y-auto border p-3 rounded-xl dark:border-slate-800">
                         {filteredPickList.map(w => (
                           <label
                             key={w.id}
                             className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors text-xs font-semibold
-                              ${selectedWalkies.includes(w.id)
-                                ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                                : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500'}`}
+                              ${
+                                selectedWalkies.includes(w.id)
+                                  ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                                  : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500'
+                              }`}
                           >
                             <input
                               type="checkbox"
@@ -414,7 +457,9 @@ export default function AllocationsView() {
                               className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
                             />
                             <div className="min-w-0 flex-1">
-                              <p className="truncate font-bold text-slate-700 dark:text-slate-200">{getWalkieDisplayName(w)}</p>
+                              <p className="truncate font-bold text-slate-700 dark:text-slate-200">
+                                {getWalkieDisplayName(w)}
+                              </p>
                               {getWalkieDetailLine(w) ? (
                                 <p className="text-xs text-slate-400 truncate">{getWalkieDetailLine(w)}</p>
                               ) : null}
@@ -422,7 +467,9 @@ export default function AllocationsView() {
                           </label>
                         ))}
                         {filteredPickList.length === 0 && (
-                          <p className="col-span-2 text-center text-xs text-slate-400 py-4">No matches for "{pickSearch}"</p>
+                          <p className="col-span-2 text-center text-xs text-slate-400 py-4">
+                            No matches for "{pickSearch}"
+                          </p>
                         )}
                       </div>
                     </>
@@ -437,7 +484,7 @@ export default function AllocationsView() {
                   required
                   disabled={isClient}
                   value={allocatedBy}
-                  onChange={(e) => setAllocatedBy(e.target.value)}
+                  onChange={e => setAllocatedBy(e.target.value)}
                   className={inputCls}
                 />
               </div>
@@ -445,12 +492,30 @@ export default function AllocationsView() {
               <div>
                 <label className={labelCls}>Accessories</label>
                 <div className="grid grid-cols-2 gap-3">
-                  <input type="number" min="0" max={Math.max(0, availableChargers)} disabled={isClient} value={chargers}
-                    onChange={(e) => setChargers(e.target.value)} className={inputCls} placeholder="Chargers" />
-                  <input type="number" min="0" max={Math.max(0, availableEarphones)} disabled={isClient} value={earphones}
-                    onChange={(e) => setEarphones(e.target.value)} className={inputCls} placeholder="Earphones" />
+                  <input
+                    type="number"
+                    min="0"
+                    max={Math.max(0, availableChargers)}
+                    disabled={isClient}
+                    value={chargers}
+                    onChange={e => setChargers(e.target.value)}
+                    className={inputCls}
+                    placeholder="Chargers"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max={Math.max(0, availableEarphones)}
+                    disabled={isClient}
+                    value={earphones}
+                    onChange={e => setEarphones(e.target.value)}
+                    className={inputCls}
+                    placeholder="Earphones"
+                  />
                 </div>
-                <p className="text-xs text-slate-400 mt-1">Chargers available: {availableChargers} · Earphones available: {availableEarphones}</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Chargers available: {availableChargers} · Earphones available: {availableEarphones}
+                </p>
               </div>
 
               <div>
@@ -461,7 +526,7 @@ export default function AllocationsView() {
                     disabled={isClient}
                     placeholder="Holder name"
                     value={holderName}
-                    onChange={(e) => setHolderName(e.target.value)}
+                    onChange={e => setHolderName(e.target.value)}
                     className={inputCls}
                   />
                   <input
@@ -469,7 +534,7 @@ export default function AllocationsView() {
                     disabled={isClient}
                     placeholder="Contact (optional)"
                     value={holderContact}
-                    onChange={(e) => setHolderContact(e.target.value)}
+                    onChange={e => setHolderContact(e.target.value)}
                     className={inputCls}
                   />
                 </div>
@@ -487,7 +552,7 @@ export default function AllocationsView() {
                   disabled={isClient}
                   placeholder="e.g. For outdoor concert event shift"
                   value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
+                  onChange={e => setRemarks(e.target.value)}
                   className={inputCls}
                 />
               </div>
@@ -507,14 +572,19 @@ export default function AllocationsView() {
         </div>
 
         {/* Transfer Radios Panel */}
-        <div className={`p-6 rounded-xl border flex flex-col justify-between
-          ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+        <div
+          className={`p-6 rounded-xl border flex flex-col justify-between
+          ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}
+        >
           <div>
             <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-600">
               <ArrowRightLeft className="w-5 h-5" />
               Transfer Active Radio
             </h2>
-            <p className="text-xs text-slate-400 mb-4">Shift an active walkie talkie — and, if needed, some of its chargers and earphones — directly to another department without returning it first.</p>
+            <p className="text-xs text-slate-400 mb-4">
+              Shift an active walkie talkie — and, if needed, some of its chargers and earphones — directly to another
+              department without returning it first.
+            </p>
 
             <form onSubmit={handleTransferSubmit} className="space-y-4">
               <div>
@@ -525,7 +595,7 @@ export default function AllocationsView() {
                     type="text"
                     placeholder="Search active radios..."
                     value={transferSearch}
-                    onChange={(e) => setTransferSearch(e.target.value)}
+                    onChange={e => setTransferSearch(e.target.value)}
                     disabled={isClient}
                     className={`w-full pl-8 pr-3 py-2 text-sm rounded-lg border outline-none ${isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-slate-50 border-slate-200 text-slate-700'}`}
                   />
@@ -533,7 +603,9 @@ export default function AllocationsView() {
                 <div className="max-h-44 overflow-y-auto border rounded-xl p-2 space-y-2 dark:border-slate-800">
                   {filteredTransferWalkies.length === 0 ? (
                     <p className="text-xs text-slate-400 text-center py-3">
-                      {transferSearch ? `No active radios match "${transferSearch}"` : 'No active radios available for transfer'}
+                      {transferSearch
+                        ? `No active radios match "${transferSearch}"`
+                        : 'No active radios available for transfer'}
                     </p>
                   ) : (
                     filteredTransferWalkies.map(w => {
@@ -545,13 +617,16 @@ export default function AllocationsView() {
                           type="button"
                           disabled={isClient}
                           onClick={() => selectTransferWalkie(w.id)}
-                          className={`w-full text-left p-2.5 rounded-lg border transition-colors ${isSelected
-                            ? 'border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-400'
-                            : 'border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300'}`}
+                          className={`w-full text-left p-2.5 rounded-lg border transition-colors ${
+                            isSelected
+                              ? 'border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-400'
+                              : 'border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300'
+                          }`}
                         >
                           <div className="font-semibold text-sm">{getWalkieDisplayName(w)}</div>
                           <div className="text-xs text-slate-400 mt-0.5">
-                            {currentDept ? currentDept.name : 'Unknown'}{w.channel ? ` • CH ${w.channel}` : ''}
+                            {currentDept ? currentDept.name : 'Unknown'}
+                            {w.channel ? ` • CH ${w.channel}` : ''}
                           </div>
                         </button>
                       );
@@ -566,12 +641,15 @@ export default function AllocationsView() {
                   required
                   disabled={isClient}
                   value={transferTargetDept}
-                  onChange={(e) => setTransferTargetDept(e.target.value)}
+                  onChange={e => setTransferTargetDept(e.target.value)}
                   className={`${inputCls} ${isDark ? 'text-slate-100' : ''}`}
                 >
                   <option value="">-- Select Target Department --</option>
                   {departments.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}{d.channelNumber ? ` — Channel ${d.channelNumber}` : ''}</option>
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                      {d.channelNumber ? ` — Channel ${d.channelNumber}` : ''}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -579,12 +657,26 @@ export default function AllocationsView() {
               <div>
                 <label className={labelCls}>Accessories to move along (optional)</label>
                 <div className="grid grid-cols-2 gap-3">
-                  <input type="number" min="0" max={heldChargers} disabled={isClient || !transferWalkieId}
-                    value={transferChargers} onChange={(e) => setTransferChargers(e.target.value)}
-                    className={inputCls} placeholder="Chargers" />
-                  <input type="number" min="0" max={heldEarphones} disabled={isClient || !transferWalkieId}
-                    value={transferEarphones} onChange={(e) => setTransferEarphones(e.target.value)}
-                    className={inputCls} placeholder="Earphones" />
+                  <input
+                    type="number"
+                    min="0"
+                    max={heldChargers}
+                    disabled={isClient || !transferWalkieId}
+                    value={transferChargers}
+                    onChange={e => setTransferChargers(e.target.value)}
+                    className={inputCls}
+                    placeholder="Chargers"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max={heldEarphones}
+                    disabled={isClient || !transferWalkieId}
+                    value={transferEarphones}
+                    onChange={e => setTransferEarphones(e.target.value)}
+                    className={inputCls}
+                    placeholder="Earphones"
+                  />
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
                   {transferWalkieId
@@ -592,13 +684,19 @@ export default function AllocationsView() {
                     : 'Select a radio to see how many chargers and earphones its batch holds.'}
                 </p>
                 {transferWalkieId && !transferAccessoriesValid && (
-                  <p className="text-xs text-rose-500 mt-1">You can move at most {heldChargers} chargers and {heldEarphones} earphones.</p>
-                )}
-                {transferWalkieId && isLastInBatch && (leftoverChargers > 0 || leftoverEarphones > 0) && transferAccessoriesValid && (
-                  <p className="text-xs text-amber-500 mt-1">
-                    This is the last radio in its batch — the {leftoverChargers} charger(s) and {leftoverEarphones} earphone(s) not moved will go back to stock.
+                  <p className="text-xs text-rose-500 mt-1">
+                    You can move at most {heldChargers} chargers and {heldEarphones} earphones.
                   </p>
                 )}
+                {transferWalkieId &&
+                  isLastInBatch &&
+                  (leftoverChargers > 0 || leftoverEarphones > 0) &&
+                  transferAccessoriesValid && (
+                    <p className="text-xs text-amber-500 mt-1">
+                      This is the last radio in its batch — the {leftoverChargers} charger(s) and {leftoverEarphones}{' '}
+                      earphone(s) not moved will go back to stock.
+                    </p>
+                  )}
               </div>
 
               <div>
@@ -609,7 +707,7 @@ export default function AllocationsView() {
                   disabled={isClient}
                   placeholder="e.g. Reinforcing Security shift due to high crowd"
                   value={transferRemarks}
-                  onChange={(e) => setTransferRemarks(e.target.value)}
+                  onChange={e => setTransferRemarks(e.target.value)}
                   className={inputCls}
                 />
               </div>
@@ -627,7 +725,9 @@ export default function AllocationsView() {
 
           {/* Currently Allocated Snapshot */}
           <div className="mt-6 pt-6 border-t dark:border-slate-800">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Active in the Field ({allocatedWalkies.length})</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+              Active in the Field ({allocatedWalkies.length})
+            </p>
             {allocatedWalkies.length === 0 ? (
               <p className="text-xs text-slate-400">No radios are currently deployed.</p>
             ) : (
@@ -635,7 +735,10 @@ export default function AllocationsView() {
                 {allocatedWalkies.map(w => {
                   const dept = departments.find(d => d.id === w.departmentId);
                   return (
-                    <span key={w.id} className="px-2 py-1 rounded-lg text-xs font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                    <span
+                      key={w.id}
+                      className="px-2 py-1 rounded-lg text-xs font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                    >
                       {getWalkieDisplayName(w)} → {dept ? dept.name : 'Unknown'}
                     </span>
                   );
@@ -647,7 +750,9 @@ export default function AllocationsView() {
       </div>
 
       {/* Printable allocation slip */}
-      {showSlip && lastAllocatedRecord && <AllocationSlip record={lastAllocatedRecord} onClose={() => setShowSlip(false)} />}
+      {showSlip && lastAllocatedRecord && (
+        <AllocationSlip record={lastAllocatedRecord} onClose={() => setShowSlip(false)} />
+      )}
     </div>
   );
 }

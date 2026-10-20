@@ -5,7 +5,11 @@
 @tailwind utilities;
 
 /* ── Base reset & global tokens ─────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
 /* Motion tokens: one easing family and three durations for the whole app. */
 :root {
@@ -18,13 +22,19 @@
 
 /* A shared compact density scale keeps typography and rem-based layout sizes
    consistent across all modules while preserving the app's spacing hierarchy. */
-html { font-size: 13px; scroll-behavior: smooth; }
+html {
+  font-size: 13px;
+  scroll-behavior: smooth;
+}
 
 body {
   font-family: 'Inter', 'Plus Jakarta Sans', system-ui, sans-serif;
   font-size: 13px;
   line-height: 1.5;
-  font-feature-settings: 'cv11', 'ss01', 'tnum' 0;
+  font-feature-settings:
+    'cv11',
+    'ss01',
+    'tnum' 0;
   letter-spacing: -0.006em;
   background: rgb(var(--c-canvas));
   color: rgb(var(--c-ink));
@@ -35,19 +45,30 @@ body {
 
 /* Flat enterprise surfaces: crisp 1px borders and a faint elevation shadow on cards.
    Fields and inset areas stay flat so the hierarchy comes from borders, not depth. */
-html:not(.dark) [class~="bg-surface"] {
-  box-shadow: 0 1px 2px rgb(17 17 20 / 0.05), 0 1px 1px rgb(17 17 20 / 0.03);
+html:not(.dark) [class~='bg-surface'] {
+  box-shadow:
+    0 1px 2px rgb(17 17 20 / 0.05),
+    0 1px 1px rgb(17 17 20 / 0.03);
 }
-.dark [class~="bg-surface"] { box-shadow: 0 1px 0 rgb(255 255 255 / 0.02) inset; }
+.dark [class~='bg-surface'] {
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.02) inset;
+}
 
 /* ── Scrollbars ──────────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
 ::-webkit-scrollbar-thumb {
   background: rgb(var(--c-line-strong));
   border-radius: 99px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgb(var(--c-mute)); }
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--c-mute));
+}
 
 /* Keep the long application navigation independently scrollable and easy to grab. */
 .sidebar-scroll {
@@ -56,9 +77,16 @@ html:not(.dark) [class~="bg-surface"] {
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--c-line-strong)) transparent;
 }
-.sidebar-scroll .text-xs { font-size: 13px; line-height: 1.25; }
-.sidebar-scroll::-webkit-scrollbar { width: 8px; }
-.sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scroll .text-xs {
+  font-size: 13px;
+  line-height: 1.25;
+}
+.sidebar-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
 .sidebar-scroll::-webkit-scrollbar-thumb {
   background: rgb(var(--c-line-strong));
   border: 2px solid transparent;
@@ -69,62 +97,136 @@ html:not(.dark) [class~="bg-surface"] {
 /* The legacy Walkie pages share the CRM shell when embedded. Normalize their
    old slate palettes to the same semantic surfaces so every tab feels like
    one module in both light and dark mode. */
-.walkie-embedded [class*="bg-slate-50"], .walkie-embedded [class*="bg-slate-100"] { background-color: rgb(var(--c-canvas)) !important; }
-.walkie-embedded [class*="bg-slate-200"], .walkie-embedded [class*="bg-slate-700"], .walkie-embedded [class*="bg-slate-800"] { background-color: rgb(var(--c-raised)) !important; }
-.walkie-embedded [class*="bg-slate-900"], .walkie-embedded [class*="bg-slate-950"], .walkie-embedded [class*="bg-white"] { background-color: rgb(var(--c-surface)) !important; }
-.walkie-embedded [class*="border-slate-"] { border-color: rgb(var(--c-line)) !important; }
-.walkie-embedded [class*="text-slate-100"], .walkie-embedded [class*="text-slate-200"], .walkie-embedded [class*="text-slate-300"], .walkie-embedded [class*="text-slate-700"], .walkie-embedded [class*="text-slate-800"] { color: rgb(var(--c-ink-soft)) !important; }
-.walkie-embedded [class*="text-slate-400"], .walkie-embedded [class*="text-slate-500"], .walkie-embedded [class*="text-slate-600"] { color: rgb(var(--c-mute)) !important; }
+.walkie-embedded [class*='bg-slate-50'],
+.walkie-embedded [class*='bg-slate-100'] {
+  background-color: rgb(var(--c-canvas)) !important;
+}
+.walkie-embedded [class*='bg-slate-200'],
+.walkie-embedded [class*='bg-slate-700'],
+.walkie-embedded [class*='bg-slate-800'] {
+  background-color: rgb(var(--c-raised)) !important;
+}
+.walkie-embedded [class*='bg-slate-900'],
+.walkie-embedded [class*='bg-slate-950'],
+.walkie-embedded [class*='bg-white'] {
+  background-color: rgb(var(--c-surface)) !important;
+}
+.walkie-embedded [class*='border-slate-'] {
+  border-color: rgb(var(--c-line)) !important;
+}
+.walkie-embedded [class*='text-slate-100'],
+.walkie-embedded [class*='text-slate-200'],
+.walkie-embedded [class*='text-slate-300'],
+.walkie-embedded [class*='text-slate-700'],
+.walkie-embedded [class*='text-slate-800'] {
+  color: rgb(var(--c-ink-soft)) !important;
+}
+.walkie-embedded [class*='text-slate-400'],
+.walkie-embedded [class*='text-slate-500'],
+.walkie-embedded [class*='text-slate-600'] {
+  color: rgb(var(--c-mute)) !important;
+}
 
 /* Keep keyboard focus visible and make reduced motion apply across the app,
    including Tailwind animations and transitions. */
-:where(button, a, input, select, textarea, summary, [role="button"], [role="tab"], [role="menuitem"]) {
+:where(button, a, input, select, textarea, summary, [role='button'], [role='tab'], [role='menuitem']) {
   outline: 2px solid transparent;
   outline-offset: 0;
 }
-:where(button, a, input, select, textarea, summary, [role="button"], [role="tab"], [role="menuitem"]):focus-visible {
+:where(button, a, input, select, textarea, summary, [role='button'], [role='tab'], [role='menuitem']):focus-visible {
   outline-color: rgb(var(--c-brand));
   outline-offset: 2px;
 }
 /* ── Control motion: every clickable thing animates its state, nothing snaps or blinks ── */
 /* 1. Default timing for all controls (zero specificity, so Tailwind duration-* classes still win). */
-:where(button, a, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="switch"], [role="checkbox"], [role="radio"], label, summary, select, tbody tr, .cursor-pointer) {
+:where(
+    button,
+    a,
+    [role='button'],
+    [role='tab'],
+    [role='menuitem'],
+    [role='option'],
+    [role='switch'],
+    [role='checkbox'],
+    [role='radio'],
+    label,
+    summary,
+    select,
+    tbody tr,
+    .cursor-pointer
+  ) {
   transition-duration: var(--dur-fast);
   transition-timing-function: var(--ease-out);
 }
 /* 2. The animated properties. Higher specificity on purpose: a narrower Tailwind class such as
       `transition-transform` would otherwise stop colours, borders and focus rings from easing.
       Opt a control out with `.motion-none`. */
-:is(button, a, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="switch"], [role="checkbox"], [role="radio"], summary, label, select, .cursor-pointer):not(.motion-none) {
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, transform, box-shadow, outline-color, outline-offset, translate, scale;
+:is(
+    button,
+    a,
+    [role='button'],
+    [role='tab'],
+    [role='menuitem'],
+    [role='option'],
+    [role='switch'],
+    [role='checkbox'],
+    [role='radio'],
+    summary,
+    label,
+    select,
+    .cursor-pointer
+  ):not(.motion-none) {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, transform,
+    box-shadow, outline-color, outline-offset, translate, scale;
 }
-tbody tr { transition-property: background-color, color, opacity; }
+tbody tr {
+  transition-property: background-color, color, opacity;
+}
 /* 3. Pressed controls give a tiny, quick acknowledgement. */
-:where(button, [role="button"], [role="tab"]):not(:disabled):active { translate: 0 0.5px; }
+:where(button, [role='button'], [role='tab']):not(:disabled):active {
+  translate: 0 0.5px;
+}
 /* 4. No flash on quick busy states: dimming waits 90ms, so a save that finishes faster never dims.
       Re-enabling is immediate. */
-:is(button, [role="button"], select, input, textarea):disabled { transition-delay: 90ms; }
+:is(button, [role='button'], select, input, textarea):disabled {
+  transition-delay: 90ms;
+}
 /* 5. Icons never animate on their own: a re-rendered or re-mounted icon must not flicker. */
 /* 6. Hover underlines fade in rather than appearing. */
-.hover\:underline { text-decoration-line: underline; text-decoration-color: transparent; text-underline-offset: 2px; }
-.hover\:underline:hover { text-decoration-color: currentColor; }
+.hover\:underline {
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+}
+.hover\:underline:hover {
+  text-decoration-color: currentColor;
+}
 /* A field with a fixed height (h-8/h-9/h-10…) must not also keep its vertical padding: together they
    leave less room than one line of text, and the browser cuts the text off at the bottom. */
-:is(select, input:not([type="checkbox"]):not([type="radio"]))[class~="h-7"],
-:is(select, input:not([type="checkbox"]):not([type="radio"]))[class~="h-8"],
-:is(select, input:not([type="checkbox"]):not([type="radio"]))[class~="h-9"],
-:is(select, input:not([type="checkbox"]):not([type="radio"]))[class~="h-10"],
-:is(select, input:not([type="checkbox"]):not([type="radio"]))[class~="!h-9"],
-:is(select, input:not([type="checkbox"]):not([type="radio"]))[class~="!h-10"] {
+:is(select, input:not([type='checkbox']):not([type='radio']))[class~='h-7'],
+:is(select, input:not([type='checkbox']):not([type='radio']))[class~='h-8'],
+:is(select, input:not([type='checkbox']):not([type='radio']))[class~='h-9'],
+:is(select, input:not([type='checkbox']):not([type='radio']))[class~='h-10'],
+:is(select, input:not([type='checkbox']):not([type='radio']))[class~='!h-9'],
+:is(select, input:not([type='checkbox']):not([type='radio']))[class~='!h-10'] {
   padding-top: 0 !important;
   padding-bottom: 0 !important;
   line-height: 1.25;
 }
 :where(input, select, textarea) {
-  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out), outline-color var(--dur-fast) var(--ease-out), outline-offset var(--dur-fast) var(--ease-out);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out),
+    outline-color var(--dur-fast) var(--ease-out),
+    outline-offset var(--dur-fast) var(--ease-out);
 }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -134,183 +236,471 @@ tbody tr { transition-property: background-color, color, opacity; }
 
 /* ── Keyframes ───────────────────────────────────────────────────────────── */
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(16px) scale(0.96); }
-  to   { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 @keyframes popIn {
-  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
-  to   { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes calmEnter {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 @keyframes calmExit {
-  from { opacity: 1; transform: translateY(0); }
-  to   { opacity: 0; transform: translateY(6px) scale(0.985); }
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
 }
 @keyframes fadeOut {
-  from { opacity: 1; }
-  to   { opacity: 0; }
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 @keyframes drawerEnter {
-  from { transform: translateX(24px); opacity: 0; }
-  to   { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 @keyframes drawerExit {
-  from { transform: translateX(0); opacity: 1; }
-  to   { transform: translateX(24px); opacity: 0; }
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(24px);
+    opacity: 0;
+  }
 }
 @keyframes pageEnter {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 @keyframes growY {
-  from { transform: scaleY(0); }
-  to   { transform: scaleY(1); }
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
 }
 @keyframes growX {
-  from { transform: scaleX(0); }
-  to   { transform: scaleX(1); }
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 @keyframes menuEnter {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 @keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 @keyframes loading-sweep {
-  0% { transform: translateX(-110%); }
-  100% { transform: translateX(340%); }
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(340%);
+  }
 }
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgb(var(--c-brand) / 0); }
-  50%       { box-shadow: 0 0 0 4px rgb(var(--c-brand) / 0.18); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(var(--c-brand) / 0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgb(var(--c-brand) / 0.18);
+  }
 }
 
-.animate-slide-up  { animation: slideUp 0.15s cubic-bezier(0.16,1,0.3,1) forwards; }
-.animate-pop-in    { animation: popIn  0.15s cubic-bezier(0.16,1,0.3,1) forwards; }
-.animate-fade-in   { animation: fadeIn 0.2s ease-out forwards; }
-.animate-calm-enter { animation: calmEnter 220ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-.animate-menu-enter { animation: menuEnter 180ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
-.animate-pulse-glow { animation: pulse-glow 2.5s ease-in-out infinite; }
-.animate-calm-exit  { animation: calmExit var(--dur-fast) var(--ease-in-out) both; }
-.animate-fade-out   { animation: fadeOut var(--dur-fast) ease-in both; }
-.animate-drawer-enter { animation: drawerEnter var(--dur) var(--ease-out) both; }
-.animate-drawer-exit  { animation: drawerExit var(--dur-fast) var(--ease-in-out) both; }
-.animate-page-enter { animation: pageEnter 260ms var(--ease-out) both; }
-@keyframes toastExit { to { opacity: 0; transform: translateX(16px); } }
-.animate-toast-exit { animation: toastExit 180ms var(--ease-in-out) both; }
-@keyframes toastProgress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
-.toast-progress { animation-name: toastProgress; animation-timing-function: linear; animation-fill-mode: forwards; }
+.animate-slide-up {
+  animation: slideUp 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.animate-pop-in {
+  animation: popIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+.animate-calm-enter {
+  animation: calmEnter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animate-menu-enter {
+  animation: menuEnter 180ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.animate-pulse-glow {
+  animation: pulse-glow 2.5s ease-in-out infinite;
+}
+.animate-calm-exit {
+  animation: calmExit var(--dur-fast) var(--ease-in-out) both;
+}
+.animate-fade-out {
+  animation: fadeOut var(--dur-fast) ease-in both;
+}
+.animate-drawer-enter {
+  animation: drawerEnter var(--dur) var(--ease-out) both;
+}
+.animate-drawer-exit {
+  animation: drawerExit var(--dur-fast) var(--ease-in-out) both;
+}
+.animate-page-enter {
+  animation: pageEnter 260ms var(--ease-out) both;
+}
+@keyframes toastExit {
+  to {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+.animate-toast-exit {
+  animation: toastExit 180ms var(--ease-in-out) both;
+}
+@keyframes toastProgress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+.toast-progress {
+  animation-name: toastProgress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
 
 /* Chart marks grow from their baseline once, on first paint. Delay via --i (index). */
-.chart-grow-y { transform-box: fill-box; transform-origin: 50% 100%; animation: growY var(--dur-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 35ms); }
-.chart-grow-x { transform-origin: 0 50%; animation: growX var(--dur-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 40ms); }
+.chart-grow-y {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: growY var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 35ms);
+}
+.chart-grow-x {
+  transform-origin: 0 50%;
+  animation: growX var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
 /* Bars and meters that change value glide to the new width. */
-.meter-fill { transition: width var(--dur-slow) var(--ease-out), flex-grow var(--dur-slow) var(--ease-out), background-color var(--dur) var(--ease-out); }
+.meter-fill {
+  transition:
+    width var(--dur-slow) var(--ease-out),
+    flex-grow var(--dur-slow) var(--ease-out),
+    background-color var(--dur) var(--ease-out);
+}
 
 /* Lists and grids reveal their children in a quick cascade (first 12 items). */
-.stagger > * { animation: pageEnter 300ms var(--ease-out) both; }
-.stagger > :nth-child(1) { animation-delay: 0ms; }   .stagger > :nth-child(2) { animation-delay: 30ms; }
-.stagger > :nth-child(3) { animation-delay: 60ms; }  .stagger > :nth-child(4) { animation-delay: 90ms; }
-.stagger > :nth-child(5) { animation-delay: 120ms; } .stagger > :nth-child(6) { animation-delay: 150ms; }
-.stagger > :nth-child(7) { animation-delay: 180ms; } .stagger > :nth-child(8) { animation-delay: 210ms; }
-.stagger > :nth-child(9) { animation-delay: 240ms; } .stagger > :nth-child(10) { animation-delay: 270ms; }
-.stagger > :nth-child(11) { animation-delay: 300ms; } .stagger > :nth-child(n+12) { animation-delay: 330ms; }
+.stagger > * {
+  animation: pageEnter 300ms var(--ease-out) both;
+}
+.stagger > :nth-child(1) {
+  animation-delay: 0ms;
+}
+.stagger > :nth-child(2) {
+  animation-delay: 30ms;
+}
+.stagger > :nth-child(3) {
+  animation-delay: 60ms;
+}
+.stagger > :nth-child(4) {
+  animation-delay: 90ms;
+}
+.stagger > :nth-child(5) {
+  animation-delay: 120ms;
+}
+.stagger > :nth-child(6) {
+  animation-delay: 150ms;
+}
+.stagger > :nth-child(7) {
+  animation-delay: 180ms;
+}
+.stagger > :nth-child(8) {
+  animation-delay: 210ms;
+}
+.stagger > :nth-child(9) {
+  animation-delay: 240ms;
+}
+.stagger > :nth-child(10) {
+  animation-delay: 270ms;
+}
+.stagger > :nth-child(11) {
+  animation-delay: 300ms;
+}
+.stagger > :nth-child(n + 12) {
+  animation-delay: 330ms;
+}
 
 /* Interactive cards rise slightly and gain a soft shadow on hover. */
-.lift { transition: transform var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out); }
-.lift:hover { transform: translateY(-1px); box-shadow: 0 6px 18px -8px rgb(0 0 0 / 0.35); }
+.lift {
+  transition:
+    transform var(--dur) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out);
+}
+.lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px -8px rgb(0 0 0 / 0.35);
+}
 
 /* Theme switch: colours cross-fade instead of snapping (class is added for ~300ms). */
-.theme-transition, .theme-transition *, .theme-transition *::before, .theme-transition *::after {
-  transition: background-color 300ms var(--ease-in-out), border-color 300ms var(--ease-in-out), color 300ms var(--ease-in-out), fill 300ms var(--ease-in-out), stroke 300ms var(--ease-in-out) !important;
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition:
+    background-color 300ms var(--ease-in-out),
+    border-color 300ms var(--ease-in-out),
+    color 300ms var(--ease-in-out),
+    fill 300ms var(--ease-in-out),
+    stroke 300ms var(--ease-in-out) !important;
 }
 
 /* Skeleton shimmer */
 .animate-shimmer {
-  background: linear-gradient(
-    90deg,
-    rgb(var(--c-raised)) 25%,
-    rgb(var(--c-line))   50%,
-    rgb(var(--c-raised)) 75%
-  );
+  background: linear-gradient(90deg, rgb(var(--c-raised)) 25%, rgb(var(--c-line)) 50%, rgb(var(--c-raised)) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
 }
-.animate-loading-sweep { animation: loading-sweep 1.7s ease-in-out infinite; }
+.animate-loading-sweep {
+  animation: loading-sweep 1.7s ease-in-out infinite;
+}
 
 /* ── View switching (Swap): slide + blur out, then slide in from the chosen side with a cascade ──
    --dx is 1 when moving forward through the tabs/menu and -1 when moving back.
    Fill mode "backwards" leaves no transform/filter behind, so fixed modals inside pages stay put. */
-@keyframes vtIn  { from { opacity: 0; transform: translateX(calc(var(--dx, 1) * 28px)); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
-@keyframes vtOut { from { opacity: 1; transform: none; filter: none; } to { opacity: 0; transform: translateX(calc(var(--dx, 1) * -28px)); filter: blur(6px); } }
-.vt-out { animation: vtOut 200ms cubic-bezier(0.4, 0, 1, 1) forwards; pointer-events: none; }
-.vt-in > *, .vt-in > :only-child > * { animation: vtIn 560ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
-.vt-in > :only-child { animation: none; }
-.vt-in > :nth-child(2), .vt-in > :only-child > :nth-child(2) { animation-delay: 55ms; }
-.vt-in > :nth-child(3), .vt-in > :only-child > :nth-child(3) { animation-delay: 110ms; }
-.vt-in > :nth-child(4), .vt-in > :only-child > :nth-child(4) { animation-delay: 165ms; }
-.vt-in > :nth-child(5), .vt-in > :only-child > :nth-child(5) { animation-delay: 220ms; }
-.vt-in > :nth-child(n+6), .vt-in > :only-child > :nth-child(n+6) { animation-delay: 270ms; }
+@keyframes vtIn {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--dx, 1) * 28px));
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+@keyframes vtOut {
+  from {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(calc(var(--dx, 1) * -28px));
+    filter: blur(6px);
+  }
+}
+.vt-out {
+  animation: vtOut 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none;
+}
+.vt-in > *,
+.vt-in > :only-child > * {
+  animation: vtIn 560ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.vt-in > :only-child {
+  animation: none;
+}
+.vt-in > :nth-child(2),
+.vt-in > :only-child > :nth-child(2) {
+  animation-delay: 55ms;
+}
+.vt-in > :nth-child(3),
+.vt-in > :only-child > :nth-child(3) {
+  animation-delay: 110ms;
+}
+.vt-in > :nth-child(4),
+.vt-in > :only-child > :nth-child(4) {
+  animation-delay: 165ms;
+}
+.vt-in > :nth-child(5),
+.vt-in > :only-child > :nth-child(5) {
+  animation-delay: 220ms;
+}
+.vt-in > :nth-child(n + 6),
+.vt-in > :only-child > :nth-child(n + 6) {
+  animation-delay: 270ms;
+}
 
 /* ── Royal theme (html.dark.theme-saffron): the sign-in page's look across the app ──────────────
    Colours come from the tokens in tailwind.config.js; these rules add the page's glow, grid,
    gold-rimmed glass panels, gold buttons, gold tab pill and Sora headings. */
 .theme-saffron .app-root {
-  position: relative; isolation: isolate;
-  background-image:
-    radial-gradient(70rem 34rem at 50% -10rem, rgb(255 140 40 / 0.10), rgb(255 110 30 / 0.03) 50%, transparent 72%),
+  position: relative;
+  isolation: isolate;
+  background-image: radial-gradient(
+      70rem 34rem at 50% -10rem,
+      rgb(255 140 40 / 0.1),
+      rgb(255 110 30 / 0.03) 50%,
+      transparent 72%
+    ),
     radial-gradient(60rem 46rem at 80% 115%, rgb(70 60 190 / 0.14), rgb(70 60 190 / 0.04) 45%, transparent 70%);
 }
 .theme-saffron .app-root::before {
-  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background-image: linear-gradient(rgb(255 255 255 / 0.028) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.028) 1px, transparent 1px);
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: linear-gradient(rgb(255 255 255 / 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.028) 1px, transparent 1px);
   background-size: 56px 56px;
-  -webkit-mask-image: radial-gradient(ellipse at 50% 30%, #000 10%, transparent 65%); mask-image: radial-gradient(ellipse at 50% 30%, #000 10%, transparent 65%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 30%, #000 10%, transparent 65%);
+  mask-image: radial-gradient(ellipse at 50% 30%, #000 10%, transparent 65%);
 }
 /* Panels and the sidebar: a gold → indigo hairline rim, like the sign-in card. (No backdrop blur: it would trap
    fixed-position pop-ups inside panels and slow scrolling.) */
-.theme-saffron :is(.bg-surface.border.rounded-xl, .bg-surface\/60.border.rounded-xl, .bg-surface.border.rounded-lg, .bg-surface.border.rounded-2xl, .app-root > aside) {
-  background: linear-gradient(180deg, rgb(255 190 90 / 0.05), transparent 160px) padding-box,
-              linear-gradient(rgb(var(--c-surface) / 0.94), rgb(var(--c-surface) / 0.94)) padding-box,
-              linear-gradient(160deg, rgb(255 170 60 / 0.45), rgb(255 255 255 / 0.05) 35%, rgb(255 255 255 / 0.05) 70%, rgb(91 84 240 / 0.34)) border-box;
+.theme-saffron
+  :is(
+    .bg-surface.border.rounded-xl,
+    .bg-surface\/60.border.rounded-xl,
+    .bg-surface.border.rounded-lg,
+    .bg-surface.border.rounded-2xl,
+    .app-root > aside
+  ) {
+  background:
+    linear-gradient(180deg, rgb(255 190 90 / 0.05), transparent 160px) padding-box,
+    linear-gradient(rgb(var(--c-surface) / 0.94), rgb(var(--c-surface) / 0.94)) padding-box,
+    linear-gradient(
+        160deg,
+        rgb(255 170 60 / 0.45),
+        rgb(255 255 255 / 0.05) 35%,
+        rgb(255 255 255 / 0.05) 70%,
+        rgb(91 84 240 / 0.34)
+      )
+      border-box;
   border-color: transparent;
-  box-shadow: 0 24px 60px -30px rgb(0 0 0 / 0.7), inset 0 1px 0 rgb(255 255 255 / 0.04);
+  box-shadow:
+    0 24px 60px -30px rgb(0 0 0 / 0.7),
+    inset 0 1px 0 rgb(255 255 255 / 0.04);
 }
 /* Primary buttons wear the sign-in button's gold gradient with dark text. */
 .theme-saffron :is(.bg-blue-600, .bg-brand).text-white {
   background-image: linear-gradient(135deg, #ffcf55, #ff9a2a 50%, #ff6a1f);
-  color: #1a1206; border-color: transparent;
-  box-shadow: 0 10px 26px -12px rgb(255 120 30 / 0.75), inset 0 1px 0 rgb(255 255 255 / 0.4);
+  color: #1a1206;
+  border-color: transparent;
+  box-shadow:
+    0 10px 26px -12px rgb(255 120 30 / 0.75),
+    inset 0 1px 0 rgb(255 255 255 / 0.4);
 }
-.theme-saffron :is(.bg-blue-600, .bg-brand).text-white:hover:not(:disabled) { filter: brightness(1.07) saturate(1.05); }
+.theme-saffron :is(.bg-blue-600, .bg-brand).text-white:hover:not(:disabled) {
+  filter: brightness(1.07) saturate(1.05);
+}
 /* Tab highlights: a soft gold pill and a gold → saffron underline. */
 .theme-saffron .slide-ind-pill {
   background: linear-gradient(135deg, rgb(255 194 61 / 0.18), rgb(255 138 31 / 0.12));
-  box-shadow: inset 0 0 0 1px rgb(255 190 90 / 0.38), 0 6px 20px -10px rgb(255 140 30 / 0.6);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 190 90 / 0.38),
+    0 6px 20px -10px rgb(255 140 30 / 0.6);
 }
-.theme-saffron .slide-ind-underline { background: linear-gradient(90deg, #ffc23d, #ff8a1f); box-shadow: 0 0 10px rgb(255 140 30 / 0.5); }
+.theme-saffron .slide-ind-underline {
+  background: linear-gradient(90deg, #ffc23d, #ff8a1f);
+  box-shadow: 0 0 10px rgb(255 140 30 / 0.5);
+}
 /* Headings in Sora; the page title in the sign-in title's white → gold gradient. */
-.theme-saffron :is(h1, h2, h3) { font-family: Sora, Inter, system-ui, sans-serif; letter-spacing: -0.01em; }
-.theme-saffron .page-title { background: linear-gradient(180deg, #fff 30%, #ffd9a8); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.theme-saffron ::selection { background: rgb(255 154 42 / 0.35); }
+.theme-saffron :is(h1, h2, h3) {
+  font-family: Sora, Inter, system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+.theme-saffron .page-title {
+  background: linear-gradient(180deg, #fff 30%, #ffd9a8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.theme-saffron ::selection {
+  background: rgb(255 154 42 / 0.35);
+}
 /* Selected filter cards keep a visible gold outline over the panel rim. */
-.theme-saffron .bg-surface.border[aria-pressed="true"] { box-shadow: inset 0 0 0 1px #ffc23d, 0 0 24px -8px rgb(255 160 50 / 0.55); }
+.theme-saffron .bg-surface.border[aria-pressed='true'] {
+  box-shadow:
+    inset 0 0 0 1px #ffc23d,
+    0 0 24px -8px rgb(255 160 50 / 0.55);
+}
 /* Drifting embers behind everything (rendered only in Royal). */
-.royal-embers { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+.royal-embers {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
 /* The main frame and header: gold-rimmed, slightly see-through so the glow and embers show. */
 .theme-saffron .app-frame {
   border-color: transparent;
-  background: linear-gradient(rgb(var(--c-canvas) / 0.55), rgb(var(--c-canvas) / 0.55)) padding-box,
-              linear-gradient(160deg, rgb(255 170 60 / 0.42), rgb(255 255 255 / 0.05) 30%, rgb(255 255 255 / 0.05) 70%, rgb(91 84 240 / 0.36)) border-box;
+  background:
+    linear-gradient(rgb(var(--c-canvas) / 0.55), rgb(var(--c-canvas) / 0.55)) padding-box,
+    linear-gradient(
+        160deg,
+        rgb(255 170 60 / 0.42),
+        rgb(255 255 255 / 0.05) 30%,
+        rgb(255 255 255 / 0.05) 70%,
+        rgb(91 84 240 / 0.36)
+      )
+      border-box;
   box-shadow: 0 30px 80px -30px rgb(0 0 0 / 0.75);
 }
 .theme-saffron .app-header {
@@ -319,33 +709,88 @@ tbody tr { transition-property: background-color, color, opacity; }
   box-shadow: inset 0 -1px 0 rgb(255 180 80 / 0.2);
 }
 /* Sidebar: the current page glows gold, with a gold edge, like the sign-in tabs. */
-.theme-saffron nav[aria-label="Main"] a[aria-current="page"] {
+.theme-saffron nav[aria-label='Main'] a[aria-current='page'] {
   background: linear-gradient(90deg, rgb(255 194 61 / 0.22), rgb(255 138 31 / 0.08) 70%, transparent);
   color: #ffd9a8;
   box-shadow: inset 2px 0 0 #ffc23d;
 }
 /* Section titles in the sign-in title's white → gold. */
-.theme-saffron main h2 { background: linear-gradient(180deg, #fff 30%, #ffd9a8); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.theme-saffron main h2 {
+  background: linear-gradient(180deg, #fff 30%, #ffd9a8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
 
 /* ── SlideNav: the active highlight glides between tabs with a soft spring ── */
-.slide-nav > :not(.slide-ind) { position: relative; z-index: 1; }
-.slide-ind { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; will-change: transform, width; }
-.slide-ind.ready { transition: transform 550ms cubic-bezier(0.34, 1.56, 0.64, 1), width 550ms cubic-bezier(0.34, 1.56, 0.64, 1), height 550ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 200ms ease-out; }
-.slide-ind-pill { border-radius: 0.375rem; background: rgb(var(--c-brand) / 0.12); box-shadow: inset 0 0 0 1px rgb(var(--c-brand) / 0.28); }
-.slide-ind-underline { top: auto; bottom: 0; height: 2px; border-radius: 2px; background: rgb(var(--c-brand)); }
+.slide-nav > :not(.slide-ind) {
+  position: relative;
+  z-index: 1;
+}
+.slide-ind {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  pointer-events: none;
+  will-change: transform, width;
+}
+.slide-ind.ready {
+  transition:
+    transform 550ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    width 550ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    height 550ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 200ms ease-out;
+}
+.slide-ind-pill {
+  border-radius: 0.375rem;
+  background: rgb(var(--c-brand) / 0.12);
+  box-shadow: inset 0 0 0 1px rgb(var(--c-brand) / 0.28);
+}
+.slide-ind-underline {
+  top: auto;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: rgb(var(--c-brand));
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-pop-in, .animate-slide-up, .animate-fade-in, .animate-calm-enter,
-  .animate-pulse-glow, .animate-shimmer,
-  .animate-loading-sweep, .animate-calm-exit, .animate-fade-out,
-  .animate-drawer-enter, .animate-drawer-exit, .animate-page-enter, .animate-toast-exit,
-  .chart-grow-y, .chart-grow-x, .stagger > *,
-  .vt-in > *, .vt-in > :only-child > *, .vt-out,
-  .animate-menu-enter { animation: none !important; }
-  .slide-ind.ready { transition: none; }
-  .lift:hover { transform: none; }
-  :where(button, [role="button"], [role="tab"]):not(:disabled):active { translate: none; }
-  .theme-transition, .theme-transition * { transition: none !important; }
+  .animate-pop-in,
+  .animate-slide-up,
+  .animate-fade-in,
+  .animate-calm-enter,
+  .animate-pulse-glow,
+  .animate-shimmer,
+  .animate-loading-sweep,
+  .animate-calm-exit,
+  .animate-fade-out,
+  .animate-drawer-enter,
+  .animate-drawer-exit,
+  .animate-page-enter,
+  .animate-toast-exit,
+  .chart-grow-y,
+  .chart-grow-x,
+  .stagger > *,
+  .vt-in > *,
+  .vt-in > :only-child > *,
+  .vt-out,
+  .animate-menu-enter {
+    animation: none !important;
+  }
+  .slide-ind.ready {
+    transition: none;
+  }
+  .lift:hover {
+    transform: none;
+  }
+  :where(button, [role='button'], [role='tab']):not(:disabled):active {
+    translate: none;
+  }
+  .theme-transition,
+  .theme-transition * {
+    transition: none !important;
+  }
 }
 
 /* ── Brand surfaces (single-hue indigo; red is reserved for alerts) ────── */
@@ -353,7 +798,7 @@ tbody tr { transition-property: background-color, color, opacity; }
   background: rgb(var(--c-brand));
 }
 .gradient-brand-soft {
-  background: rgb(var(--c-brand) / 0.10);
+  background: rgb(var(--c-brand) / 0.1);
 }
 
 /* ── Highlighted card (opt-in): a brand-tinted border instead of a glow ─── */
@@ -362,70 +807,297 @@ tbody tr { transition-property: background-color, color, opacity; }
 }
 
 /* ── Premium typography: lighter weights, tighter headings ───────────────── */
-h1, h2, h3 { letter-spacing: -0.015em; }
-.font-extrabold { font-weight: 700; }
-.font-bold      { font-weight: 600; }
-.uppercase      { letter-spacing: 0.06em; }
-button, input, select, textarea { font-family: inherit; }
+h1,
+h2,
+h3 {
+  letter-spacing: -0.015em;
+}
+.font-extrabold {
+  font-weight: 700;
+}
+.font-bold {
+  font-weight: 600;
+}
+.uppercase {
+  letter-spacing: 0.06em;
+}
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
 
 /* ── Printing (request pages, reports): clean page, no app chrome ───────── */
 @media print {
-  html, body { background: #fff !important; }
-  main { overflow: visible !important; }
-  .h-screen { height: auto !important; }
-  section, table { break-inside: avoid; }
+  html,
+  body {
+    background: #fff !important;
+  }
+  main {
+    overflow: visible !important;
+  }
+  .h-screen {
+    height: auto !important;
+  }
+  section,
+  table {
+    break-inside: avoid;
+  }
 }
 
 /* ── Radio allocation slip: a printable document (AllocationSlip.js) ──────────
    The sheet keeps fixed paper colours in every theme, like a real document. */
-.slip-paper { max-width: 720px; margin: 0 auto; background: #fff; color: #1f2430; border: 1px solid #e3e5ea; border-radius: 6px; padding: 28px 30px 20px; font-size: 12.5px; line-height: 1.45; box-shadow: 0 1px 2px rgb(0 0 0 / 0.06); }
-.slip-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding-bottom: 14px; border-bottom: 2px solid #1f2430; }
-.slip-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.slip-logo { width: 46px; height: 46px; object-fit: contain; border-radius: 8px; flex-shrink: 0; }
-.slip-logo-fallback { display: grid; place-items: center; background: #1f2430; color: #fff; font-weight: 700; font-size: 15px; }
-.slip-org { font-size: 16px; font-weight: 700; letter-spacing: 0.01em; }
-.slip-sub { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
-.slip-title-box { text-align: right; flex-shrink: 0; }
-.slip-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
-.slip-no { margin-top: 4px; font-size: 11.5px; color: #6b7280; }
-.slip-no span { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #1f2430; font-weight: 600; }
-.slip-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 18px; margin: 16px 0; }
-.slip-meta dt { font-size: 10.5px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.06em; }
-.slip-meta dd { margin: 2px 0 0; font-weight: 600; overflow-wrap: anywhere; }
-.slip-table { width: 100%; border-collapse: collapse; }
-.slip-table th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: #4b5563; background: #f3f4f6; padding: 7px 8px; border-top: 1px solid #d1d5db; border-bottom: 1px solid #d1d5db; }
-.slip-table td { padding: 7px 8px; border-bottom: 1px solid #eceef1; vertical-align: top; overflow-wrap: anywhere; }
-.slip-num { width: 32px; color: #6b7280; text-align: right; }
-.slip-strong { font-weight: 600; }
-.slip-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
-.slip-totals { display: flex; justify-content: flex-end; gap: 22px; margin-top: 10px; font-size: 12px; }
-.slip-totals span { color: #6b7280; margin-right: 6px; }
-.slip-remarks { margin-top: 14px; padding: 10px 12px; background: #f8f9fb; border-left: 3px solid #9ca3af; border-radius: 3px; }
-.slip-remarks span { font-size: 10.5px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.06em; }
-.slip-remarks p { margin: 3px 0 0; }
-.slip-terms { margin-top: 14px; font-size: 11px; color: #6b7280; }
-.slip-signs { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 42px; }
-.slip-line { border-bottom: 1px solid #1f2430; height: 26px; }
-.slip-signs span { display: block; margin-top: 5px; font-size: 10.5px; color: #4b5563; }
-.slip-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 22px; padding-top: 8px; border-top: 1px solid #eceef1; font-size: 10px; color: #9ca3af; }
+.slip-paper {
+  max-width: 720px;
+  margin: 0 auto;
+  background: #fff;
+  color: #1f2430;
+  border: 1px solid #e3e5ea;
+  border-radius: 6px;
+  padding: 28px 30px 20px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+}
+.slip-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid #1f2430;
+}
+.slip-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.slip-logo {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.slip-logo-fallback {
+  display: grid;
+  place-items: center;
+  background: #1f2430;
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+}
+.slip-org {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.slip-sub {
+  font-size: 11px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 2px;
+}
+.slip-title-box {
+  text-align: right;
+  flex-shrink: 0;
+}
+.slip-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.slip-no {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: #6b7280;
+}
+.slip-no span {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #1f2430;
+  font-weight: 600;
+}
+.slip-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin: 16px 0;
+}
+.slip-meta dt {
+  font-size: 10.5px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.slip-meta dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.slip-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.slip-table th {
+  text-align: left;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #4b5563;
+  background: #f3f4f6;
+  padding: 7px 8px;
+  border-top: 1px solid #d1d5db;
+  border-bottom: 1px solid #d1d5db;
+}
+.slip-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid #eceef1;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.slip-num {
+  width: 32px;
+  color: #6b7280;
+  text-align: right;
+}
+.slip-strong {
+  font-weight: 600;
+}
+.slip-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+.slip-totals {
+  display: flex;
+  justify-content: flex-end;
+  gap: 22px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.slip-totals span {
+  color: #6b7280;
+  margin-right: 6px;
+}
+.slip-remarks {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: #f8f9fb;
+  border-left: 3px solid #9ca3af;
+  border-radius: 3px;
+}
+.slip-remarks span {
+  font-size: 10.5px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.slip-remarks p {
+  margin: 3px 0 0;
+}
+.slip-terms {
+  margin-top: 14px;
+  font-size: 11px;
+  color: #6b7280;
+}
+.slip-signs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  margin-top: 42px;
+}
+.slip-line {
+  border-bottom: 1px solid #1f2430;
+  height: 26px;
+}
+.slip-signs span {
+  display: block;
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: #4b5563;
+}
+.slip-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 22px;
+  padding-top: 8px;
+  border-top: 1px solid #eceef1;
+  font-size: 10px;
+  color: #9ca3af;
+}
 @media (max-width: 560px) {
-  .slip-paper { padding: 18px 16px 14px; }
-  .slip-head { flex-direction: column; }
-  .slip-title-box { text-align: left; }
-  .slip-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .slip-table th:nth-child(3), .slip-table td:nth-child(3) { display: none; }
-  .slip-signs { gap: 20px; }
+  .slip-paper {
+    padding: 18px 16px 14px;
+  }
+  .slip-head {
+    flex-direction: column;
+  }
+  .slip-title-box {
+    text-align: left;
+  }
+  .slip-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .slip-table th:nth-child(3),
+  .slip-table td:nth-child(3) {
+    display: none;
+  }
+  .slip-signs {
+    gap: 20px;
+  }
 }
 /* Printing while the slip is open: print only the sheet. */
 @media print {
-  @page { size: A4; margin: 14mm; }
-  html.slip-open body > *:not(.slip-overlay) { display: none !important; }
-  html.slip-open, html.slip-open body { background: #fff !important; }
-  .slip-overlay { position: static !important; inset: auto !important; display: block !important; padding: 0 !important; background: none !important; overflow: visible !important; }
-  .slip-dialog { max-width: none !important; border: 0 !important; box-shadow: none !important; background: none !important; animation: none !important; }
-  .slip-chrome { display: none !important; }
-  .slip-scroll { max-height: none !important; overflow: visible !important; padding: 0 !important; background: none !important; }
-  .slip-paper { border: 0; box-shadow: none; padding: 0; max-width: none; }
-  .slip-table tr { break-inside: avoid; }
-  .slip-paper * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+  html.slip-open body > *:not(.slip-overlay) {
+    display: none !important;
+  }
+  html.slip-open,
+  html.slip-open body {
+    background: #fff !important;
+  }
+  .slip-overlay {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    padding: 0 !important;
+    background: none !important;
+    overflow: visible !important;
+  }
+  .slip-dialog {
+    max-width: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: none !important;
+    animation: none !important;
+  }
+  .slip-chrome {
+    display: none !important;
+  }
+  .slip-scroll {
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: none !important;
+  }
+  .slip-paper {
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+    max-width: none;
+  }
+  .slip-table tr {
+    break-inside: avoid;
+  }
+  .slip-paper * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

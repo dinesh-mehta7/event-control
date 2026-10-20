@@ -22,7 +22,8 @@ export const Swap: React.FC<{
 
   useLayoutEffect(() => {
     if (!leaving || !indexOf) return;
-    const a = indexOf(settled), b = indexOf(k);
+    const a = indexOf(settled),
+      b = indexOf(k);
     setDx(a >= 0 && b >= 0 && b < a ? -1 : 1);
   }, [k, settled, leaving, indexOf]);
 
@@ -33,7 +34,11 @@ export const Swap: React.FC<{
   }, [k, leaving]);
 
   return (
-    <div key={settled} className={`${leaving ? 'vt-out' : 'vt-in'} ${className}`} style={{ '--dx': dx } as React.CSSProperties}>
+    <div
+      key={settled}
+      className={`${leaving ? 'vt-out' : 'vt-in'} ${className}`}
+      style={{ '--dx': dx } as React.CSSProperties}
+    >
       {leaving ? live.current : children}
     </div>
   );

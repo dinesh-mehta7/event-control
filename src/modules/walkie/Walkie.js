@@ -62,7 +62,13 @@ export function MainLayout({ headerExtra = null, embedded = false, initialTab = 
     { id: 'dashboard', label: 'Overview' },
     { id: 'walkies', label: 'Walkie devices' },
     { id: 'departments', label: 'Departments' },
-    ...(!isClient ? [{ id: 'allocation', label: 'Allocations' }, { id: 'returns', label: 'Returns' }, { id: 'maintenance', label: 'Maintenance' }] : []),
+    ...(!isClient
+      ? [
+          { id: 'allocation', label: 'Allocations' },
+          { id: 'returns', label: 'Returns' },
+          { id: 'maintenance', label: 'Maintenance' },
+        ]
+      : []),
     { id: 'history', label: 'Activity history' },
     { id: 'requests', label: 'Event radio requests' },
     ...(isAdmin ? [{ id: 'users', label: 'Walkie users' }] : []),
@@ -71,30 +77,58 @@ export function MainLayout({ headerExtra = null, embedded = false, initialTab = 
     if (initialTab && sectionItems.some(item => item.id === initialTab)) setCurrentTab(initialTab);
   }, [initialTab, setCurrentTab]);
 
-  if (embedded) return (
-    <div className="walkie-embedded space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-mute">Radio assets, allocations, returns and maintenance</p>
-        <div className="w-full sm:w-72">
-          <input type="search" placeholder="Search walkie ID, model…" value={globalSearch}
-            onChange={e => setGlobalSearch(e.target.value)} aria-label="Search walkies"
-            className="w-full rounded-md border border-line bg-field px-3 py-2 text-sm text-ink outline-none focus:border-blue-500" />
+  if (embedded)
+    return (
+      <div className="walkie-embedded space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-mute">Radio assets, allocations, returns and maintenance</p>
+          <div className="w-full sm:w-72">
+            <input
+              type="search"
+              placeholder="Search walkie ID, model…"
+              value={globalSearch}
+              onChange={e => setGlobalSearch(e.target.value)}
+              aria-label="Search walkies"
+              className="w-full rounded-md border border-line bg-field px-3 py-2 text-sm text-ink outline-none focus:border-blue-500"
+            />
+          </div>
         </div>
+        <nav className="flex gap-1 overflow-x-auto border-b border-line" aria-label="Walkie sections">
+          {sectionItems.map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => setCurrentTab(id)}
+              aria-current={currentTab === id ? 'page' : undefined}
+              className={`px-3 py-2.5 border-b-2 text-xs font-medium whitespace-nowrap ${currentTab === id ? 'border-blue-600 text-blue-500' : 'border-transparent text-mute hover:text-ink'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+        {isOperator && (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+            Operator access · administrative changes are restricted.
+          </div>
+        )}
+        {isClient && (
+          <div className="rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-300">
+            Read-only access.
+          </div>
+        )}
+        <Suspense fallback={<ViewLoadingFallback />}>
+          {dataLoading ? (
+            <div className="py-16 text-center text-sm text-mute">Syncing with your database…</div>
+          ) : (
+            renderContent()
+          )}
+        </Suspense>
       </div>
-      <nav className="flex gap-1 overflow-x-auto border-b border-line" aria-label="Walkie sections">
-        {sectionItems.map(({ id, label }) => <button key={id} onClick={() => setCurrentTab(id)} aria-current={currentTab === id ? 'page' : undefined}
-          className={`px-3 py-2.5 border-b-2 text-xs font-medium whitespace-nowrap ${currentTab === id ? 'border-blue-600 text-blue-500' : 'border-transparent text-mute hover:text-ink'}`}>{label}</button>)}
-      </nav>
-      {isOperator && <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">Operator access · administrative changes are restricted.</div>}
-      {isClient && <div className="rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-300">Read-only access.</div>}
-      <Suspense fallback={<ViewLoadingFallback />}>
-        {dataLoading ? <div className="py-16 text-center text-sm text-mute">Syncing with your database…</div> : renderContent()}
-      </Suspense>
-    </div>
-  );
+    );
 
   return (
-    <div className={`h-screen flex overflow-hidden transition-colors duration-300 ${settings.theme === 'dark' ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-800'}`}>
+    <div
+      className={`h-screen flex overflow-hidden transition-colors duration-300 ${settings.theme === 'dark' ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-800'}`}
+    >
       {/* Sidebar */}
       <Sidebar />
 
@@ -108,16 +142,26 @@ export function MainLayout({ headerExtra = null, embedded = false, initialTab = 
           {/* Role Indicator Banner for Operators */}
           {isOperator && (
             <div className="mb-6 p-3 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl text-xs flex items-center justify-between">
-              <span>You are logged in as an <strong>Operator</strong>. Administrative operations (deletions, bulk uploads, and global settings) are locked.</span>
-              <span className="font-bold uppercase tracking-wider bg-amber-500 text-white px-2 py-0.5 rounded text-xs">Operator Access</span>
+              <span>
+                You are logged in as an <strong>Operator</strong>. Administrative operations (deletions, bulk uploads,
+                and global settings) are locked.
+              </span>
+              <span className="font-bold uppercase tracking-wider bg-amber-500 text-white px-2 py-0.5 rounded text-xs">
+                Operator Access
+              </span>
             </div>
           )}
 
           {/* Role Indicator Banner for Clients */}
           {isClient && (
             <div className="mb-6 p-3 bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 rounded-xl text-xs flex items-center justify-between">
-              <span>You are logged in as a <strong>Client/Guest</strong>. You have read-only access to view radio status, departments, and reports. All modifications are disabled.</span>
-              <span className="font-bold uppercase tracking-wider bg-blue-500 text-white px-2 py-0.5 rounded text-xs">Read Only</span>
+              <span>
+                You are logged in as a <strong>Client/Guest</strong>. You have read-only access to view radio status,
+                departments, and reports. All modifications are disabled.
+              </span>
+              <span className="font-bold uppercase tracking-wider bg-blue-500 text-white px-2 py-0.5 rounded text-xs">
+                Read Only
+              </span>
             </div>
           )}
 

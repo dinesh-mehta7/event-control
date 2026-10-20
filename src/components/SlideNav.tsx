@@ -2,12 +2,15 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 
 // A tab bar whose highlight glides to the active tab with a soft spring, like the sign-in tabs.
 // Mark the active child with aria-current="page", aria-pressed="true", aria-selected="true" or data-active="true".
-const ACTIVE = ':scope > [aria-current="page"], :scope > [aria-pressed="true"], :scope > [aria-selected="true"], :scope > [data-active="true"]';
+const ACTIVE =
+  ':scope > [aria-current="page"], :scope > [aria-pressed="true"], :scope > [aria-selected="true"], :scope > [data-active="true"]';
 
-export const SlideNav: React.FC<React.HTMLAttributes<HTMLElement> & {
-  variant?: 'pill' | 'underline';
-  as?: 'nav' | 'div';
-}> = ({ variant = 'pill', as = 'nav', className = '', children, ...rest }) => {
+export const SlideNav: React.FC<
+  React.HTMLAttributes<HTMLElement> & {
+    variant?: 'pill' | 'underline';
+    as?: 'nav' | 'div';
+  }
+> = ({ variant = 'pill', as = 'nav', className = '', children, ...rest }) => {
   const ref = useRef<HTMLElement>(null);
   const [box, setBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [ready, setReady] = useState(false);
@@ -24,9 +27,18 @@ export const SlideNav: React.FC<React.HTMLAttributes<HTMLElement> & {
     ro.observe(node);
     Array.from(node.children).forEach(c => ro.observe(c));
     const mo = new MutationObserver(measure);
-    mo.observe(node, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-current', 'aria-pressed', 'aria-selected', 'data-active'] });
+    mo.observe(node, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['aria-current', 'aria-pressed', 'aria-selected', 'data-active'],
+    });
     const r = requestAnimationFrame(() => requestAnimationFrame(() => setReady(true)));
-    return () => { ro.disconnect(); mo.disconnect(); cancelAnimationFrame(r); };
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+      cancelAnimationFrame(r);
+    };
   }, []);
 
   const Tag = as as any;

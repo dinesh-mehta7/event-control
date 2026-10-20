@@ -7,11 +7,18 @@ import { DEPTS } from '../views/orgData';
 //   staff          Staff                  — works in one sub-department
 //   other          No access yet          — signed up, not yet given a role
 export const ROLE_LABEL: Record<string, string> = {
-  owner: 'Super Admin', dept_head: 'Department Head', sub_dept_head: 'Sub-department Head', staff: 'Staff', other: 'No role yet',
+  owner: 'Super Admin',
+  dept_head: 'Department Head',
+  sub_dept_head: 'Sub-department Head',
+  staff: 'Staff',
+  other: 'No role yet',
 };
 export const ROLE_TONE: Record<string, string> = {
-  owner: 'bg-amber-500/15 text-amber-300', dept_head: 'bg-blue-500/15 text-blue-300', sub_dept_head: 'bg-blue-500/15 text-blue-300',
-  staff: 'bg-raised text-ink-soft', other: 'bg-raised text-mute',
+  owner: 'bg-amber-500/15 text-amber-300',
+  dept_head: 'bg-blue-500/15 text-blue-300',
+  sub_dept_head: 'bg-blue-500/15 text-blue-300',
+  staff: 'bg-raised text-ink-soft',
+  other: 'bg-raised text-mute',
 };
 export const subDeptLabel = (sub?: string | null) => (sub ? DEPTS[sub as keyof typeof DEPTS] || sub : '');
 

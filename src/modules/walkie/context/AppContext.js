@@ -10,7 +10,7 @@ const AppContext = createContext();
 // snake_case rows into exactly the same shapes here. Nothing outside this
 // file needs to know Supabase exists.
 // ----------------------------------------------------------------------------
-const mapWalkie = (row) => ({
+const mapWalkie = row => ({
   id: row.id,
   label: row.label,
   model: row.model,
@@ -21,18 +21,18 @@ const mapWalkie = (row) => ({
     ? { name: row.assigned_person_name, contact: row.assigned_person_contact || '' }
     : null,
   isRented: row.is_rented === true,
-  notes: row.notes || ''
+  notes: row.notes || '',
 });
 
-const mapDepartment = (row) => ({
+const mapDepartment = row => ({
   id: row.id,
   name: row.name,
   description: row.description || '',
   channelNumber: row.channel_number,
-  code: row.code || ''
+  code: row.code || '',
 });
 
-const mapAllocation = (row) => ({
+const mapAllocation = row => ({
   id: row.id,
   departmentId: row.department_id || '',
   walkieIds: Array.isArray(row.walkie_ids) ? row.walkie_ids : [],
@@ -42,34 +42,34 @@ const mapAllocation = (row) => ({
   status: row.status,
   chargerCount: row.charger_count || 0,
   earphoneCount: row.earphone_count || 0,
-  returnedDate: row.returned_date || undefined
+  returnedDate: row.returned_date || undefined,
 });
 
-const mapMaintenance = (row) => ({
+const mapMaintenance = row => ({
   id: row.id,
   walkieId: row.walkie_id,
   issue: row.issue,
   date: row.date,
   technician: row.technician,
-  status: row.status
+  status: row.status,
 });
 
-const mapHistory = (row) => ({
+const mapHistory = row => ({
   id: row.id,
   action: row.action,
   details: row.details,
   timestamp: new Date(row.created_at).toLocaleString(),
-  type: row.type || 'info'
+  type: row.type || 'info',
 });
 
-const mapDepartmentHead = (row) => ({
+const mapDepartmentHead = row => ({
   id: row.id,
   departmentId: row.department_id,
   name: row.name,
-  mobileNumber: row.mobile_number
+  mobileNumber: row.mobile_number,
 });
 
-const mapDelivery = (row) => ({
+const mapDelivery = row => ({
   id: row.id,
   departmentId: row.department_id || '',
   walkieCount: row.walkie_count,
@@ -81,14 +81,14 @@ const mapDelivery = (row) => ({
   remarks: row.remarks || '',
   deliveredAt: row.delivered_at || null,
   returnedAt: row.returned_at || null,
-  createdAt: row.created_at
+  createdAt: row.created_at,
 });
 
-const mapInventorySettings = (row) => ({
+const mapInventorySettings = row => ({
   totalEarphones: row.total_earphones || 0,
   totalChargers: row.total_chargers || 0,
   chargersMaintenance: row.chargers_maintenance || 0,
-  earphonesMaintenance: row.earphones_maintenance || 0
+  earphonesMaintenance: row.earphones_maintenance || 0,
 });
 
 // Builds a WhatsApp click-to-send link (no API key needed — opens WhatsApp
@@ -114,7 +114,7 @@ const safeJsonParse = (key, fallback) => {
 
 // Friendly hint when PostgREST says a column/table is missing — this is what
 // happens when a SQL migration hasn't been run (or the API schema cache is stale).
-const describeDbError = (error) => {
+const describeDbError = error => {
   const msg = error?.message || 'Unknown error';
   if (/schema cache|column .* does not exist|could not find/i.test(msg)) {
     return `${msg} — run supabase/migration_v6_backend_fixes.sql in the Supabase SQL Editor, then retry.`;
@@ -152,7 +152,12 @@ export function AppProvider({ children }) {
   const [history, setHistory] = useState([]);
   const [departmentHeads, setDepartmentHeads] = useState([]);
   const [deliveries, setDeliveries] = useState([]);
-  const [inventorySettings, setInventorySettings] = useState({ totalEarphones: 0, totalChargers: 0, chargersMaintenance: 0, earphonesMaintenance: 0 });
+  const [inventorySettings, setInventorySettings] = useState({
+    totalEarphones: 0,
+    totalChargers: 0,
+    chargersMaintenance: 0,
+    earphonesMaintenance: 0,
+  });
 
   // Royal (dark + saffron palette) is the default theme. `themeV` moves every browser to Royal once;
   // after that, whatever the person picks in the account menu (Light, Dark or Royal) is kept.
@@ -163,7 +168,7 @@ export function AppProvider({ children }) {
       theme: 'dark',
       palette: 'saffron',
       defaultAllocator: 'Administrator',
-      role: 'Admin'
+      role: 'Admin',
     });
     return s.themeV === 5 ? s : { ...s, theme: 'dark', palette: 'saffron', themeV: 5 };
   });
@@ -178,30 +183,33 @@ export function AppProvider({ children }) {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev.filter(t => !(t.message === message && t.type === type)), { id, message, type }]);
   }, []);
-  const dismissToast = useCallback((id) => {
+  const dismissToast = useCallback(id => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
   // Helper: Log Action
-  const logAction = useCallback(async (action, details, type = 'info') => {
-    try {
-      await supabase.from('history').insert({
-        id: `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        action,
-        details,
-        type,
-        organization_id: currentUser?.organizationId
-      });
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn('Failed to log action:', e);
-    }
-  }, [currentUser]);
+  const logAction = useCallback(
+    async (action, details, type = 'info') => {
+      try {
+        await supabase.from('history').insert({
+          id: `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          action,
+          details,
+          type,
+          organization_id: currentUser?.organizationId,
+        });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('Failed to log action:', e);
+      }
+    },
+    [currentUser],
+  );
 
   // Auth profile loader. It FAILS CLOSED: on any error or empty result it retries, and if it still cannot
   // read the profile it returns null (the caller treats that as "not signed in"). It never invents an
   // approved, active user, so a network or RLS hiccup cannot let a pending or disabled person in.
-  const loadProfile = useCallback(async (userId) => {
+  const loadProfile = useCallback(async userId => {
     const delays = [0, 600, 1800];
     for (let i = 0; i < delays.length; i++) {
       if (delays[i]) await new Promise(r => setTimeout(r, delays[i]));
@@ -215,13 +223,15 @@ export function AppProvider({ children }) {
             role: data.role,
             isActive: data.is_active !== false,
             organizationId: data.organization_id || null,
-            approved: data.approved !== false,   // an existing row decides; only a failed read is treated as not signed in
+            approved: data.approved !== false, // an existing row decides; only a failed read is treated as not signed in
             level: data.level || (data.role === 'Admin' ? 'owner' : 'other'),
             subDepartment: data.sub_department || null,
-            departmentId: data.department_id || null
+            departmentId: data.department_id || null,
           };
         }
-      } catch (e) { /* retry */ }
+      } catch (e) {
+        /* retry */
+      }
     }
     return null;
   }, []);
@@ -239,7 +249,7 @@ export function AppProvider({ children }) {
     const FAIL_NOTICE = 'We could not load your account. Check your connection and sign in again.';
     let currentId = null; // the user whose profile is already loaded (a token refresh must not reload or log out)
 
-    const applySession = async (session) => {
+    const applySession = async session => {
       if (!session?.user) {
         currentId = null;
         if (isMounted) setCurrentUser(null);
@@ -268,15 +278,18 @@ export function AppProvider({ children }) {
       setCurrentUser(profile);
     };
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      await applySession(data?.session);
-      if (isMounted) setAuthChecked(true);
-    }).catch(() => {
-      if (isMounted) {
-        setCurrentUser(null);
-        setAuthChecked(true);
-      }
-    });
+    supabase.auth
+      .getSession()
+      .then(async ({ data }) => {
+        await applySession(data?.session);
+        if (isMounted) setAuthChecked(true);
+      })
+      .catch(() => {
+        if (isMounted) {
+          setCurrentUser(null);
+          setAuthChecked(true);
+        }
+      });
 
     // IMPORTANT: this callback must not await Supabase calls. supabase-js holds an auth lock while it runs
     // the callback, so awaiting a query (or signOut) in here can deadlock every later request. We only
@@ -288,7 +301,9 @@ export function AppProvider({ children }) {
       }
       if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') return; // nothing changed about who they are
       if (event === 'SIGNED_IN' && session?.user && session.user.id === currentId) return; // tab refocus re-fires SIGNED_IN
-      setTimeout(() => { applySession(session); }, 0);
+      setTimeout(() => {
+        applySession(session);
+      }, 0);
     });
 
     return () => {
@@ -303,7 +318,7 @@ export function AppProvider({ children }) {
     }
   }, [currentUser]);
 
-  const mapOrganization = (o) => ({ id: o.id, name: o.name, joinCode: o.join_code, logoUrl: o.logo_url || null });
+  const mapOrganization = o => ({ id: o.id, name: o.name, joinCode: o.join_code, logoUrl: o.logo_url || null });
 
   // Fetch the current user's organization (name + join code for Admins to
   // share) whenever it becomes known, and keep it live via realtime so a
@@ -314,7 +329,11 @@ export function AppProvider({ children }) {
       return;
     }
     let isMounted = true;
-    supabase.from('organizations').select('*').eq('id', currentUser.organizationId).maybeSingle()
+    supabase
+      .from('organizations')
+      .select('*')
+      .eq('id', currentUser.organizationId)
+      .maybeSingle()
       .then(({ data }) => {
         if (isMounted && data) {
           setCurrentOrganization(mapOrganization(data));
@@ -323,11 +342,15 @@ export function AppProvider({ children }) {
 
     const channel = supabase
       .channel(`org-${currentUser.organizationId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'organizations', filter: `id=eq.${currentUser.organizationId}` }, (payload) => {
-        if (isMounted && payload.new) {
-          setCurrentOrganization(mapOrganization(payload.new));
-        }
-      })
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'organizations', filter: `id=eq.${currentUser.organizationId}` },
+        payload => {
+          if (isMounted && payload.new) {
+            setCurrentOrganization(mapOrganization(payload.new));
+          }
+        },
+      )
       .subscribe();
 
     return () => {
@@ -340,7 +363,9 @@ export function AppProvider({ children }) {
   // so the sidebar/slips never show a stale name cached in this browser.
   useEffect(() => {
     if (currentOrganization?.name) {
-      setSettings(prev => (prev.orgName === currentOrganization.name ? prev : { ...prev, orgName: currentOrganization.name }));
+      setSettings(prev =>
+        prev.orgName === currentOrganization.name ? prev : { ...prev, orgName: currentOrganization.name },
+      );
     }
   }, [currentOrganization]);
 
@@ -351,28 +376,36 @@ export function AppProvider({ children }) {
     if (!currentUser?.id) return;
     const channel = supabase
       .channel(`self-profile-${currentUser.id}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` }, (payload) => {
-        const row = payload.new;
-        if (!row) return;
-        const isActive = row.is_active !== false;
-        if (!isActive) {
-          supabase.auth.signOut();
-          setCurrentUser(null);
-          setAuthNotice('Your account has been disabled. Contact an administrator.');
-          return;
-        }
-        setCurrentUser(prev => (prev ? {
-          ...prev,
-          role: row.role,
-          isActive,
-          approved: row.approved !== false,
-          organizationId: row.organization_id || prev.organizationId,
-          // keep the hierarchy live too, so a promotion (e.g. to Accommodation
-          // head) takes effect without logging out and in again
-          level: row.level || prev.level,
-          subDepartment: row.sub_department || null
-        } : prev));
-      })
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` },
+        payload => {
+          const row = payload.new;
+          if (!row) return;
+          const isActive = row.is_active !== false;
+          if (!isActive) {
+            supabase.auth.signOut();
+            setCurrentUser(null);
+            setAuthNotice('Your account has been disabled. Contact an administrator.');
+            return;
+          }
+          setCurrentUser(prev =>
+            prev
+              ? {
+                  ...prev,
+                  role: row.role,
+                  isActive,
+                  approved: row.approved !== false,
+                  organizationId: row.organization_id || prev.organizationId,
+                  // keep the hierarchy live too, so a promotion (e.g. to Accommodation
+                  // head) takes effect without logging out and in again
+                  level: row.level || prev.level,
+                  subDepartment: row.sub_department || null,
+                }
+              : prev,
+          );
+        },
+      )
       .subscribe();
 
     return () => {
@@ -393,7 +426,7 @@ export function AppProvider({ children }) {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
-        password
+        password,
       });
 
       if (error) {
@@ -446,8 +479,8 @@ export function AppProvider({ children }) {
         password,
         options: {
           data: metaData,
-          emailRedirectTo: `${window.location.origin}/`
-        }
+          emailRedirectTo: `${window.location.origin}/`,
+        },
       });
 
       if (error) {
@@ -473,7 +506,12 @@ export function AppProvider({ children }) {
         }
         setCurrentUser(profile);
         setCurrentTab('dashboard');
-        addToast(profile.approved ? `Welcome, ${profile.name}!` : `Account created, ${profile.name}! Waiting on approval from your organization's admin.`, 'success');
+        addToast(
+          profile.approved
+            ? `Welcome, ${profile.name}!`
+            : `Account created, ${profile.name}! Waiting on approval from your organization's admin.`,
+          'success',
+        );
         return true;
       }
 
@@ -488,12 +526,12 @@ export function AppProvider({ children }) {
     }
   };
 
-  const sendPasswordReset = async (email) => {
+  const sendPasswordReset = async email => {
     setAuthLoading(true);
     setAuthNotice(null);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email.toLowerCase().trim(), {
-        redirectTo: `${window.location.origin}/`
+        redirectTo: `${window.location.origin}/`,
       });
       if (error) {
         addToast(error.message || 'Could not send reset email.', 'error');
@@ -512,7 +550,7 @@ export function AppProvider({ children }) {
 
   // Called from the reset-password screen, which the user only reaches via
   // the emailed link (Supabase gives them a temporary recovery session).
-  const updatePassword = async (newPassword) => {
+  const updatePassword = async newPassword => {
     setAuthLoading(true);
     try {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
@@ -533,7 +571,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  const resendVerificationEmail = async (email) => {
+  const resendVerificationEmail = async email => {
     try {
       const { error } = await supabase.auth.resend({ type: 'signup', email: email.toLowerCase().trim() });
       if (error) {
@@ -551,7 +589,7 @@ export function AppProvider({ children }) {
   const logout = async () => {
     try {
       await supabase.auth.signOut();
-    } catch (e) { }
+    } catch (e) {}
     setCurrentUser(null);
     setAuthView('login');
     addToast('Logged out successfully.', 'info');
@@ -564,18 +602,20 @@ export function AppProvider({ children }) {
     if (currentUser?.role !== 'Admin') return;
     const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: true });
     if (!error && Array.isArray(data)) {
-      setAllProfiles(data.map(p => ({
-        id: p.id,
-        name: p.name,
-        email: p.email,
-        role: p.role,
-        isActive: p.is_active !== false,
-        approved: p.approved !== false,
-        level: p.level || 'other',
-        subDepartment: p.sub_department || null,
-        departmentId: p.department_id || null,
-        createdAt: p.created_at
-      })));
+      setAllProfiles(
+        data.map(p => ({
+          id: p.id,
+          name: p.name,
+          email: p.email,
+          role: p.role,
+          isActive: p.is_active !== false,
+          approved: p.approved !== false,
+          level: p.level || 'other',
+          subDepartment: p.sub_department || null,
+          departmentId: p.department_id || null,
+          createdAt: p.created_at,
+        })),
+      );
     }
   }, [currentUser]);
 
@@ -603,13 +643,17 @@ export function AppProvider({ children }) {
       addToast('Only Administrators can change access levels.', 'error');
       return false;
     }
-    const sub = (level === 'sub_dept_head' || level === 'staff') ? (subDepartment || null) : null;
+    const sub = level === 'sub_dept_head' || level === 'staff' ? subDepartment || null : null;
     if (level === 'sub_dept_head' && !sub) {
       addToast('Pick a department for a Sub-dept head.', 'error');
       return false;
     }
-    const { data, error } = await supabase.from('profiles')
-      .update({ level, sub_department: sub, department_id: departmentId || null }).eq('id', userId).select('level, sub_department, department_id').single();
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ level, sub_department: sub, department_id: departmentId || null })
+      .eq('id', userId)
+      .select('level, sub_department, department_id')
+      .single();
     if (error || !data) {
       addToast(`Failed to update access level: ${describeDbError(error)}`, 'error');
       return false;
@@ -618,7 +662,13 @@ export function AppProvider({ children }) {
       addToast('The database refused the change. Run supabase/migration_v4_hierarchy.sql first.', 'error');
       return false;
     }
-    setAllProfiles(prev => prev.map(p => (p.id === userId ? { ...p, level: data.level, subDepartment: data.sub_department, departmentId: data.department_id } : p)));
+    setAllProfiles(prev =>
+      prev.map(p =>
+        p.id === userId
+          ? { ...p, level: data.level, subDepartment: data.sub_department, departmentId: data.department_id }
+          : p,
+      ),
+    );
     logAction('Access Level Changed', `${currentUser.name} set a user to ${level}${sub ? ` (${sub})` : ''}`, 'warning');
     addToast('Access level updated.', 'success');
     return true;
@@ -644,13 +694,17 @@ export function AppProvider({ children }) {
     }
     setAllProfiles(prev => prev.map(p => (p.id === userId ? { ...p, isActive } : p)));
 
-    logAction(isActive ? 'User Re-enabled' : 'User Disabled', `${currentUser.name} ${isActive ? 're-enabled' : 'disabled'} a user account`, 'warning');
+    logAction(
+      isActive ? 'User Re-enabled' : 'User Disabled',
+      `${currentUser.name} ${isActive ? 're-enabled' : 'disabled'} a user account`,
+      'warning',
+    );
     addToast(isActive ? 'User re-enabled.' : 'User access disabled.', 'success');
     return true;
   };
 
   // Approves a pending sign-up for this organization, letting them in.
-  const approveUser = async (userId) => {
+  const approveUser = async userId => {
     if (currentUser?.role !== 'Admin') {
       addToast('Only Administrators can approve new accounts.', 'error');
       return false;
@@ -666,14 +720,18 @@ export function AppProvider({ children }) {
     }
 
     const approvedUser = allProfiles.find(p => p.id === userId);
-    logAction('User Approved', `${currentUser.name} approved ${approvedUser ? approvedUser.name : 'a new user'} to join the organization`, 'success');
+    logAction(
+      'User Approved',
+      `${currentUser.name} approved ${approvedUser ? approvedUser.name : 'a new user'} to join the organization`,
+      'success',
+    );
     addToast('User approved — they now have access.', 'success');
     return true;
   };
 
   // Denies a pending sign-up (keeps them unapproved AND disables the
   // account so they can't retry indefinitely without an admin's say-so).
-  const denyUser = async (userId) => {
+  const denyUser = async userId => {
     if (currentUser?.role !== 'Admin') {
       addToast('Only Administrators can deny new accounts.', 'error');
       return false;
@@ -737,11 +795,10 @@ export function AppProvider({ children }) {
     }
   }, [currentUser, fetchAllUsers]);
 
-
   useEffect(() => {
     try {
       localStorage.setItem('wt_settings', JSON.stringify(settings));
-    } catch (e) { }
+    } catch (e) {}
   }, [settings]);
 
   // --------------------------------------------------------------------------
@@ -761,12 +818,22 @@ export function AppProvider({ children }) {
         const [w, d, a, m, h, dh, dl, inv] = await Promise.all([
           supabase.from('walkies').select('*').order('created_at', { ascending: true }),
           supabase.from('departments').select('*').order('created_at', { ascending: true }),
-          (eventId ? supabase.from('allocations').select('*').eq('event_id', eventId) : supabase.from('allocations').select('*').is('event_id', null)).order('created_at', { ascending: false }),
+          (eventId
+            ? supabase.from('allocations').select('*').eq('event_id', eventId)
+            : supabase.from('allocations').select('*').is('event_id', null)
+          ).order('created_at', { ascending: false }),
           supabase.from('maintenance').select('*').order('created_at', { ascending: false }),
           supabase.from('history').select('*').order('created_at', { ascending: false }).limit(300),
           supabase.from('department_heads').select('*').order('created_at', { ascending: true }),
-          (eventId ? supabase.from('deliveries').select('*').eq('event_id', eventId) : supabase.from('deliveries').select('*').is('event_id', null)).order('created_at', { ascending: false }),
-          supabase.from('inventory_settings').select('*').eq('organization_id', currentUser.organizationId).maybeSingle()
+          (eventId
+            ? supabase.from('deliveries').select('*').eq('event_id', eventId)
+            : supabase.from('deliveries').select('*').is('event_id', null)
+          ).order('created_at', { ascending: false }),
+          supabase
+            .from('inventory_settings')
+            .select('*')
+            .eq('organization_id', currentUser.organizationId)
+            .maybeSingle(),
         ]);
 
         if (!isMounted) return;
@@ -775,7 +842,10 @@ export function AppProvider({ children }) {
         // out (or fake) the others. Errors are shown, never swallowed.
         const failed = [];
         const apply = (name, res, setter, mapper) => {
-          if (res.error) { failed.push(`${name}: ${res.error.message}`); return; }
+          if (res.error) {
+            failed.push(`${name}: ${res.error.message}`);
+            return;
+          }
           if (Array.isArray(res.data)) setter(res.data.map(mapper));
         };
         apply('walkies', w, setWalkies, mapWalkie);
@@ -808,34 +878,60 @@ export function AppProvider({ children }) {
 
     // Generic realtime handler factory: applies INSERT/UPDATE/DELETE payloads
     // to a piece of local state using the matching row-mapper.
-    const makeHandler = (setState, mapRow, prepend = false, eventScoped = false) => (payload) => {
-      const row = payload.eventType === 'DELETE' ? payload.old : payload.new;
-      if (eventScoped && row?.event_id !== undefined && (row?.event_id || null) !== eventId) return;
-      setState(prev => {
-        if (payload.eventType === 'INSERT') {
-          if (prev.some(r => r.id === payload.new.id)) return prev;
-          return prepend ? [mapRow(payload.new), ...prev] : [...prev, mapRow(payload.new)];
-        }
-        if (payload.eventType === 'UPDATE') {
-          return prev.map(r => (r.id === payload.new.id ? mapRow(payload.new) : r));
-        }
-        if (payload.eventType === 'DELETE') {
-          return prev.filter(r => r.id !== payload.old.id);
-        }
-        return prev;
-      });
-    };
+    const makeHandler =
+      (setState, mapRow, prepend = false, eventScoped = false) =>
+      payload => {
+        const row = payload.eventType === 'DELETE' ? payload.old : payload.new;
+        if (eventScoped && row?.event_id !== undefined && (row?.event_id || null) !== eventId) return;
+        setState(prev => {
+          if (payload.eventType === 'INSERT') {
+            if (prev.some(r => r.id === payload.new.id)) return prev;
+            return prepend ? [mapRow(payload.new), ...prev] : [...prev, mapRow(payload.new)];
+          }
+          if (payload.eventType === 'UPDATE') {
+            return prev.map(r => (r.id === payload.new.id ? mapRow(payload.new) : r));
+          }
+          if (payload.eventType === 'DELETE') {
+            return prev.filter(r => r.id !== payload.old.id);
+          }
+          return prev;
+        });
+      };
 
     const channel = supabase
       .channel('radiogate-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'walkies' }, makeHandler(setWalkies, mapWalkie))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'departments' }, makeHandler(setDepartments, mapDepartment))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'allocations' }, makeHandler(setAllocations, mapAllocation, true, true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance' }, makeHandler(setMaintenance, mapMaintenance, true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'history' }, makeHandler(setHistory, mapHistory, true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'department_heads' }, makeHandler(setDepartmentHeads, mapDepartmentHead))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'deliveries' }, makeHandler(setDeliveries, mapDelivery, true, true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_settings' }, (payload) => {
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'departments' },
+        makeHandler(setDepartments, mapDepartment),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'allocations' },
+        makeHandler(setAllocations, mapAllocation, true, true),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'maintenance' },
+        makeHandler(setMaintenance, mapMaintenance, true),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'history' },
+        makeHandler(setHistory, mapHistory, true),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'department_heads' },
+        makeHandler(setDepartmentHeads, mapDepartmentHead),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'deliveries' },
+        makeHandler(setDeliveries, mapDelivery, true, true),
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_settings' }, payload => {
         if (payload.eventType === 'DELETE') return;
         setInventorySettings(mapInventorySettings(payload.new));
       })
@@ -850,7 +946,7 @@ export function AppProvider({ children }) {
   // --------------------------------------------------------------------------
   // WALKIE TALKIE ACTIONS
   // --------------------------------------------------------------------------
-  const addWalkie = async (walkie) => {
+  const addWalkie = async walkie => {
     if (currentUser?.role === 'Client') {
       addToast('Clients are not authorized to add assets', 'error');
       return false;
@@ -866,7 +962,7 @@ export function AppProvider({ children }) {
       assigned_person_name: null,
       assigned_person_contact: null,
       notes: walkie.notes || '',
-      organization_id: currentUser.organizationId
+      organization_id: currentUser.organizationId,
     };
 
     // Optimistically add to local state
@@ -876,7 +972,12 @@ export function AppProvider({ children }) {
     if (error) {
       setWalkies(prev => prev.filter(w => w.id !== newWalkieRow.id));
       const dup = /duplicate|unique/i.test(error.message);
-      addToast(dup ? `A walkie with ID ${newWalkieRow.id} already exists.` : `Failed to save walkie: ${describeDbError(error)}`, 'error');
+      addToast(
+        dup
+          ? `A walkie with ID ${newWalkieRow.id} already exists.`
+          : `Failed to save walkie: ${describeDbError(error)}`,
+        'error',
+      );
       return false;
     }
     addToast(`Walkie ${newWalkieRow.id} added successfully!`);
@@ -897,11 +998,11 @@ export function AppProvider({ children }) {
 
     const before = walkies.find(w => w.id === id);
     // Optimistically update local state, roll back if the database says no
-    setWalkies(prev => prev.map(w => w.id === id ? { ...w, ...updatedFields } : w));
+    setWalkies(prev => prev.map(w => (w.id === id ? { ...w, ...updatedFields } : w)));
 
     const { error } = await supabase.from('walkies').update(payload).eq('id', id);
     if (error) {
-      if (before) setWalkies(prev => prev.map(w => w.id === id ? before : w));
+      if (before) setWalkies(prev => prev.map(w => (w.id === id ? before : w)));
       addToast(`Failed to update walkie: ${describeDbError(error)}`, 'error');
       return false;
     }
@@ -910,7 +1011,7 @@ export function AppProvider({ children }) {
     return true;
   };
 
-  const deleteWalkie = async (id) => {
+  const deleteWalkie = async id => {
     if (currentUser?.role !== 'Admin') {
       addToast('Only Administrators can delete assets.', 'error');
       return false;
@@ -933,7 +1034,7 @@ export function AppProvider({ children }) {
     return true;
   };
 
-  const bulkDeleteWalkies = async (ids) => {
+  const bulkDeleteWalkies = async ids => {
     if (currentUser?.role !== 'Admin') {
       addToast('Only Administrators can delete assets.', 'error');
       return false;
@@ -984,7 +1085,7 @@ export function AppProvider({ children }) {
           assigned_person_name: null,
           assigned_person_contact: null,
           notes: notes || 'Bulk imported',
-          organization_id: currentUser.organizationId
+          organization_id: currentUser.organizationId,
         });
       }
     }
@@ -1000,7 +1101,11 @@ export function AppProvider({ children }) {
       return false;
     }
     setWalkies(prev => [...prev, ...newItems.filter(n => !prev.some(w => w.id === n.id)).map(mapWalkie)]);
-    logAction('Bulk Walkies Added', `Added ${newItems.length} walkies using prefix ${prefix} by ${currentUser.name}`, 'success');
+    logAction(
+      'Bulk Walkies Added',
+      `Added ${newItems.length} walkies using prefix ${prefix} by ${currentUser.name}`,
+      'success',
+    );
     addToast(`Successfully bulk added ${newItems.length} walkie talkies!`);
     return true;
   };
@@ -1008,7 +1113,7 @@ export function AppProvider({ children }) {
   // --------------------------------------------------------------------------
   // DEPARTMENT ACTIONS
   // --------------------------------------------------------------------------
-  const addDepartment = async (dept) => {
+  const addDepartment = async dept => {
     if (currentUser?.role === 'Client') {
       addToast('Clients are not authorized to manage departments.', 'error');
       return false;
@@ -1032,7 +1137,7 @@ export function AppProvider({ children }) {
       description: dept.description || '',
       code: dept.code || '',
       channel_number: channelNumber,
-      organization_id: currentUser.organizationId
+      organization_id: currentUser.organizationId,
     };
 
     // Optimistically update local state immediately
@@ -1045,7 +1150,11 @@ export function AppProvider({ children }) {
       return false;
     }
     addToast(`Department "${newDept.name}" created on channel ${newDept.channel_number}.`);
-    logAction('Department Added', `Created department: ${newDept.name} on channel ${newDept.channel_number} by ${currentUser.name}`, 'success');
+    logAction(
+      'Department Added',
+      `Created department: ${newDept.name} on channel ${newDept.channel_number} by ${currentUser.name}`,
+      'success',
+    );
     return true;
   };
 
@@ -1060,10 +1169,22 @@ export function AppProvider({ children }) {
     }
 
     if (!['Admin', 'Operator'].includes(currentUser?.role)) {
-      const { error } = await supabase.rpc('department_set_channel', { p_department_id: id, p_channel: updatedFields.channelNumber || '' });
-      if (error) { addToast(`Failed to update channel: ${error.message}`, 'error'); return false; }
-      setDepartments(prev => prev.map(d => d.id === id ? { ...d, channelNumber: updatedFields.channelNumber.trim() } : d));
-      setWalkies(prev => prev.map(w => w.departmentId === id && w.status === 'Allocated' ? { ...w, channel: updatedFields.channelNumber.trim() } : w));
+      const { error } = await supabase.rpc('department_set_channel', {
+        p_department_id: id,
+        p_channel: updatedFields.channelNumber || '',
+      });
+      if (error) {
+        addToast(`Failed to update channel: ${error.message}`, 'error');
+        return false;
+      }
+      setDepartments(prev =>
+        prev.map(d => (d.id === id ? { ...d, channelNumber: updatedFields.channelNumber.trim() } : d)),
+      );
+      setWalkies(prev =>
+        prev.map(w =>
+          w.departmentId === id && w.status === 'Allocated' ? { ...w, channel: updatedFields.channelNumber.trim() } : w,
+        ),
+      );
       addToast('Department channel updated and synced to allocated radios.');
       return true;
     }
@@ -1082,7 +1203,9 @@ export function AppProvider({ children }) {
         addToast('Channel number cannot be empty!', 'error');
         return false;
       }
-      const duplicate = departments.find(d => d.id !== id && d.channelNumber && d.channelNumber.toLowerCase() === trimmedChannel.toLowerCase());
+      const duplicate = departments.find(
+        d => d.id !== id && d.channelNumber && d.channelNumber.toLowerCase() === trimmedChannel.toLowerCase(),
+      );
       if (duplicate) {
         addToast(`Channel ${trimmedChannel} is already assigned to another department!`, 'error');
         return false;
@@ -1103,8 +1226,16 @@ export function AppProvider({ children }) {
 
     // Keep every walkie currently allocated to this department in sync with its channel number
     if (channelChanged) {
-      await supabase.from('walkies').update({ channel: newChannelNumber }).eq('department_id', id).eq('status', 'Allocated');
-      logAction('Department Channel Updated', `Channel for department ID ${id} changed to ${newChannelNumber}; propagated to all radios allocated there, by ${currentUser.name}`, 'info');
+      await supabase
+        .from('walkies')
+        .update({ channel: newChannelNumber })
+        .eq('department_id', id)
+        .eq('status', 'Allocated');
+      logAction(
+        'Department Channel Updated',
+        `Channel for department ID ${id} changed to ${newChannelNumber}; propagated to all radios allocated there, by ${currentUser.name}`,
+        'info',
+      );
     }
 
     logAction('Department Updated', `Updated department ID ${id} by ${currentUser.name}`, 'info');
@@ -1127,16 +1258,26 @@ export function AppProvider({ children }) {
     // Free the radios first (and close their active allocations so the
     // accessories they held go back to stock), then delete the department.
     if (force) {
-      const { error: freeErr } = await supabase.from('walkies')
-        .update({ status: 'Available', department_id: null, channel: '', assigned_person_name: null, assigned_person_contact: null })
-        .eq('department_id', id).eq('status', 'Allocated');
+      const { error: freeErr } = await supabase
+        .from('walkies')
+        .update({
+          status: 'Available',
+          department_id: null,
+          channel: '',
+          assigned_person_name: null,
+          assigned_person_contact: null,
+        })
+        .eq('department_id', id)
+        .eq('status', 'Allocated');
       if (freeErr) {
         addToast(`Could not release radios: ${describeDbError(freeErr)}`, 'error');
         return { error: true };
       }
-      await supabase.from('allocations')
+      await supabase
+        .from('allocations')
         .update({ status: 'Returned', returned_date: new Date().toISOString().split('T')[0] })
-        .eq('department_id', id).eq('status', 'Active');
+        .eq('department_id', id)
+        .eq('status', 'Active');
     }
 
     const { error: delErr } = await supabase.from('departments').delete().eq('id', id);
@@ -1146,15 +1287,37 @@ export function AppProvider({ children }) {
     }
 
     setDepartments(prev => prev.filter(d => d.id !== id));
-    setWalkies(prev => prev.map(w => w.departmentId === id ? { ...w, departmentId: '', channel: '', assignedPerson: w.status === 'Allocated' ? null : w.assignedPerson, status: w.status === 'Allocated' ? 'Available' : w.status } : w));
-    setAllocations(prev => prev.map(a => (a.departmentId === id && a.status === 'Active') ? { ...a, status: 'Returned', returnedDate: new Date().toISOString().split('T')[0] } : a));
+    setWalkies(prev =>
+      prev.map(w =>
+        w.departmentId === id
+          ? {
+              ...w,
+              departmentId: '',
+              channel: '',
+              assignedPerson: w.status === 'Allocated' ? null : w.assignedPerson,
+              status: w.status === 'Allocated' ? 'Available' : w.status,
+            }
+          : w,
+      ),
+    );
+    setAllocations(prev =>
+      prev.map(a =>
+        a.departmentId === id && a.status === 'Active'
+          ? { ...a, status: 'Returned', returnedDate: new Date().toISOString().split('T')[0] }
+          : a,
+      ),
+    );
     // Department heads cascade-delete in the DB; mirror that locally right away.
     setDepartmentHeads(prev => prev.filter(h => h.departmentId !== id));
-    setDeliveries(prev => prev.map(d => d.departmentId === id ? { ...d, departmentId: '' } : d));
+    setDeliveries(prev => prev.map(d => (d.departmentId === id ? { ...d, departmentId: '' } : d)));
 
-    logAction(force ? 'Department Force Deleted' : 'Department Deleted', force
-      ? `Deleted department ID ${id} and forced return of active walkies by ${currentUser.name}`
-      : `Deleted department ID ${id} by ${currentUser.name}`, 'warning');
+    logAction(
+      force ? 'Department Force Deleted' : 'Department Deleted',
+      force
+        ? `Deleted department ID ${id} and forced return of active walkies by ${currentUser.name}`
+        : `Deleted department ID ${id} by ${currentUser.name}`,
+      'warning',
+    );
     addToast('Department deleted successfully.');
     return { error: false };
   };
@@ -1162,7 +1325,16 @@ export function AppProvider({ children }) {
   // --------------------------------------------------------------------------
   // ALLOCATION ACTIONS
   // --------------------------------------------------------------------------
-  const allocateWalkies = async (departmentId, selectedWalkieIds, allocatedBy, remarks, holderName = '', holderContact = '', chargers = 0, earphones = 0) => {
+  const allocateWalkies = async (
+    departmentId,
+    selectedWalkieIds,
+    allocatedBy,
+    remarks,
+    holderName = '',
+    holderContact = '',
+    chargers = 0,
+    earphones = 0,
+  ) => {
     if (currentUser?.role === 'Client') {
       addToast('Clients are not authorized to allocate radios.', 'error');
       return false;
@@ -1183,8 +1355,14 @@ export function AppProvider({ children }) {
 
     const cN = Math.max(0, parseInt(chargers, 10) || 0);
     const eN = Math.max(0, parseInt(earphones, 10) || 0);
-    if (cN > availableChargers) { addToast(`Only ${availableChargers} chargers are available.`, 'error'); return false; }
-    if (eN > availableEarphones) { addToast(`Only ${availableEarphones} earphones are available.`, 'error'); return false; }
+    if (cN > availableChargers) {
+      addToast(`Only ${availableChargers} chargers are available.`, 'error');
+      return false;
+    }
+    if (eN > availableEarphones) {
+      addToast(`Only ${availableEarphones} earphones are available.`, 'error');
+      return false;
+    }
 
     const dept = departments.find(d => d.id === departmentId);
     const deptName = dept ? dept.name : 'Unknown Department';
@@ -1201,7 +1379,7 @@ export function AppProvider({ children }) {
       charger_count: cN,
       earphone_count: eN,
       event_id: eventId,
-      organization_id: currentUser.organizationId
+      organization_id: currentUser.organizationId,
     };
 
     const { error: allocError } = await supabase.from('allocations').insert(newAllocRow);
@@ -1213,7 +1391,7 @@ export function AppProvider({ children }) {
     const walkiePayload = {
       status: 'Allocated',
       department_id: departmentId,
-      channel: dept ? dept.channelNumber : null
+      channel: dept ? dept.channelNumber : null,
     };
     if (trimmedHolder) {
       walkiePayload.assigned_person_name = trimmedHolder;
@@ -1231,21 +1409,43 @@ export function AppProvider({ children }) {
 
     // Reflect immediately (realtime will dedupe/confirm these)
     setAllocations(prev => (prev.some(a => a.id === newAllocRow.id) ? prev : [mapAllocation(newAllocRow), ...prev]));
-    setWalkies(prev => prev.map(w => selectedWalkieIds.includes(w.id) ? {
-      ...w,
-      status: 'Allocated',
-      departmentId,
-      channel: dept ? dept.channelNumber : '',
-      assignedPerson: trimmedHolder ? { name: trimmedHolder, contact: holderContact.trim() } : w.assignedPerson
-    } : w));
+    setWalkies(prev =>
+      prev.map(w =>
+        selectedWalkieIds.includes(w.id)
+          ? {
+              ...w,
+              status: 'Allocated',
+              departmentId,
+              channel: dept ? dept.channelNumber : '',
+              assignedPerson: trimmedHolder ? { name: trimmedHolder, contact: holderContact.trim() } : w.assignedPerson,
+            }
+          : w,
+      ),
+    );
 
-    logAction('Walkies Allocated', `Allocated ${selectedWalkieIds.length} walkies to ${deptName} on channel ${dept ? dept.channelNumber : 'N/A'} by ${currentUser.name}${trimmedHolder ? `. Held by ${trimmedHolder}` : ''}`, 'success');
-    addToast(`Allocated ${selectedWalkieIds.length} walkies to ${deptName} (Channel ${dept ? dept.channelNumber : 'N/A'})!`);
+    logAction(
+      'Walkies Allocated',
+      `Allocated ${selectedWalkieIds.length} walkies to ${deptName} on channel ${dept ? dept.channelNumber : 'N/A'} by ${currentUser.name}${trimmedHolder ? `. Held by ${trimmedHolder}` : ''}`,
+      'success',
+    );
+    addToast(
+      `Allocated ${selectedWalkieIds.length} walkies to ${deptName} (Channel ${dept ? dept.channelNumber : 'N/A'})!`,
+    );
     return mapAllocation(newAllocRow);
   };
 
   // Bulk Allocation by Number — auto-picks N available walkies (optionally filtered by model)
-  const allocateByCount = async (departmentId, count, allocatedBy, remarks, holderName = '', holderContact = '', modelFilter = '', chargers = 0, earphones = 0) => {
+  const allocateByCount = async (
+    departmentId,
+    count,
+    allocatedBy,
+    remarks,
+    holderName = '',
+    holderContact = '',
+    modelFilter = '',
+    chargers = 0,
+    earphones = 0,
+  ) => {
     if (currentUser?.role === 'Client') {
       addToast('Clients are not authorized to allocate radios.', 'error');
       return false;
@@ -1266,7 +1466,16 @@ export function AppProvider({ children }) {
     }
 
     const pickedIds = pool.slice(0, count).map(w => w.id);
-    return allocateWalkies(departmentId, pickedIds, allocatedBy, remarks, holderName, holderContact, chargers, earphones);
+    return allocateWalkies(
+      departmentId,
+      pickedIds,
+      allocatedBy,
+      remarks,
+      holderName,
+      holderContact,
+      chargers,
+      earphones,
+    );
   };
 
   // Return Walkies
@@ -1279,27 +1488,38 @@ export function AppProvider({ children }) {
 
     const { error: walkieError } = await supabase
       .from('walkies')
-      .update({ status: 'Available', department_id: null, channel: '', assigned_person_name: null, assigned_person_contact: null })
+      .update({
+        status: 'Available',
+        department_id: null,
+        channel: '',
+        assigned_person_name: null,
+        assigned_person_contact: null,
+      })
       .in('id', walkieIds);
     if (walkieError) {
       addToast(`Failed to return walkies: ${walkieError.message}`, 'error');
       return false;
     }
 
-    setWalkies(prev => prev.map(w => walkieIds.includes(w.id)
-      ? { ...w, status: 'Available', departmentId: '', channel: '', assignedPerson: null }
-      : w
-    ));
+    setWalkies(prev =>
+      prev.map(w =>
+        walkieIds.includes(w.id)
+          ? { ...w, status: 'Available', departmentId: '', channel: '', assignedPerson: null }
+          : w,
+      ),
+    );
 
-    setAllocations(prev => prev.map((alloc) => {
-      if (alloc.status !== 'Active') return alloc;
-      const remainingWalkies = alloc.walkieIds.filter(id => !walkieIds.includes(id));
-      if (remainingWalkies.length === alloc.walkieIds.length) return alloc;
-      if (remainingWalkies.length === 0) {
-        return { ...alloc, status: 'Returned', returnedDate: new Date().toISOString().split('T')[0] };
-      }
-      return { ...alloc, walkieIds: remainingWalkies };
-    }));
+    setAllocations(prev =>
+      prev.map(alloc => {
+        if (alloc.status !== 'Active') return alloc;
+        const remainingWalkies = alloc.walkieIds.filter(id => !walkieIds.includes(id));
+        if (remainingWalkies.length === alloc.walkieIds.length) return alloc;
+        if (remainingWalkies.length === 0) {
+          return { ...alloc, status: 'Returned', returnedDate: new Date().toISOString().split('T')[0] };
+        }
+        return { ...alloc, walkieIds: remainingWalkies };
+      }),
+    );
 
     // Update or close out any active allocation rows that reference these walkies
     const activeAllocs = allocations.filter(a => a.status === 'Active');
@@ -1307,18 +1527,29 @@ export function AppProvider({ children }) {
       const remainingWalkies = alloc.walkieIds.filter(id => !walkieIds.includes(id));
       if (remainingWalkies.length === alloc.walkieIds.length) continue; // this allocation is unaffected
 
-      const { error: bookErr } = remainingWalkies.length === 0
-        ? await supabase.from('allocations').update({
-          status: 'Returned',
-          returned_date: new Date().toISOString().split('T')[0]
-        }).eq('id', alloc.id)
-        : await supabase.from('allocations').update({ walkie_ids: remainingWalkies }).eq('id', alloc.id);
+      const { error: bookErr } =
+        remainingWalkies.length === 0
+          ? await supabase
+              .from('allocations')
+              .update({
+                status: 'Returned',
+                returned_date: new Date().toISOString().split('T')[0],
+              })
+              .eq('id', alloc.id)
+          : await supabase.from('allocations').update({ walkie_ids: remainingWalkies }).eq('id', alloc.id);
       if (bookErr) {
-        addToast(`Radios returned, but allocation record ${alloc.id} could not be updated: ${describeDbError(bookErr)}`, 'warning');
+        addToast(
+          `Radios returned, but allocation record ${alloc.id} could not be updated: ${describeDbError(bookErr)}`,
+          'warning',
+        );
       }
     }
 
-    logAction('Walkies Returned', `Returned ${walkieIds.length} walkies back to inventory by ${currentUser.name}. Remarks: ${returnRemarks || 'None'}`, 'success');
+    logAction(
+      'Walkies Returned',
+      `Returned ${walkieIds.length} walkies back to inventory by ${currentUser.name}. Remarks: ${returnRemarks || 'None'}`,
+      'success',
+    );
     addToast(`Successfully returned ${walkieIds.length} walkies.`);
     return true;
   };
@@ -1354,8 +1585,14 @@ export function AppProvider({ children }) {
     const eN = Math.max(0, parseInt(earphones, 10) || 0);
     const heldChargers = priorAlloc ? priorAlloc.chargerCount : 0;
     const heldEarphones = priorAlloc ? priorAlloc.earphoneCount : 0;
-    if (cN > heldChargers) { addToast(`Only ${heldChargers} chargers are held by this radio's current batch.`, 'error'); return false; }
-    if (eN > heldEarphones) { addToast(`Only ${heldEarphones} earphones are held by this radio's current batch.`, 'error'); return false; }
+    if (cN > heldChargers) {
+      addToast(`Only ${heldChargers} chargers are held by this radio's current batch.`, 'error');
+      return false;
+    }
+    if (eN > heldEarphones) {
+      addToast(`Only ${heldEarphones} earphones are held by this radio's current batch.`, 'error');
+      return false;
+    }
 
     const today = new Date().toISOString().split('T')[0];
 
@@ -1370,7 +1607,7 @@ export function AppProvider({ children }) {
       status: 'Active',
       charger_count: cN,
       earphone_count: eN,
-      organization_id: currentUser.organizationId
+      organization_id: currentUser.organizationId,
     };
     const { error: allocError } = await supabase.from('allocations').insert(newAllocRow);
     if (allocError) {
@@ -1395,17 +1632,27 @@ export function AppProvider({ children }) {
     let sourceUpdate = null;
     if (priorAlloc) {
       const remaining = priorAlloc.walkieIds.filter(id => id !== walkieId);
-      sourceUpdate = remaining.length === 0
-        ? { status: 'Returned', returned_date: today }
-        : { walkie_ids: remaining, charger_count: heldChargers - cN, earphone_count: heldEarphones - eN };
+      sourceUpdate =
+        remaining.length === 0
+          ? { status: 'Returned', returned_date: today }
+          : { walkie_ids: remaining, charger_count: heldChargers - cN, earphone_count: heldEarphones - eN };
       const { error: srcError } = await supabase.from('allocations').update(sourceUpdate).eq('id', priorAlloc.id);
       if (srcError) {
-        addToast(`Radio moved, but the source allocation could not be updated: ${describeDbError(srcError)}`, 'warning');
+        addToast(
+          `Radio moved, but the source allocation could not be updated: ${describeDbError(srcError)}`,
+          'warning',
+        );
       }
     }
 
     // Local state (realtime will confirm)
-    setWalkies(prev => prev.map(w => w.id === walkieId ? { ...w, departmentId: targetDepartmentId, status: 'Allocated', channel: targetDept.channelNumber } : w));
+    setWalkies(prev =>
+      prev.map(w =>
+        w.id === walkieId
+          ? { ...w, departmentId: targetDepartmentId, status: 'Allocated', channel: targetDept.channelNumber }
+          : w,
+      ),
+    );
     setAllocations(prev => {
       const updated = prev.map(a => {
         if (!priorAlloc || a.id !== priorAlloc.id) return a;
@@ -1417,8 +1664,12 @@ export function AppProvider({ children }) {
       return updated.some(a => a.id === newAllocRow.id) ? updated : [mapAllocation(newAllocRow), ...updated];
     });
 
-    const accText = (cN || eN) ? ` with ${cN} charger(s) and ${eN} earphone(s)` : '';
-    logAction('Walkie Transferred', `Transferred ${walkie.label} (${walkieId}) from ${sourceDept ? sourceDept.name : 'None'} to ${targetDept.name} (Channel ${targetDept.channelNumber})${accText} by ${currentUser.name}`, 'info');
+    const accText = cN || eN ? ` with ${cN} charger(s) and ${eN} earphone(s)` : '';
+    logAction(
+      'Walkie Transferred',
+      `Transferred ${walkie.label} (${walkieId}) from ${sourceDept ? sourceDept.name : 'None'} to ${targetDept.name} (Channel ${targetDept.channelNumber})${accText} by ${currentUser.name}`,
+      'info',
+    );
     addToast(`Transferred ${walkie.label} to ${targetDept.name}${accText}`);
     return true;
   };
@@ -1435,10 +1686,13 @@ export function AppProvider({ children }) {
     if (!walkie) return false;
 
     const trimmedName = personName.trim();
-    const { error } = await supabase.from('walkies').update({
-      assigned_person_name: trimmedName || null,
-      assigned_person_contact: trimmedName ? personContact.trim() : null
-    }).eq('id', walkieId);
+    const { error } = await supabase
+      .from('walkies')
+      .update({
+        assigned_person_name: trimmedName || null,
+        assigned_person_contact: trimmedName ? personContact.trim() : null,
+      })
+      .eq('id', walkieId);
 
     if (error) {
       addToast(`Failed to update holder: ${error.message}`, 'error');
@@ -1446,10 +1700,18 @@ export function AppProvider({ children }) {
     }
 
     if (trimmedName) {
-      logAction('Person Assigned', `Walkie ${walkieId} (${walkie.label}) is now held by ${trimmedName} — set by ${currentUser.name}`, 'success');
+      logAction(
+        'Person Assigned',
+        `Walkie ${walkieId} (${walkie.label}) is now held by ${trimmedName} — set by ${currentUser.name}`,
+        'success',
+      );
       addToast(`Walkie ${walkieId} assigned to ${trimmedName}.`);
     } else {
-      logAction('Person Unassigned', `Walkie ${walkieId} (${walkie.label}) no longer has an assigned holder — cleared by ${currentUser.name}`, 'info');
+      logAction(
+        'Person Unassigned',
+        `Walkie ${walkieId} (${walkie.label}) no longer has an assigned holder — cleared by ${currentUser.name}`,
+        'info',
+      );
       addToast(`Cleared assigned holder for ${walkieId}.`);
     }
     return true;
@@ -1472,12 +1734,15 @@ export function AppProvider({ children }) {
 
     const priorHolder = walkie.assignedPerson?.name;
 
-    const { error: walkieError } = await supabase.from('walkies').update({
-      status: 'Under Maintenance',
-      channel: '',
-      assigned_person_name: null,
-      assigned_person_contact: null
-    }).eq('id', walkieId);
+    const { error: walkieError } = await supabase
+      .from('walkies')
+      .update({
+        status: 'Under Maintenance',
+        channel: '',
+        assigned_person_name: null,
+        assigned_person_contact: null,
+      })
+      .eq('id', walkieId);
     if (walkieError) {
       addToast(`Failed to send to maintenance: ${walkieError.message}`, 'error');
       return false;
@@ -1490,14 +1755,18 @@ export function AppProvider({ children }) {
       date: new Date().toISOString().split('T')[0],
       technician: technician || 'On-site Tech',
       status: 'In Progress',
-      organization_id: currentUser.organizationId
+      organization_id: currentUser.organizationId,
     });
     if (maintError) {
       addToast(`Failed to log maintenance record: ${maintError.message}`, 'error');
       return false;
     }
 
-    logAction('Sent to Maintenance', `Walkie ${walkieId} marked for maintenance. Issue: ${issue} (by ${currentUser.name})${priorHolder ? `. Previously held by ${priorHolder}` : ''}`, 'warning');
+    logAction(
+      'Sent to Maintenance',
+      `Walkie ${walkieId} marked for maintenance. Issue: ${issue} (by ${currentUser.name})${priorHolder ? `. Previously held by ${priorHolder}` : ''}`,
+      'warning',
+    );
     addToast(`Walkie ${walkieId} is now under maintenance.`);
     return true;
   };
@@ -1516,13 +1785,20 @@ export function AppProvider({ children }) {
       return false;
     }
 
-    const { error: walkieError } = await supabase.from('walkies').update({ status: 'Available' }).eq('id', record.walkieId);
+    const { error: walkieError } = await supabase
+      .from('walkies')
+      .update({ status: 'Available' })
+      .eq('id', record.walkieId);
     if (walkieError) {
       addToast(`Failed to update walkie status: ${walkieError.message}`, 'error');
       return false;
     }
 
-    logAction('Maintenance Completed', `Walkie ${record.walkieId} service finished by ${currentUser.name}. Status: ${statusUpdate}. Notes: ${notes}`, 'success');
+    logAction(
+      'Maintenance Completed',
+      `Walkie ${record.walkieId} service finished by ${currentUser.name}. Status: ${statusUpdate}. Notes: ${notes}`,
+      'success',
+    );
     addToast(`Walkie ${record.walkieId} is now Available.`);
     return true;
   };
@@ -1551,7 +1827,7 @@ export function AppProvider({ children }) {
       department_id: departmentId,
       name: trimmedName,
       mobile_number: trimmedMobile,
-      organization_id: currentUser.organizationId
+      organization_id: currentUser.organizationId,
     };
 
     setDepartmentHeads(prev => [...prev, mapDepartmentHead(newHeadRow)]);
@@ -1563,7 +1839,11 @@ export function AppProvider({ children }) {
       return false;
     }
 
-    logAction('Department Head Added', `Added ${trimmedName} (${trimmedMobile}) as a head by ${currentUser.name}`, 'success');
+    logAction(
+      'Department Head Added',
+      `Added ${trimmedName} (${trimmedMobile}) as a head by ${currentUser.name}`,
+      'success',
+    );
     addToast(`${trimmedName} added as a department head.`);
     return true;
   };
@@ -1590,7 +1870,7 @@ export function AppProvider({ children }) {
     return true;
   };
 
-  const deleteDepartmentHead = async (id) => {
+  const deleteDepartmentHead = async id => {
     if (currentUser?.role === 'Client') {
       addToast('Clients are not authorized to manage department heads.', 'error');
       return false;
@@ -1604,7 +1884,11 @@ export function AppProvider({ children }) {
       return false;
     }
 
-    logAction('Department Head Removed', `Removed ${head ? head.name : id} as a department head by ${currentUser.name}`, 'warning');
+    logAction(
+      'Department Head Removed',
+      `Removed ${head ? head.name : id} as a department head by ${currentUser.name}`,
+      'warning',
+    );
     addToast('Department head removed.');
     return true;
   };
@@ -1613,7 +1897,12 @@ export function AppProvider({ children }) {
   const getWhatsAppLinksForDepartment = (departmentId, message) => {
     return departmentHeads
       .filter(h => h.departmentId === departmentId)
-      .map(h => ({ id: h.id, name: h.name, mobileNumber: h.mobileNumber, link: buildWhatsAppLink(h.mobileNumber, message) }));
+      .map(h => ({
+        id: h.id,
+        name: h.name,
+        mobileNumber: h.mobileNumber,
+        link: buildWhatsAppLink(h.mobileNumber, message),
+      }));
   };
 
   // --------------------------------------------------------------------------
@@ -1621,42 +1910,67 @@ export function AppProvider({ children }) {
   // walkie count 1:1, so they are never tracked as a separate limited pool)
   // --------------------------------------------------------------------------
   const activeAllocs = allocations.filter(a => a.status === 'Active');
-  const sumOf = (k) => activeAllocs.reduce((t, a) => t + (a[k] || 0), 0);
+  const sumOf = k => activeAllocs.reduce((t, a) => t + (a[k] || 0), 0);
   const allocatedChargers = sumOf('chargerCount');
   const allocatedEarphones = sumOf('earphoneCount');
-  const availableChargers = (inventorySettings.totalChargers || 0) - allocatedChargers - (inventorySettings.chargersMaintenance || 0);
-  const availableEarphones = (inventorySettings.totalEarphones || 0) - allocatedEarphones - (inventorySettings.earphonesMaintenance || 0);
+  const availableChargers =
+    (inventorySettings.totalChargers || 0) - allocatedChargers - (inventorySettings.chargersMaintenance || 0);
+  const availableEarphones =
+    (inventorySettings.totalEarphones || 0) - allocatedEarphones - (inventorySettings.earphonesMaintenance || 0);
 
   // Admin: set total + under-maintenance counts for chargers / earphones.
-  const updateStock = async (patch) => {
-    if (currentUser?.role !== 'Admin') { addToast('Only Administrators can update stock.', 'error'); return false; }
-    const clean = (v) => Math.max(0, parseInt(v, 10) || 0);
+  const updateStock = async patch => {
+    if (currentUser?.role !== 'Admin') {
+      addToast('Only Administrators can update stock.', 'error');
+      return false;
+    }
+    const clean = v => Math.max(0, parseInt(v, 10) || 0);
     const next = {
       totalChargers: clean(patch.totalChargers ?? inventorySettings.totalChargers),
       totalEarphones: clean(patch.totalEarphones ?? inventorySettings.totalEarphones),
       chargersMaintenance: clean(patch.chargersMaintenance ?? inventorySettings.chargersMaintenance),
-      earphonesMaintenance: clean(patch.earphonesMaintenance ?? inventorySettings.earphonesMaintenance)
+      earphonesMaintenance: clean(patch.earphonesMaintenance ?? inventorySettings.earphonesMaintenance),
     };
     if (next.chargersMaintenance > next.totalChargers || next.earphonesMaintenance > next.totalEarphones) {
       addToast('Items under maintenance cannot exceed the total stock.', 'error');
       return false;
     }
-    if (next.totalChargers - next.chargersMaintenance < allocatedChargers || next.totalEarphones - next.earphonesMaintenance < allocatedEarphones) {
-      addToast(`Stock can't go below what is currently allocated (${allocatedChargers} chargers, ${allocatedEarphones} earphones).`, 'error');
+    if (
+      next.totalChargers - next.chargersMaintenance < allocatedChargers ||
+      next.totalEarphones - next.earphonesMaintenance < allocatedEarphones
+    ) {
+      addToast(
+        `Stock can't go below what is currently allocated (${allocatedChargers} chargers, ${allocatedEarphones} earphones).`,
+        'error',
+      );
       return false;
     }
     const previous = inventorySettings;
     setInventorySettings(next);
-    const { error } = await supabase.from('inventory_settings').upsert(
-      { id: currentUser.organizationId, organization_id: currentUser.organizationId, total_earphones: next.totalEarphones, total_chargers: next.totalChargers,
-        chargers_maintenance: next.chargersMaintenance, earphones_maintenance: next.earphonesMaintenance, updated_at: new Date().toISOString() },
-      { onConflict: 'organization_id' });
+    const { error } = await supabase
+      .from('inventory_settings')
+      .upsert(
+        {
+          id: currentUser.organizationId,
+          organization_id: currentUser.organizationId,
+          total_earphones: next.totalEarphones,
+          total_chargers: next.totalChargers,
+          chargers_maintenance: next.chargersMaintenance,
+          earphones_maintenance: next.earphonesMaintenance,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'organization_id' },
+      );
     if (error) {
       setInventorySettings(previous);
       addToast(`Failed to update stock: ${describeDbError(error)}`, 'error');
       return false;
     }
-    logAction('Accessory Stock Updated', `Chargers ${next.totalChargers} (${next.chargersMaintenance} in maintenance), earphones ${next.totalEarphones} (${next.earphonesMaintenance} in maintenance) set by ${currentUser.name}`, 'info');
+    logAction(
+      'Accessory Stock Updated',
+      `Chargers ${next.totalChargers} (${next.chargersMaintenance} in maintenance), earphones ${next.totalEarphones} (${next.earphonesMaintenance} in maintenance) set by ${currentUser.name}`,
+      'info',
+    );
     addToast('Stock updated.');
     return true;
   };
@@ -1667,7 +1981,14 @@ export function AppProvider({ children }) {
   // been delivered/signed for, and notifies the department head via
   // WhatsApp when it is)
   // --------------------------------------------------------------------------
-  const createDelivery = async (departmentId, walkieCount, chargerCount, earphoneCount, remarks = '', deliveredBy = '') => {
+  const createDelivery = async (
+    departmentId,
+    walkieCount,
+    chargerCount,
+    earphoneCount,
+    remarks = '',
+    deliveredBy = '',
+  ) => {
     if (currentUser?.role === 'Client') {
       addToast('Clients are not authorized to create deliveries.', 'error');
       return false;
@@ -1700,7 +2021,7 @@ export function AppProvider({ children }) {
       delivered_by: deliveredBy || currentUser.name,
       remarks: remarks || '',
       organization_id: currentUser.organizationId,
-      event_id: eventId
+      event_id: eventId,
     };
 
     setDeliveries(prev => [mapDelivery(newDeliveryRow), ...prev]);
@@ -1713,7 +2034,11 @@ export function AppProvider({ children }) {
     }
 
     const dept = departments.find(d => d.id === departmentId);
-    logAction('Delivery Created', `Prepared delivery of ${wCount} walkies, ${cCount} chargers, ${eCount} earphones for ${dept ? dept.name : 'Unknown Department'} by ${currentUser.name}`, 'info');
+    logAction(
+      'Delivery Created',
+      `Prepared delivery of ${wCount} walkies, ${cCount} chargers, ${eCount} earphones for ${dept ? dept.name : 'Unknown Department'} by ${currentUser.name}`,
+      'info',
+    );
     addToast('Delivery record created — mark it delivered once it is signed for.');
     return mapDelivery(newDeliveryRow);
   };
@@ -1731,15 +2056,18 @@ export function AppProvider({ children }) {
     const trimmedSigner = (signedByName || '').trim();
     const deliveredAt = new Date().toISOString();
 
-    setDeliveries(prev => prev.map(d => (d.id === deliveryId
-      ? { ...d, status: 'Delivered', signedBy: trimmedSigner, deliveredAt }
-      : d)));
+    setDeliveries(prev =>
+      prev.map(d => (d.id === deliveryId ? { ...d, status: 'Delivered', signedBy: trimmedSigner, deliveredAt } : d)),
+    );
 
-    const { error } = await supabase.from('deliveries').update({
-      status: 'Delivered',
-      signed_by: trimmedSigner,
-      delivered_at: deliveredAt
-    }).eq('id', deliveryId);
+    const { error } = await supabase
+      .from('deliveries')
+      .update({
+        status: 'Delivered',
+        signed_by: trimmedSigner,
+        delivered_at: deliveredAt,
+      })
+      .eq('id', deliveryId);
     if (error) {
       addToast(`Failed to confirm delivery: ${error.message}`, 'error');
       return false;
@@ -1747,11 +2075,18 @@ export function AppProvider({ children }) {
 
     const dept = departments.find(d => d.id === delivery.departmentId);
     const deptName = dept ? dept.name : 'Unknown Department';
-    logAction('Delivery Confirmed', `${delivery.walkieCount} walkies, ${delivery.chargerCount} chargers, ${delivery.earphoneCount} earphones handed over to ${deptName}${trimmedSigner ? `, signed by ${trimmedSigner}` : ''}`, 'success');
+    logAction(
+      'Delivery Confirmed',
+      `${delivery.walkieCount} walkies, ${delivery.chargerCount} chargers, ${delivery.earphoneCount} earphones handed over to ${deptName}${trimmedSigner ? `, signed by ${trimmedSigner}` : ''}`,
+      'success',
+    );
     addToast(`Delivery to ${deptName} confirmed.`);
 
     const message = `Delivery confirmation: ${delivery.walkieCount} walkie talkie(s), ${delivery.chargerCount} charger(s), and ${delivery.earphoneCount} earphone(s) have been handed over to ${deptName}${trimmedSigner ? ` and signed for by ${trimmedSigner}` : ''}.`;
-    return { delivery: { ...delivery, status: 'Delivered', signedBy: trimmedSigner, deliveredAt }, whatsappLinks: getWhatsAppLinksForDepartment(delivery.departmentId, message) };
+    return {
+      delivery: { ...delivery, status: 'Delivered', signedBy: trimmedSigner, deliveredAt },
+      whatsappLinks: getWhatsAppLinksForDepartment(delivery.departmentId, message),
+    };
   };
 
   // Marks a delivered set as returned, freeing up earphone stock, and
@@ -1765,17 +2100,22 @@ export function AppProvider({ children }) {
     if (!delivery) return false;
 
     const returnedAt = new Date().toISOString();
-    const combinedRemarks = returnRemarks ? `${delivery.remarks ? delivery.remarks + ' | ' : ''}Return: ${returnRemarks}` : delivery.remarks;
+    const combinedRemarks = returnRemarks
+      ? `${delivery.remarks ? delivery.remarks + ' | ' : ''}Return: ${returnRemarks}`
+      : delivery.remarks;
 
-    setDeliveries(prev => prev.map(d => (d.id === deliveryId
-      ? { ...d, status: 'Returned', returnedAt, remarks: combinedRemarks }
-      : d)));
+    setDeliveries(prev =>
+      prev.map(d => (d.id === deliveryId ? { ...d, status: 'Returned', returnedAt, remarks: combinedRemarks } : d)),
+    );
 
-    const { error } = await supabase.from('deliveries').update({
-      status: 'Returned',
-      returned_at: returnedAt,
-      remarks: combinedRemarks
-    }).eq('id', deliveryId);
+    const { error } = await supabase
+      .from('deliveries')
+      .update({
+        status: 'Returned',
+        returned_at: returnedAt,
+        remarks: combinedRemarks,
+      })
+      .eq('id', deliveryId);
     if (error) {
       addToast(`Failed to process return: ${error.message}`, 'error');
       return false;
@@ -1783,14 +2123,18 @@ export function AppProvider({ children }) {
 
     const dept = departments.find(d => d.id === delivery.departmentId);
     const deptName = dept ? dept.name : 'Unknown Department';
-    logAction('Delivery Returned', `${delivery.walkieCount} walkies, ${delivery.chargerCount} chargers, ${delivery.earphoneCount} earphones returned by ${deptName} by ${currentUser.name}`, 'success');
+    logAction(
+      'Delivery Returned',
+      `${delivery.walkieCount} walkies, ${delivery.chargerCount} chargers, ${delivery.earphoneCount} earphones returned by ${deptName} by ${currentUser.name}`,
+      'success',
+    );
     addToast(`Return from ${deptName} recorded.`);
 
     const message = `Return confirmation: ${delivery.walkieCount} walkie talkie(s), ${delivery.chargerCount} charger(s), and ${delivery.earphoneCount} earphone(s) have been received back from ${deptName}.`;
     return { whatsappLinks: getWhatsAppLinksForDepartment(delivery.departmentId, message) };
   };
 
-  const deleteDelivery = async (deliveryId) => {
+  const deleteDelivery = async deliveryId => {
     if (currentUser?.role !== 'Admin') {
       addToast('Only Administrators can delete delivery records.', 'error');
       return false;
@@ -1806,78 +2150,80 @@ export function AppProvider({ children }) {
   };
 
   return (
-    <AppContext.Provider value={{
-      currentUser,
-      authChecked,
-      dataLoading,
-      login,
-      logout,
-      signUp,
-      sendPasswordReset,
-      updatePassword,
-      resendVerificationEmail,
-      authView,
-      setAuthView,
-      authNotice,
-      setAuthNotice,
-      authLoading,
-      allProfiles,
-      fetchAllUsers,
-      updateUserRole,
-      updateUserHierarchy,
-      setUserActive,
-      approveUser,
-      denyUser,
-      currentOrganization,
-      regenerateJoinCode,
-      updateOrganization,
-      walkies,
-      departments,
-      allocations,
-      maintenance,
-      history,
-      settings,
-      setSettings,
-      currentTab,
-      setCurrentTab,
-      globalSearch,
-      setGlobalSearch,
-      toasts,
-      dismissToast,
-      addToast,
-      logAction,
-      addWalkie,
-      editWalkie,
-      deleteWalkie,
-      bulkAddWalkies,
-      bulkDeleteWalkies,
-      addDepartment,
-      editDepartment,
-      deleteDepartment,
-      allocateWalkies,
-      allocateByCount,
-      returnWalkies,
-      transferWalkie,
-      assignPersonToWalkie,
-      sendToMaintenance,
-      completeMaintenance,
-      departmentHeads,
-      addDepartmentHead,
-      editDepartmentHead,
-      deleteDepartmentHead,
-      getWhatsAppLinksForDepartment,
-      deliveries,
-      createDelivery,
-      markDeliveryDelivered,
-      markDeliveryReturned,
-      deleteDelivery,
-      inventorySettings,
-      availableEarphones,
-      availableChargers,
-      allocatedChargers,
-      allocatedEarphones,
-      updateStock
-    }}>
+    <AppContext.Provider
+      value={{
+        currentUser,
+        authChecked,
+        dataLoading,
+        login,
+        logout,
+        signUp,
+        sendPasswordReset,
+        updatePassword,
+        resendVerificationEmail,
+        authView,
+        setAuthView,
+        authNotice,
+        setAuthNotice,
+        authLoading,
+        allProfiles,
+        fetchAllUsers,
+        updateUserRole,
+        updateUserHierarchy,
+        setUserActive,
+        approveUser,
+        denyUser,
+        currentOrganization,
+        regenerateJoinCode,
+        updateOrganization,
+        walkies,
+        departments,
+        allocations,
+        maintenance,
+        history,
+        settings,
+        setSettings,
+        currentTab,
+        setCurrentTab,
+        globalSearch,
+        setGlobalSearch,
+        toasts,
+        dismissToast,
+        addToast,
+        logAction,
+        addWalkie,
+        editWalkie,
+        deleteWalkie,
+        bulkAddWalkies,
+        bulkDeleteWalkies,
+        addDepartment,
+        editDepartment,
+        deleteDepartment,
+        allocateWalkies,
+        allocateByCount,
+        returnWalkies,
+        transferWalkie,
+        assignPersonToWalkie,
+        sendToMaintenance,
+        completeMaintenance,
+        departmentHeads,
+        addDepartmentHead,
+        editDepartmentHead,
+        deleteDepartmentHead,
+        getWhatsAppLinksForDepartment,
+        deliveries,
+        createDelivery,
+        markDeliveryDelivered,
+        markDeliveryReturned,
+        deleteDelivery,
+        inventorySettings,
+        availableEarphones,
+        availableChargers,
+        allocatedChargers,
+        allocatedEarphones,
+        updateStock,
+      }}
+    >
       {children}
     </AppContext.Provider>
   );

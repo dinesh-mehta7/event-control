@@ -2,27 +2,69 @@ import type { SubDepartmentId } from '../types';
 
 // Every page a sub-department can be given. `key` matches the page address (#/<key>, or #/sewadars/<tab>).
 export type ModuleKey =
-  | 'helpdesk' | 'cctv' | 'cctv-control-room' | 'wifi' | 'walkie' | 'control' | 'networking-support' | 'issues'
-  | 'accommodation' | 'sewadars:roster' | 'sewadars:permanent' | 'sewadars:calling' | 'sewadars:duties' | 'sewadars:teams' | 'sewadars:attendance' | 'tasks'
-  | 'inventory' | 'requests' | 'purchase'
-  | 'events' | 'meetings'
+  | 'helpdesk'
+  | 'cctv'
+  | 'cctv-control-room'
+  | 'wifi'
+  | 'walkie'
+  | 'control'
+  | 'networking-support'
+  | 'issues'
+  | 'accommodation'
+  | 'sewadars:roster'
+  | 'sewadars:permanent'
+  | 'sewadars:calling'
+  | 'sewadars:duties'
+  | 'sewadars:teams'
+  | 'sewadars:attendance'
+  | 'tasks'
+  | 'inventory'
+  | 'requests'
+  | 'purchase'
+  | 'events'
+  | 'meetings'
   | 'reports';
 // 'sewadars' asks "any Sewadar page".
 export type ModuleQuery = ModuleKey | 'sewadars';
 
-export type ModuleGroup = 'IT Services & Operations' | 'Volunteer Management' | 'Stocks and Approvals' | 'Coordination' | 'Administration';
+export type ModuleGroup =
+  | 'IT Services & Operations'
+  | 'Volunteer Management'
+  | 'Stocks and Approvals'
+  | 'Coordination'
+  | 'Administration';
 export const MODULES: { key: ModuleKey; label: string; group: ModuleGroup; hint: string }[] = [
   { key: 'helpdesk', label: 'Help Desk', group: 'IT Services & Operations', hint: 'Raise and track IT tickets' },
   { key: 'cctv', label: 'CCTV', group: 'IT Services & Operations', hint: 'Cameras, NVRs and their status' },
-  { key: 'cctv-control-room', label: 'CCTV Control Room', group: 'IT Services & Operations', hint: 'Control rooms, PCs, shift roster' },
+  {
+    key: 'cctv-control-room',
+    label: 'CCTV Control Room',
+    group: 'IT Services & Operations',
+    hint: 'Control rooms, PCs, shift roster',
+  },
   { key: 'wifi', label: 'WiFi', group: 'IT Services & Operations', hint: 'Access points and WiFi access register' },
   { key: 'walkie', label: 'Walkie-Talkie', group: 'IT Services & Operations', hint: 'Radios, allocations, returns' },
   { key: 'control', label: 'Control Rooms', group: 'IT Services & Operations', hint: 'Control room status' },
   { key: 'networking-support', label: 'Networking Support', group: 'IT Services & Operations', hint: 'Coming soon' },
-  { key: 'issues', label: 'Issues & Reports', group: 'IT Services & Operations', hint: 'Member issues and announcements' },
+  {
+    key: 'issues',
+    label: 'Issues & Reports',
+    group: 'IT Services & Operations',
+    hint: 'Member issues and announcements',
+  },
   { key: 'accommodation', label: 'Accommodation', group: 'Volunteer Management', hint: 'Rooms, members, meal menu' },
-  { key: 'sewadars:roster', label: 'Sewadar Master', group: 'Volunteer Management', hint: 'Member roster and arrivals' },
-  { key: 'sewadars:permanent', label: 'IT Department Permanent Staff', group: 'Volunteer Management', hint: 'Permanent staff, home leave' },
+  {
+    key: 'sewadars:roster',
+    label: 'Sewadar Master',
+    group: 'Volunteer Management',
+    hint: 'Member roster and arrivals',
+  },
+  {
+    key: 'sewadars:permanent',
+    label: 'IT Department Permanent Staff',
+    group: 'Volunteer Management',
+    hint: 'Permanent staff, home leave',
+  },
   { key: 'sewadars:calling', label: 'Calling', group: 'Volunteer Management', hint: 'Call members before the event' },
   { key: 'sewadars:attendance', label: 'Attendance', group: 'Volunteer Management', hint: 'Arrived, returned, badges' },
   { key: 'sewadars:duties', label: 'Duties & Shifts', group: 'Volunteer Management', hint: 'Daily shift roster' },
@@ -35,8 +77,24 @@ export const MODULES: { key: ModuleKey; label: string; group: ModuleGroup; hint:
   { key: 'meetings', label: 'Meetings & Emergency', group: 'Coordination', hint: 'Meetings and emergency alerts' },
   { key: 'reports', label: 'Reports', group: 'Administration', hint: 'Organisation reports' },
 ];
-export const MODULE_GROUPS: ModuleGroup[] = ['IT Services & Operations', 'Volunteer Management', 'Stocks and Approvals', 'Coordination', 'Administration'];
-export const SUB_DEPARTMENTS: SubDepartmentId[] = ['cctv', 'wifi', 'walkie', 'control', 'inventory', 'purchase', 'accounts', 'accommodation', 'sewadars'];
+export const MODULE_GROUPS: ModuleGroup[] = [
+  'IT Services & Operations',
+  'Volunteer Management',
+  'Stocks and Approvals',
+  'Coordination',
+  'Administration',
+];
+export const SUB_DEPARTMENTS: SubDepartmentId[] = [
+  'cctv',
+  'wifi',
+  'walkie',
+  'control',
+  'inventory',
+  'purchase',
+  'accounts',
+  'accommodation',
+  'sewadars',
+];
 export const SEWADAR_TABS = ['roster', 'permanent', 'calling', 'duties', 'teams', 'attendance'] as const;
 
 // What each sub-department gets when nothing has been changed (matches how the app behaved before).

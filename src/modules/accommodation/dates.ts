@@ -14,7 +14,10 @@ export const shiftDate = (s: string, days: number) => {
 export const prettyDate = (s: string, withYear = false) => {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('en-IN', {
-    weekday: 'short', day: 'numeric', month: 'short', ...(withYear ? { year: 'numeric' } : {}),
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    ...(withYear ? { year: 'numeric' } : {}),
   });
 };
 
