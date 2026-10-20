@@ -19,6 +19,8 @@ import { useWalkie } from '../walkie';
 import { supabase } from '../walkie/lib/supabaseClient';
 import { useEventScope } from '../../context/EventScopeContext';
 import { DEPTS } from '../../views/orgData';
+import { localDate } from '../../lib/format';
+import { ctl } from '../../components/toolbar';
 
 const D = true;
 // Same shift keys and times as CCTV Control Room, so both screens read one roster.
@@ -44,11 +46,6 @@ type Assignment = {
   place: string;
 };
 type Room = { id: string; name: string; eventId: string | null; scopeKey: string };
-
-const localDate = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
 const shiftDate = (date: string, days: number) => {
   const d = new Date(`${date}T12:00:00`);
   d.setDate(d.getDate() + days);
@@ -67,9 +64,6 @@ const btn =
   'inline-flex items-center justify-center gap-1.5 rounded-lg border border-line px-3 py-2 text-xs font-semibold text-ink-soft hover:bg-raised disabled:opacity-50';
 const primary =
   'inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50';
-// Toolbar controls share one height, radius, border and text size so they sit on one baseline.
-const ctl =
-  'h-8 rounded-md border border-line bg-field px-2.5 text-[11.5px] text-ink outline-none placeholder:text-faint focus:border-blue-500';
 
 export const DutiesShiftsPage: React.FC = () => {
   const manpower = useManpower();

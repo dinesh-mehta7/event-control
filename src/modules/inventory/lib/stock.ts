@@ -1,4 +1,5 @@
 import type { Holding, Item, MoveType, Movement } from '../types';
+export { when } from '../../../lib/format';
 
 // ---- stock state -------------------------------------------------------------
 export type Stage = 'all' | 'low' | 'out' | 'issued' | 'damaged';
@@ -39,10 +40,6 @@ export const stockDelta = (type: MoveType, n: number) => {
       return { s: n, i: 0, d: 0 };
   }
 };
-
-// ---- formatting ----------------------------------------------------------------
-export const when = (s: string) =>
-  new Date(s).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
 export const signedQty = (r: Movement) => (r.type === 'adjust' && r.qty > 0 ? `+${r.qty}` : `${r.qty}`);
 

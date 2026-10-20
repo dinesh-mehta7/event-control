@@ -1,4 +1,5 @@
 import { supabase } from '../../../modules/walkie/lib/supabaseClient';
+import { csvCell } from '../../../lib/format';
 
 export const REPORT_TABS = [
   'requests',
@@ -13,8 +14,6 @@ export const REPORT_TABS = [
   'issues',
   'radio',
 ];
-
-const csvCell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
 export const download = (name: string, rows: (string | number)[][]) => {
   const url = URL.createObjectURL(new Blob([rows.map(r => r.map(csvCell).join(',')).join('\n')], { type: 'text/csv' }));

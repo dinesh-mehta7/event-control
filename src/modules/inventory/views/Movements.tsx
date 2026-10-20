@@ -8,15 +8,11 @@ import { useRecent } from '../lib/useRecent';
 import type { Actions } from '../nav';
 import { cx } from '../ui/kit';
 import { EmptyRow, MoveTable, Sheet, cellTone, num, rowHover, sheetHead, sheetTable, td, th } from '../ui/sheet';
-
-const tool =
-  'inline-flex h-8 items-center gap-1.5 rounded-md border border-line px-3 text-[11.5px] font-medium text-ink-soft hover:bg-raised disabled:opacity-50';
+import { ctl } from '../../../components/toolbar';
+import { rowBtn } from '../../../components/toolbar';
+import { tool } from '../../../components/toolbar';
 const primaryTool =
   'inline-flex h-8 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[11.5px] font-semibold text-white hover:bg-blue-500 disabled:opacity-50';
-const rowBtn =
-  'inline-flex h-6 items-center gap-1 rounded border border-line px-2 text-[11px] text-ink-soft hover:bg-raised';
-const ctl =
-  'h-8 rounded-md border border-line bg-field px-2.5 text-[11.5px] text-ink outline-none placeholder:text-faint focus:border-blue-500';
 
 // Stock currently out, one row per item × location.
 export const IssuedView: React.FC<{ a: Actions }> = ({ a }) => {

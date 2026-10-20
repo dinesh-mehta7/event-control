@@ -6,9 +6,7 @@ import { useRecent } from '../lib/useRecent';
 import type { Actions } from '../nav';
 import { cx } from '../ui/kit';
 import { EmptyRow, MoveTable, Sheet, cellTone, num, rowHover, sheetHead, sheetTable, td, th } from '../ui/sheet';
-
-const tool =
-  'inline-flex h-8 items-center gap-1.5 rounded-md border border-line px-3 text-[11.5px] font-medium text-ink-soft hover:bg-raised disabled:opacity-50';
+import { tool } from '../../../components/toolbar';
 const link = 'text-[11px] font-medium text-blue-300 hover:underline';
 
 export const Overview: React.FC<{ a: Actions }> = ({ a }) => {

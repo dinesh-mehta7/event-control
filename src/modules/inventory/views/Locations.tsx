@@ -8,11 +8,8 @@ import type { Actions } from '../nav';
 import { LocationForm } from '../modals/Catalogue';
 import { D, cx, iconBtn } from '../ui/kit';
 import { EmptyRow, Sheet, num, rowHover, sheetHead, sheetTable, td, th } from '../ui/sheet';
-
-const ctl =
-  'h-8 rounded-md border border-line bg-field px-2.5 text-[11.5px] text-ink outline-none placeholder:text-faint focus:border-blue-500';
-const rowBtn =
-  'inline-flex h-6 items-center gap-1 rounded border border-line px-2 text-[11px] text-ink-soft hover:bg-raised';
+import { ctl } from '../../../components/toolbar';
+import { rowBtn } from '../../../components/toolbar';
 
 // Locations register on the left; the stock held at the selected location on the right.
 export const LocationsView: React.FC<{ a: Actions }> = ({ a }) => {

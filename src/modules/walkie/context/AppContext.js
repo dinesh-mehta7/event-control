@@ -1947,20 +1947,18 @@ export function AppProvider({ children }) {
     }
     const previous = inventorySettings;
     setInventorySettings(next);
-    const { error } = await supabase
-      .from('inventory_settings')
-      .upsert(
-        {
-          id: currentUser.organizationId,
-          organization_id: currentUser.organizationId,
-          total_earphones: next.totalEarphones,
-          total_chargers: next.totalChargers,
-          chargers_maintenance: next.chargersMaintenance,
-          earphones_maintenance: next.earphonesMaintenance,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'organization_id' },
-      );
+    const { error } = await supabase.from('inventory_settings').upsert(
+      {
+        id: currentUser.organizationId,
+        organization_id: currentUser.organizationId,
+        total_earphones: next.totalEarphones,
+        total_chargers: next.totalChargers,
+        chargers_maintenance: next.chargersMaintenance,
+        earphones_maintenance: next.earphonesMaintenance,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'organization_id' },
+    );
     if (error) {
       setInventorySettings(previous);
       addToast(`Failed to update stock: ${describeDbError(error)}`, 'error');

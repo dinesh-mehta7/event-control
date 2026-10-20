@@ -29,19 +29,12 @@ import { StaffingDialog } from './dashboard/StaffingDialog';
 import { RoomReadinessCard, RoomReadinessDialog } from './dashboard/RoomReadiness';
 import { RequestsPipelineCard, RequestsPipelineDialog } from './dashboard/RequestsPipeline';
 import { SewadarFunnelCard, SewadarFunnelDialog } from './dashboard/SewadarFunnel';
+import { staffingCategoryKey } from './orgData';
 
 type DashboardDepartment = Exclude<SubDepartmentId, 'purchase' | 'accounts'>;
 const localDateKey = (value: string) => {
   const date = new Date(value);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-};
-const staffingCategoryKey = (value: string) => {
-  const normalized = value.toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
-  return (
-    Object.entries(DEPTS).find(([id, label]) =>
-      [id, label].some(name => name.toLocaleLowerCase().replace(/[^a-z0-9]/g, '') === normalized),
-    )?.[0] || value
-  );
 };
 const ICONS: Record<DashboardDepartment, any> = {
   cctv: Video,

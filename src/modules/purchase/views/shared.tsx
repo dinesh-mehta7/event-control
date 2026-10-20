@@ -8,6 +8,8 @@ import { useInventory } from '../../inventory';
 import { INCOMING, PAYABLE, STATUS, payModeLabel, poDue, poTotal } from '../types';
 import type { PO, POStatus, Payment, Receipt, VendorMode } from '../types';
 import { supabase } from '../../walkie/lib/supabaseClient';
+export { when } from '../../../lib/format';
+import { when } from '../../../lib/format';
 
 // Requests, Orders, Receiving and Payments are one flow now. This file holds the buying half of it: the buy list,
 // orders, receiving, vendors and payments. The Requests screen shows them as its tabs.
@@ -30,9 +32,6 @@ export const good =
   'inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed';
 
 export const money = (n: number) => inr(Math.round(n * 100) / 100);
-
-export const when = (s: string) =>
-  new Date(s).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
 export const day = (s: string) =>
   s ? new Date(`${s}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';

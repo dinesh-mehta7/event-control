@@ -2,6 +2,8 @@ import { supabase } from '../walkie/lib/supabaseClient';
 import { MEAL_PRESETS } from './types';
 import { minutesOf } from './dates';
 import type { MealRow, Member, Room, RoomRequirement } from './types';
+import { collator } from '../../lib/ids';
+export { uid } from '../../lib/ids';
 
 // ---------------------------------------------------------------------------
 // Row mappers (database snake_case  ->  UI camelCase)
@@ -82,8 +84,6 @@ export const mapMeal = (r: any): MealRow => ({
   readyAt: r.ready_at || '',
 });
 
-const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-
 export const sortRooms = (a: Room, b: Room) =>
   collator.compare(`${a.block}\u0000${a.name}`, `${b.block}\u0000${b.name}`);
 
@@ -91,8 +91,6 @@ export const sortMembers = (a: Member, b: Member) => collator.compare(a.name, b.
 
 export const sortMeals = (a: MealRow, b: MealRow) =>
   a.date === b.date ? minutesOf(a.start) - minutesOf(b.start) : a.date < b.date ? -1 : 1;
-
-export const uid = (p: string) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
 // Turn raw database / policy errors into something a person can act on.
 export const friendlyError = (error: any): string => {

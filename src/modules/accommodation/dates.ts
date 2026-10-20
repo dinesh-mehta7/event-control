@@ -1,7 +1,4 @@
-// All dates are handled in the viewer's LOCAL time as plain 'YYYY-MM-DD'
-// strings. (Using toISOString() would give the previous day for the first
-// 5.5 hours after midnight in India.)
-const pad = (n: number) => String(n).padStart(2, '0');
+import { pad } from '../../lib/format';
 
 export const toDateStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const todayStr = () => toDateStr(new Date());

@@ -37,10 +37,9 @@ import {
   th,
   useSort,
 } from '../ui/sheet';
+import { ctl } from '../../../components/toolbar';
 
 type SortKey = 'name' | 'code' | 'category' | 'location' | 'minLevel' | 'inStock' | 'issued' | 'damaged' | 'total';
-const ctl =
-  'h-8 rounded-md border border-line bg-field px-2.5 text-[11.5px] text-ink outline-none placeholder:text-faint focus:border-blue-500';
 const tool =
   'inline-flex h-8 items-center gap-1.5 rounded-md border border-line px-2.5 text-[11.5px] font-medium text-ink-soft hover:bg-raised';
 const STATUS = {

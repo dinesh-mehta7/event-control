@@ -37,6 +37,7 @@ import {
   Review,
 } from './eventPlanning/types';
 import { attendanceDayCount, localDay, shiftDay } from './eventPlanning/dates';
+import { staffingCategoryKey } from './orgData';
 
 // Events already loaded this session, per organization, so coming back shows the workspace at once.
 const eventsCache = new Map<string, any[]>();
@@ -45,15 +46,6 @@ const idFor = (prefix: string) =>
   `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 
 const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
-
-const staffingCategoryKey = (value: string) => {
-  const normalized = value.toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
-  return (
-    Object.entries(DEPTS).find(([id, label]) =>
-      [id, label].some(name => name.toLocaleLowerCase().replace(/[^a-z0-9]/g, '') === normalized),
-    )?.[0] || value
-  );
-};
 
 const input =
   'w-full rounded-md border border-line bg-field px-3 py-2 text-sm text-ink outline-none focus:border-blue-500';

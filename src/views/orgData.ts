@@ -65,3 +65,12 @@ export const applyCustomSubDepartments = (rows: CustomSubDepartment[]) => {
     DEPT_LABEL[k] = label;
   });
 };
+
+export const staffingCategoryKey = (value: string) => {
+  const normalized = value.toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
+  return (
+    Object.entries(DEPTS).find(([id, label]) =>
+      [id, label].some(name => name.toLocaleLowerCase().replace(/[^a-z0-9]/g, '') === normalized),
+    )?.[0] || value
+  );
+};

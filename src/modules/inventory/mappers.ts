@@ -1,4 +1,7 @@
 import type { Holding, Item, Movement } from './types';
+export { collator } from '../../lib/ids';
+import { collator } from '../../lib/ids';
+export { uid } from '../../lib/ids';
 
 export const mapItem = (r: any): Item => ({
   id: r.id,
@@ -30,11 +33,7 @@ export const mapMove = (r: any): Movement => ({
   doneAt: r.done_at,
 });
 
-export const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-
 export const sortItems = (a: Item, b: Item) => collator.compare(a.name, b.name);
-
-export const uid = (p: string) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
 export const friendlyError = (error: any): string => {
   const msg: string = error?.message || 'Unknown error';

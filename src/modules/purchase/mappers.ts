@@ -1,4 +1,6 @@
 import type { PO, POItem, Payment, PaymentRequest, PayReqStatus, PurchaseTracking, Receipt, Vendor } from './types';
+export { collator } from '../../lib/ids';
+export { uid } from '../../lib/ids';
 
 export const mapVendor = (r: any): Vendor => ({
   id: r.id,
@@ -109,10 +111,6 @@ export const mapTracking = (r: any): PurchaseTracking => ({
   checkpoints: Array.isArray(r.checkpoints) ? r.checkpoints : [],
   updatedAt: r.updated_at,
 });
-
-export const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-
-export const uid = (p: string) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
 export const friendlyError = (error: any): string => {
   const msg: string = error?.message || 'Unknown error';

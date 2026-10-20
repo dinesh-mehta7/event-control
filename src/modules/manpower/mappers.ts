@@ -1,4 +1,6 @@
 import type { CallLog, Sewadar } from './types';
+import { collator } from '../../lib/ids';
+export { uid } from '../../lib/ids';
 
 export const mapSewadar = (r: any): Sewadar => ({
   id: r.id,
@@ -53,11 +55,7 @@ export const mapCall = (r: any): CallLog => ({
   calledAt: r.called_at,
 });
 
-const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-
 export const sortSewadars = (a: Sewadar, b: Sewadar) => collator.compare(a.name, b.name);
-
-export const uid = (p: string) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
 export const chunk = <T>(a: T[], n: number) =>
   Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));

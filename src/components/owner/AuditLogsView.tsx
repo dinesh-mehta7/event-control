@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Search, Download, RefreshCw } from 'lucide-react';
 import { supabase } from '../../modules/walkie/lib/supabaseClient';
 import { Empty, Pill, btnGhost, inputCls, th } from '../ui';
+import { csvCell } from '../../lib/format';
 
 interface Entry {
   id: string;
@@ -16,7 +17,6 @@ const TONE: Record<string, string> = {
   error: 'bg-red-500/15 text-red-300',
   info: 'bg-blue-500/15 text-blue-300',
 };
-const csvCell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 const when = (iso: string) =>
   new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 

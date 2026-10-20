@@ -18,6 +18,7 @@ import { useWalkie } from '../../modules/walkie';
 import { supabase } from '../../modules/walkie/lib/supabaseClient';
 import { useAccommodation } from '../../modules/accommodation';
 import { digitsOnly, phoneInputProps } from '../../lib/phone';
+import { localDate } from '../../lib/format';
 
 type ShiftKey = string;
 type Room = { id: string; name: string; location: string; pc_count: number; accommodation_room_id?: string | null };
@@ -42,10 +43,6 @@ const SHIFTS: Shift[] = [
   { key: 'evening', label: 'Evening', time: '3:00 PM – 6:00 PM', from: 15, to: 18, start: '15:00', end: '18:00' },
   { key: 'night', label: 'Night', time: '6:00 PM – 9:00 PM', from: 18, to: 21, start: '18:00', end: '21:00' },
 ];
-const localDate = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
 const uid = () => `crd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const field =
   'h-10 w-full rounded-lg border border-line bg-field px-3 text-sm text-ink outline-none focus:border-blue-500';
