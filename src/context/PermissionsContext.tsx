@@ -151,16 +151,14 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
             .eq('organization_id', orgId)
             .eq('sub_department', sub)
             .eq('module', module)
-        : await supabase
-            .from('sub_department_permissions')
-            .upsert({
-              organization_id: orgId,
-              sub_department: sub,
-              module,
-              allowed,
-              updated_by: u?.name || '',
-              updated_at: new Date().toISOString(),
-            });
+        : await supabase.from('sub_department_permissions').upsert({
+            organization_id: orgId,
+            sub_department: sub,
+            module,
+            allowed,
+            updated_by: u?.name || '',
+            updated_at: new Date().toISOString(),
+          });
     if (error) {
       setMap(m => {
         const n = { ...m };

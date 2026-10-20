@@ -252,16 +252,14 @@ export function useHelpdesk() {
   };
 
   const saveSettings = async (s: Settings) => {
-    const { error } = await supabase
-      .from('helpdesk_settings')
-      .upsert({
-        organization_id: orgId,
-        sla_hours: s.slaHours,
-        categories: s.categories,
-        technician_ids: s.technicianIds,
-        category_rules: s.categoryRules,
-        updated_at: new Date().toISOString(),
-      });
+    const { error } = await supabase.from('helpdesk_settings').upsert({
+      organization_id: orgId,
+      sla_hours: s.slaHours,
+      categories: s.categories,
+      technician_ids: s.technicianIds,
+      category_rules: s.categoryRules,
+      updated_at: new Date().toISOString(),
+    });
     if (error) {
       toast(explain(error), 'error');
       return false;

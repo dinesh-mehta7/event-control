@@ -267,38 +267,34 @@ export const DutiesShiftsPage: React.FC = () => {
     };
     const results = await Promise.all([
       others.length
-        ? supabase
-            .from('sewa_duty_shifts')
-            .insert(
-              others.map(m => ({
-                ...base,
-                id: uid('duty'),
-                event_id: eventId,
-                event_scope_key: scopeKey,
-                member_id: m.id,
-                member_name: m.name,
-                department: m.department || '',
-                location: location.trim(),
-              })),
-            )
+        ? supabase.from('sewa_duty_shifts').insert(
+            others.map(m => ({
+              ...base,
+              id: uid('duty'),
+              event_id: eventId,
+              event_scope_key: scopeKey,
+              member_id: m.id,
+              member_name: m.name,
+              department: m.department || '',
+              location: location.trim(),
+            })),
+          )
         : Promise.resolve({ error: null }),
       // A CCTV duty is saved under its room's own event, so CCTV Control Room lists it under that room.
       cctvMembers.length && room
-        ? supabase
-            .from('cctv_control_room_duties')
-            .insert(
-              cctvMembers.map(m => ({
-                ...base,
-                id: uid('crd'),
-                event_id: room.eventId,
-                event_scope_key: room.scopeKey,
-                room_id: room.id,
-                member_id: m.id,
-                member_name: m.name,
-                mobile: m.phone || '',
-                attendance_status: 'scheduled',
-              })),
-            )
+        ? supabase.from('cctv_control_room_duties').insert(
+            cctvMembers.map(m => ({
+              ...base,
+              id: uid('crd'),
+              event_id: room.eventId,
+              event_scope_key: room.scopeKey,
+              room_id: room.id,
+              member_id: m.id,
+              member_name: m.name,
+              mobile: m.phone || '',
+              attendance_status: 'scheduled',
+            })),
+          )
         : Promise.resolve({ error: null }),
     ]);
     setBusy(false);

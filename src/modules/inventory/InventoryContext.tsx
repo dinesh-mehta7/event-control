@@ -3,52 +3,13 @@ import { supabase } from '../walkie/lib/supabaseClient';
 import { useWalkie } from '../walkie';
 import { CATEGORIES } from './types';
 import type { Holding, Item, MoveType, Movement } from './types';
-
-const mapItem = (r: any): Item => ({
-  id: r.id,
-  name: r.name,
-  code: r.code || '',
-  category: r.category || 'General',
-  unit: r.unit || 'pcs',
-  location: r.location || '',
-  minLevel: r.min_level || 0,
-  inStock: r.in_stock || 0,
-  issued: r.issued || 0,
-  damaged: r.damaged || 0,
-});
-const mapHolding = (r: any): Holding => ({ itemId: r.item_id, location: r.location, qty: r.qty });
-const mapMove = (r: any): Movement => ({
-  id: r.id,
-  itemId: r.item_id,
-  type: r.type,
-  qty: r.qty,
-  location: r.location || '',
-  givenBy: r.given_by || '',
-  receivedBy: r.received_by || '',
-  returnedBy: r.returned_by || '',
-  ref: r.ref || '',
-  note: r.note || '',
-  doneBy: r.done_by || '',
-  doneAt: r.done_at,
-});
-
-const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-const sortItems = (a: Item, b: Item) => collator.compare(a.name, b.name);
-const uid = (p: string) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
-
-const friendlyError = (error: any): string => {
-  const msg: string = error?.message || 'Unknown error';
-  if (/row-level security|permission denied/i.test(msg)) return "You don't have permission to do that.";
-  if (error?.code === '23505' || /duplicate key/i.test(msg)) return 'An item with that code already exists.';
-  if (/schema cache|does not exist|could not find/i.test(msg))
-    return `${msg} — run migration_v11, v12 and v13 (supabase/ folder, in order) in the Supabase SQL Editor, then reload.`;
-  return msg;
-};
+import { collator, friendlyError, mapHolding, mapItem, mapMove, sortItems, uid } from './mappers';
 
 export interface Loc {
   id: string;
   name: string;
 }
+
 export interface ItemInput {
   name: string;
   code: string;
@@ -57,6 +18,7 @@ export interface ItemInput {
   location: string;
   minLevel: number;
 }
+
 export interface MoveInput {
   type: MoveType;
   qty: number;
@@ -67,6 +29,7 @@ export interface MoveInput {
   ref: string;
   note: string;
 }
+
 export interface Stats {
   total: number;
   low: number;
@@ -105,9 +68,12 @@ interface Ctx {
   renameLocation: (id: string, name: string) => Promise<boolean>;
   deleteLocation: (id: string) => Promise<boolean>;
 }
+
 const C = createContext<Ctx | null>(null);
+
 // For optional consumers (e.g. Help Desk's related item): null outside <InventoryProvider> instead of throwing.
 export const useInventoryMaybe = (): Ctx | null => useContext(C);
+
 export const useInventory = (): Ctx => {
   const c = useContext(C);
   if (!c) throw new Error('useInventory must be used inside <InventoryProvider>');

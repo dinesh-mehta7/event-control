@@ -1,8 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Swap } from '../components/Swap';
-
-// Events already loaded this session, per organization, so coming back shows the workspace at once.
-const eventsCache = new Map<string, any[]>();
 import { memberMeta } from '../modules/manpower/memberMeta';
 import {
   CalendarDays,
@@ -28,128 +25,27 @@ import { ClockTimePicker } from '../components/ClockTimePicker';
 import { MeetingsList } from './meetings/MeetingsList';
 import { DEPTS } from './orgData';
 import * as XLSX from 'xlsx';
+import {
+  Attendance,
+  BadgeOperation,
+  DailyStaffingRequirement,
+  EventFeedback,
+  EventPlan,
+  EventRadioRequest,
+  RadioReturnReport,
+  Requirement,
+  Review,
+} from './eventPlanning/types';
+import { attendanceDayCount, localDay, shiftDay } from './eventPlanning/dates';
 
-type EventPlan = {
-  id: string;
-  name: string;
-  location: string;
-  starts_at: string;
-  ends_at: string | null;
-  owner_name: string;
-  owner_department_id?: string | null;
-  status: string;
-  event_type?: 'monthly' | 'annual' | 'special';
-  special_member_ids?: string[];
-  staffing_days_before?: number;
-  staffing_days_after?: number;
-};
-type Requirement = {
-  id: string;
-  category: string;
-  inventory_item_id: string | null;
-  department_id: string | null;
-  department_name: string;
-  title: string;
-  quantity: number;
-  unit: string;
-  notes: string;
-  collect_from?: string;
-  collect_from_department?: string;
-  collect_from_location?: string;
-  status: string;
-  accommodation_category?: string | null;
-  room_requirements?: RoomRequirement[] | null;
-  created_at?: string;
-};
-type EventFeedback = {
-  id: string;
-  kind: string;
-  title: string;
-  details: string;
-  reporter_name: string;
-  sub_department: string;
-  status: string;
-  created_at: string;
-};
-type Attendance = {
-  id: string;
-  member_id: string;
-  member_name: string;
-  status: string;
-  checked_in_at: string | null;
-  checked_out_at: string | null;
-  notes: string;
-};
-type BadgeOperation = {
-  id: string;
-  member_id: string;
-  badge_issued: boolean;
-  badge_at: string | null;
-  badge_returned: boolean;
-  badge_returned_at: string | null;
-  arrival_status: string;
-  arrived_at: string | null;
-};
-type RadioReturnReport = {
-  id: string;
-  department_name: string;
-  returned_walkies: number;
-  returned_chargers: number;
-  returned_earphones: number;
-  returned_at: string | null;
-  return_feedback: string;
-  status: string;
-  updated_at: string;
-};
-type EventRadioRequest = {
-  id: string;
-  department_name: string;
-  collect_from: string;
-  walkie_count: number;
-  charger_count: number;
-  earphone_count: number;
-  status: string;
-  created_at: string;
-};
-type Review = {
-  id: string;
-  lessons_learned: string;
-  issues_faced: string;
-  recommendations: string;
-  closure_report: string;
-};
-type DailyStaffingRequirement = {
-  id: string;
-  event_id: string;
-  requirement_date: string;
-  category: string;
-  required_count: number;
-  notes: string;
-};
+// Events already loaded this session, per organization, so coming back shows the workspace at once.
+const eventsCache = new Map<string, any[]>();
+
 const idFor = (prefix: string) =>
   `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
-const localDay = (value: string | Date) => {
-  const d = new Date(value);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-const shiftDay = (day: string, offset: number) => {
-  const [year, month, date] = day.split('-').map(Number);
-  const d = new Date(year, month - 1, date + offset, 12);
-  return localDay(d);
-};
-const shortDay = (day: string) =>
-  new Date(`${day}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-const attendanceDayCount = (row: Attendance, today: string) => {
-  if (!row.checked_in_at) return 0;
-  const start = localDay(row.checked_in_at);
-  const end = localDay(row.checked_out_at || today);
-  const toUtc = (day: string) => {
-    const [y, m, d] = day.split('-').map(Number);
-    return Date.UTC(y, m - 1, d);
-  };
-  return Math.max(0, Math.floor((toUtc(end) - toUtc(start)) / 86400000) + 1);
-};
+
 const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
 const staffingCategoryKey = (value: string) => {
   const normalized = value.toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
   return (
@@ -158,11 +54,15 @@ const staffingCategoryKey = (value: string) => {
     )?.[0] || value
   );
 };
+
 const input =
   'w-full rounded-md border border-line bg-field px-3 py-2 text-sm text-ink outline-none focus:border-blue-500';
+
 const panel = 'rounded-xl border border-line bg-surface';
+
 const action =
   'inline-flex items-center justify-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50';
+
 const quiet =
   'inline-flex items-center justify-center gap-1.5 rounded-md border border-line px-3 py-2 text-xs font-medium text-ink-soft hover:bg-raised disabled:opacity-50';
 
@@ -174,6 +74,7 @@ const when = (value: string) =>
     hour: 'numeric',
     minute: '2-digit',
   });
+
 const schemaError = (error: any) =>
   /does not exist|schema cache|could not find/i.test(error?.message || '')
     ? `${/collect_from_department|collect_from_location/i.test(error?.message || '') ? 'From department / location need supabase/migration_v88_requirement_source.sql.' : /event_radio_request_submit|p_collect_from|event_radio_requests.*collect_from/i.test(error?.message || '') ? 'Walkie-Talkie collection units need supabase/migration_v82_event_radio_collection_unit.sql.' : /room_requirements|accommodation_category|event_requirement_id|accommodation_rooms.*event_id/i.test(error?.message || '') ? 'Event accommodation syncing needs supabase/migration_v79_event_room_requirements.sql.' : /event_staffing_requirements|staffing_days|collect_from/i.test(error?.message || '') ? 'Event staffing and collection tracking need supabase/migration_v78_event_staffing_requirements.sql.' : 'Event planning needs its database setup. Run supabase/migration_v76_event_workflow_links.sql in the Supabase SQL Editor.'} Then reload this page.`
@@ -509,22 +410,20 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
     const eventId = idFor('event');
     const startsAt = new Date(`${eventForm.date}T${eventForm.time}`).toISOString();
     const ownerDepartment = departments.find(department => department.id === eventForm.ownerDepartmentId);
-    const { error: createError } = await supabase
-      .from('event_plans')
-      .insert({
-        id: eventId,
-        organization_id: orgId,
-        name: eventForm.name.trim(),
-        location: eventForm.location.trim(),
-        starts_at: startsAt,
-        ends_at: null,
-        owner_name: ownerDepartment?.name || '',
-        owner_department_id: ownerDepartment?.id || null,
-        event_type: eventForm.type,
-        special_member_ids: eventForm.type === 'special' ? eventForm.memberIds : [],
-        staffing_days_before: staffingDaysBefore,
-        staffing_days_after: staffingDaysAfter,
-      });
+    const { error: createError } = await supabase.from('event_plans').insert({
+      id: eventId,
+      organization_id: orgId,
+      name: eventForm.name.trim(),
+      location: eventForm.location.trim(),
+      starts_at: startsAt,
+      ends_at: null,
+      owner_name: ownerDepartment?.name || '',
+      owner_department_id: ownerDepartment?.id || null,
+      event_type: eventForm.type,
+      special_member_ids: eventForm.type === 'special' ? eventForm.memberIds : [],
+      staffing_days_before: staffingDaysBefore,
+      staffing_days_after: staffingDaysAfter,
+    });
     if (createError) {
       setError(schemaError(createError));
       setBusy(false);
@@ -603,22 +502,20 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
     else {
       if (isAccommodation) {
         const roomId = idFor('room');
-        const { error: roomError } = await supabase
-          .from('accommodation_rooms')
-          .insert({
-            id: roomId,
-            organization_id: orgId,
-            event_id: selected.id,
-            event_requirement_id: requirementId,
-            name: requirementForm.title.trim(),
-            category: roomDraft.kind,
-            block: roomDraft.block.trim(),
-            capacity: Math.max(1, Number(requirementForm.quantity) || 1),
-            notes: '',
-            responsible_team: roomDraft.kind === 'control_room' ? roomDraft.team : '',
-            requirements_by_scope: { [selected.id]: roomItems },
-            readiness_by_scope: { [selected.id]: {} },
-          });
+        const { error: roomError } = await supabase.from('accommodation_rooms').insert({
+          id: roomId,
+          organization_id: orgId,
+          event_id: selected.id,
+          event_requirement_id: requirementId,
+          name: requirementForm.title.trim(),
+          category: roomDraft.kind,
+          block: roomDraft.block.trim(),
+          capacity: Math.max(1, Number(requirementForm.quantity) || 1),
+          notes: '',
+          responsible_team: roomDraft.kind === 'control_room' ? roomDraft.team : '',
+          requirements_by_scope: { [selected.id]: roomItems },
+          readiness_by_scope: { [selected.id]: {} },
+        });
         if (roomError) {
           await supabase.from('event_requirements').delete().eq('id', requirementId).eq('organization_id', orgId);
           setError(`${schemaError(roomError)} The room was not saved.`);
@@ -870,21 +767,19 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
     if (!selected || !orgId || !canPlan) return;
     setBusy(true);
     setError('');
-    const { error: saveError } = await supabase
-      .from('event_reviews')
-      .upsert(
-        {
-          id: review.id || idFor('event-review'),
-          organization_id: orgId,
-          event_id: selected.id,
-          lessons_learned: review.lessons_learned,
-          issues_faced: review.issues_faced,
-          recommendations: review.recommendations,
-          closure_report: review.closure_report,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'event_id' },
-      );
+    const { error: saveError } = await supabase.from('event_reviews').upsert(
+      {
+        id: review.id || idFor('event-review'),
+        organization_id: orgId,
+        event_id: selected.id,
+        lessons_learned: review.lessons_learned,
+        issues_faced: review.issues_faced,
+        recommendations: review.recommendations,
+        closure_report: review.closure_report,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'event_id' },
+    );
     if (saveError) setError(schemaError(saveError));
     else await loadDetails(selected.id);
     setBusy(false);

@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   CheckSquare,
   Clock,
-  Lock,
   Mail,
   MessageSquare,
   Package,
@@ -23,6 +22,8 @@ import { Badge, D, cx, ghost, iconBtn, panel, primary } from '../inventory/ui/ki
 import type { Helpdesk } from './useHelpdesk';
 import { PRIORITIES, PRIORITY, STATUS, STATUSES, isOverdue, minutesLabel, relative, ticketNo, when } from './types';
 import type { Status, Ticket, TicketEvent, TicketTask } from './types';
+import { Conversation } from './ticket/Conversation';
+export { RequesterTicket } from './ticket/RequesterTicket';
 
 const toLocal = (iso: string | null) => {
   if (!iso) return '';
@@ -30,84 +31,8 @@ const toLocal = (iso: string | null) => {
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 16);
 };
-const tid = () => `t-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-// Conversation: original request, then responses / notes / change log in time order.
-const Conversation: React.FC<{ ticket: Ticket; events: TicketEvent[] | null; showNotes: boolean }> = ({
-  ticket,
-  events,
-  showNotes,
-}) => (
-  <ol className="space-y-3">
-    <li className={cx(panel, 'p-4')}>
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11.5px] text-mute">
-        <span>
-          <b className="text-ink">{ticket.requesterName || 'Requester'}</b> opened this ticket
-        </span>
-        <span>{when(ticket.createdAt)}</span>
-      </div>
-      <p className="whitespace-pre-wrap text-sm text-ink-soft">
-        {ticket.description || <span className="text-faint">No description.</span>}
-      </p>
-    </li>
-    {events === null ? (
-      <li className="text-xs text-mute">Loading conversation…</li>
-    ) : (
-      events
-        .filter(e => showNotes || e.kind !== 'note')
-        .map(e =>
-          e.kind === 'log' ? (
-            <li key={e.id} className="flex items-center gap-2 px-2 text-[11.5px] text-faint">
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-line-strong" />
-              <span className="min-w-0">
-                {e.body}
-                <span>
-                  {' '}
-                  · {e.authorName} · {relative(e.createdAt)}
-                </span>
-              </span>
-            </li>
-          ) : (
-            <li
-              key={e.id}
-              className={cx(
-                'animate-calm-enter rounded-xl border p-3',
-                e.kind === 'note'
-                  ? 'border-amber-500/30 bg-amber-500/5'
-                  : e.authorId === ticket.requesterId
-                    ? 'border-line bg-surface'
-                    : 'border-blue-500/25 bg-blue-500/5',
-              )}
-            >
-              <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-[11.5px] text-mute">
-                <span className="inline-flex flex-wrap items-center gap-1.5">
-                  <b className="text-ink">{e.authorName}</b>
-                  {e.kind === 'note' ? (
-                    <Badge tone="warn">
-                      <Lock className="h-3 w-3" />
-                      Internal note
-                    </Badge>
-                  ) : e.authorId === ticket.requesterId ? (
-                    <span>replied</span>
-                  ) : (
-                    <Badge tone="info">Response</Badge>
-                  )}
-                  {showNotes && e.minutes > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-raised px-1.5 py-0.5 text-[10.5px]">
-                      <Clock className="h-3 w-3" />
-                      {minutesLabel(e.minutes)}
-                    </span>
-                  )}
-                </span>
-                <span>{when(e.createdAt)}</span>
-              </div>
-              <p className="whitespace-pre-wrap text-sm text-ink-soft">{e.body}</p>
-            </li>
-          ),
-        )
-    )}
-  </ol>
-);
+const tid = () => `t-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 // ---- Technician view -------------------------------------------------------------------------------------------
 export const TicketDetail: React.FC<{ hd: Helpdesk; ticket: Ticket; onBack: () => void; compact?: boolean }> = ({
@@ -646,84 +571,6 @@ export const TicketDetail: React.FC<{ hd: Helpdesk; ticket: Ticket; onBack: () =
           onClose={() => setDel(false)}
         />
       )}
-    </div>
-  );
-};
-
-// ---- Requester view (portal): no internal notes or time, reply or reopen ------------------------------------
-export const RequesterTicket: React.FC<{ hd: Helpdesk; ticket: Ticket; onBack: () => void }> = ({
-  hd,
-  ticket,
-  onBack,
-}) => {
-  const [events, setEvents] = useState<TicketEvent[] | null>(null);
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const reload = async () => setEvents(await hd.fetchEvents(ticket.id));
-  useEffect(() => {
-    void reload();
-  }, [ticket.id, ticket.updatedAt]); // eslint-disable-line
-  const send = async (reopen: boolean) => {
-    if (!text.trim()) return;
-    setBusy(true);
-    const ok = await hd.post(ticket.id, 'reply', text, reopen);
-    setBusy(false);
-    if (ok) {
-      setText('');
-      void reload();
-    }
-  };
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start gap-3">
-        <button className={ghost} onClick={onBack}>
-          <ArrowLeft className="h-4 w-4" />
-          My tickets
-        </button>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-base font-semibold text-ink">
-            <span className="text-mute">{ticketNo(ticket)}</span> {ticket.subject}
-          </h2>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11.5px] text-mute">
-            <Badge tone={STATUS[ticket.status].tone}>{STATUS[ticket.status].label}</Badge>
-            <span>{ticket.assigneeName ? `Handled by ${ticket.assigneeName}` : 'Waiting for a technician'}</span>
-          </div>
-        </div>
-      </div>
-      <Conversation ticket={ticket} events={events} showNotes={false} />
-      {ticket.status === 'closed' && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">
-          <div className="mb-1 text-[11.5px] font-semibold text-emerald-300">Resolved · {when(ticket.closedAt)}</div>
-          <p className="whitespace-pre-wrap text-ink-soft">{ticket.resolution}</p>
-        </div>
-      )}
-      <div className={cx(panel, 'p-3')}>
-        <textarea
-          rows={3}
-          value={text}
-          onChange={e => setText(e.target.value)}
-          placeholder={
-            ticket.status === 'closed'
-              ? 'Still not fixed? Tell us what is happening…'
-              : 'Add more details or answer a question…'
-          }
-          aria-label="Your reply"
-          className={inputCls(D)}
-        />
-        <div className="mt-2 flex justify-end gap-2">
-          {ticket.status === 'closed' ? (
-            <button className={primary} disabled={busy || !text.trim()} onClick={() => void send(true)}>
-              <RotateCcw className="h-3.5 w-3.5" />
-              Reopen with this reply
-            </button>
-          ) : (
-            <button className={primary} disabled={busy || !text.trim()} onClick={() => void send(false)}>
-              <Send className="h-3.5 w-3.5" />
-              Send reply
-            </button>
-          )}
-        </div>
-      </div>
     </div>
   );
 };

@@ -5,18 +5,14 @@ import {
   Phone,
   Users,
   Boxes,
-  Siren,
   Check,
   Plus,
   X,
   ChevronDown,
   ChevronUp,
-  Zap,
   Edit3,
   Trash2,
   Monitor,
-  Tv,
-  Cpu,
   AlertTriangle,
   CheckCircle,
   PauseCircle,
@@ -29,17 +25,14 @@ import { useInventory } from '../../modules/inventory';
 import { useEventScope } from '../../context/EventScopeContext';
 import { useAccommodation } from '../../modules/accommodation';
 import type { ControlRoom } from '../../types';
-import { digitsOnly, phoneInputProps } from '../../lib/phone';
+import { Modal, btnGhost, btnPrimary, input } from './controlRooms/shared';
+import { ExtraAdd } from './controlRooms/ExtraAdd';
+import { EMPTY_FORM, RoomForm } from './controlRooms/RoomForm';
+import { ConfirmDelete } from './controlRooms/ConfirmDelete';
 
-// ── Shared style tokens ──────────────────────────────────────────────────────
-const input =
-  'bg-field border border-line-strong rounded-xl px-3 py-2 text-sm text-ink placeholder-faint w-full outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all';
-const btnPrimary =
-  'inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 active:scale-95 text-white transition-all whitespace-nowrap';
-const btnGhost =
-  'inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-line-strong text-ink-soft hover:bg-raised hover:text-ink transition-all whitespace-nowrap';
 const btnDanger =
   'inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all whitespace-nowrap';
+
 const linkBtn = 'text-xs font-semibold text-blue-400 hover:underline whitespace-nowrap';
 
 // ── Status display helpers ────────────────────────────────────────────────────
@@ -64,173 +57,13 @@ const STATUS_CFG = {
   },
 };
 
-// ── Modal overlay wrapper ─────────────────────────────────────────────────────
-const Modal: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({
-  title,
-  onClose,
-  children,
-}) => (
-  <div
-    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
-    onMouseDown={e => {
-      if (e.target === e.currentTarget) onClose();
-    }}
-  >
-    <div className="w-full max-w-lg rounded-xl border border-line bg-surface shadow-2xl animate-slide-up max-h-[90vh] flex flex-col">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-line shrink-0">
-        <h2 className="text-base font-semibold text-ink">{title}</h2>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg text-mute hover:bg-raised hover:text-ink transition-colors"
-        >
-          <X size={16} />
-        </button>
-      </div>
-      <div className="overflow-y-auto flex-1 px-6 py-5">{children}</div>
-    </div>
-  </div>
-);
-
-// ── Form for add/edit room ────────────────────────────────────────────────────
-const EMPTY_FORM: Omit<ControlRoom, 'id'> = {
-  code: '',
-  name: '',
-  location: '',
-  videoWallScreens: 0,
-  activeWorkstations: 0,
-  totalWorkstations: 0,
-  activeOperatorCount: 0,
-  feedCount: 0,
-  status: 'operational',
-  primaryLead: '',
-  phone: '',
-};
-
-const RoomForm: React.FC<{
-  initial: Omit<ControlRoom, 'id'>;
-  onSave: (data: Omit<ControlRoom, 'id'>) => void;
-  onClose: () => void;
-  isEdit?: boolean;
-}> = ({ initial, onSave, onClose, isEdit }) => {
-  const [f, setF] = useState(initial);
-  const n = <K extends keyof typeof f>(k: K, val: (typeof f)[K]) => setF(p => ({ ...p, [k]: val }));
-  const num = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    n(k, parseInt(e.target.value, 10) || (0 as any));
-
-  const Label = ({ text }: { text: string }) => (
-    <label className="block text-xs font-semibold text-mute mb-1 mt-4 uppercase tracking-wider">{text}</label>
-  );
-  return (
-    <form
-      onSubmit={e => {
-        e.preventDefault();
-        if (!f.code.trim() || !f.name.trim()) return;
-        onSave(f);
-      }}
-    >
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label text="Room Code" />
-          <input
-            className={input}
-            placeholder="CR-06"
-            value={f.code}
-            onChange={e => n('code', e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <Label text="Status" />
-          <select className={input} value={f.status} onChange={e => n('status', e.target.value as any)}>
-            <option value="operational">Operational</option>
-            <option value="alert">Alert</option>
-            <option value="standby">Standby</option>
-          </select>
-        </div>
-      </div>
-      <Label text="Room Name" />
-      <input
-        className={input}
-        placeholder="e.g. Central IT Command Center"
-        value={f.name}
-        onChange={e => n('name', e.target.value)}
-        required
-      />
-      <Label text="Location" />
-      <input
-        className={input}
-        placeholder="Building, floor, zone…"
-        value={f.location}
-        onChange={e => n('location', e.target.value)}
-      />
-      <Label text="Primary Lead" />
-      <input
-        className={input}
-        placeholder="Full name"
-        value={f.primaryLead}
-        onChange={e => n('primaryLead', e.target.value)}
-      />
-      <Label text="Phone" />
-      <input
-        className={input}
-        {...phoneInputProps}
-        placeholder="Digits only"
-        value={f.phone}
-        onChange={e => n('phone', digitsOnly(e.target.value))}
-      />
-      <p className="mt-4 rounded-lg bg-raised/60 px-3 py-2 text-xs text-mute">
-        Assign members and record room materials after saving the room.
-      </p>
-      <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-line">
-        <button type="button" onClick={onClose} className={btnGhost}>
-          Cancel
-        </button>
-        <button type="submit" className={btnPrimary}>
-          {isEdit ? 'Save Changes' : 'Add Room'}
-        </button>
-      </div>
-    </form>
-  );
-};
-
-// ── Confirm delete modal ──────────────────────────────────────────────────────
-const ConfirmDelete: React.FC<{ name: string; onConfirm: () => void; onClose: () => void }> = ({
-  name,
-  onConfirm,
-  onClose,
-}) => (
-  <Modal title="Delete Control Room" onClose={onClose}>
-    <div className="text-center py-4">
-      <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center">
-        <Trash2 size={22} className="text-red-400" />
-      </div>
-      <p className="text-sm text-ink mb-1">Are you sure you want to delete</p>
-      <p className="text-base font-semibold text-ink mb-3">"{name}"?</p>
-      <p className="text-xs text-mute mb-6">This action cannot be undone. All ops data for this room will be lost.</p>
-      <div className="flex justify-center gap-3">
-        <button onClick={onClose} className={btnGhost}>
-          Cancel
-        </button>
-        <button
-          onClick={() => {
-            onConfirm();
-            onClose();
-          }}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-700 text-white transition-all"
-        >
-          <Trash2 size={14} /> Delete
-        </button>
-      </div>
-    </div>
-  </Modal>
-);
-
 // ── Member assignment for a room (accordion) ─────────────────────────────────
 interface Ops {
   members: Record<string, string[]>;
   invLoc: Record<string, string>;
   extras: Record<string, { id: string; name: string; qty: number }[]>;
 }
+
 const EMPTY_OPS: Ops = { members: {}, invLoc: {}, extras: {} };
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -769,49 +602,6 @@ export const ControlRoomsApp: React.FC = () => {
           onClose={() => setDeleteRoom(null)}
         />
       )}
-    </div>
-  );
-};
-
-// ── Extra equipment add widget ────────────────────────────────────────────────
-const ExtraAdd: React.FC<{ onAdd: (name: string, qty: number) => void }> = ({ onAdd }) => {
-  const [name, setName] = useState('');
-  const [qty, setQty] = useState('1');
-  const input2 =
-    'bg-field border border-line-strong rounded-xl px-3 py-2 text-xs text-ink placeholder-faint outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all';
-  const add = () => {
-    const q = Math.max(1, parseInt(qty, 10) || 1);
-    if (!name.trim()) return;
-    onAdd(name.trim(), q);
-    setName('');
-    setQty('1');
-  };
-  return (
-    <div className="flex gap-2">
-      <input
-        className={input2 + ' flex-1'}
-        placeholder="Other equipment…"
-        value={name}
-        onChange={e => setName(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === 'Enter') add();
-        }}
-      />
-      <input
-        className={input2 + ' w-16'}
-        type="number"
-        min={1}
-        value={qty}
-        onChange={e => setQty(e.target.value)}
-        aria-label="Qty"
-      />
-      <button
-        onClick={add}
-        className="px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-        aria-label="Add"
-      >
-        <Plus size={14} />
-      </button>
     </div>
   );
 };

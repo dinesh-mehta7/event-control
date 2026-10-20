@@ -1,15 +1,20 @@
 'use client';
+
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabaseClient';
 import { roleLabel } from '../../../lib/roles';
 import ToastContainer from './ToastContainer';
 import { AUTH_CSS, FLASH_OUT_CSS } from './authStyles';
+import { RULES, RULE_OF, STRENGTH, strengthOf } from './auth/passwordRules';
+import { FallbackEmblem, I } from './auth/icons';
+import { Field, Primary } from './auth/fields';
 
 // Sign in · Create account · Forgot password · Set new password, in the DJJS saffron theme.
 // After a successful sign-in the emblem rises, a lotus blooms and light floods into the app.
 
 const LOGO = '/djjs-emblem.png';
+
 const DEMO_ACCOUNTS = [
   {
     label: 'Super Admin',
@@ -38,301 +43,16 @@ const DEMO_ACCOUNTS = [
 ].filter(a => a.email && a.password) as { label: string; email: string; password: string; color: string }[];
 
 type View = 'signin' | 'signup' | 'forgot' | 'reset';
+
 const ORDER: Record<View, number> = { forgot: -1, signin: 0, signup: 1, reset: 2 };
+
 const toView = (v: string): View =>
   v === 'signup' ? 'signup' : v === 'forgot' ? 'forgot' : v === 'reset' ? 'reset' : 'signin';
+
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
 const prefersReduced = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-const RULES: Record<string, (v: string, all: Record<string, string>) => string> = {
-  email: v => (/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim()) ? '' : 'Enter a valid email address'),
-  password: v => (v.length >= 6 ? '' : 'Password must be at least 6 characters'),
-  name: v => (v.trim().length >= 2 ? '' : 'Please enter your name'),
-  newPassword: v => (v.length >= 8 ? '' : 'Use at least 8 characters'),
-  confirm: (v, all) => (v && v === (all.newPassword || '') ? '' : 'Passwords do not match'),
-  joinCode: v => (v.trim() ? '' : "Enter your organization's join code"),
-};
-const RULE_OF: Record<string, string> = {
-  'si-email': 'email',
-  'si-pass': 'password',
-  'su-name': 'name',
-  'su-email': 'email',
-  'su-pass': 'newPassword',
-  'su-confirm': 'confirm',
-  'su-code': 'joinCode',
-  'fp-email': 'email',
-  'rp-pass': 'newPassword',
-  'rp-confirm': 'confirm',
-};
-const STRENGTH: [string, string][] = [
-  ['—', '#555'],
-  ['Weak', '#ff5d6c'],
-  ['Fair', '#ff9a2a'],
-  ['Good', '#ffc23d'],
-  ['Strong', '#33d17a'],
-];
-const strengthOf = (v: string) => {
-  if (!v) return 0;
-  let s = 0;
-  if (v.length >= 8) s++;
-  if (/[A-Z]/.test(v) && /[a-z]/.test(v)) s++;
-  if (/\d/.test(v)) s++;
-  if (/[^A-Za-z0-9]/.test(v) && v.length >= 10) s++;
-  return Math.max(1, s);
-};
-
-/* ---------- icons ---------- */
-const I = {
-  mail: (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="3" y="5" width="18" height="14" rx="3" />
-      <path d="m4 7 8 6 8-6" />
-    </svg>
-  ),
-  lock: (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="4" y="10" width="16" height="11" rx="3" />
-      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-      <circle cx="12" cy="15.5" r="1.4" fill="currentColor" />
-    </svg>
-  ),
-  user: (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 21a8 8 0 0 1 16 0" />
-    </svg>
-  ),
-  key: (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="7.5" cy="15.5" r="4.5" />
-      <path d="m10.7 12.3 9.3-9.3M17 6l3 3M15 8l2 2" />
-    </svg>
-  ),
-  arrow: (
-    <svg
-      className="arrow"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M5 12h14M13 6l6 6-6 6" />
-    </svg>
-  ),
-  back: (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M19 12H5M11 18l-6-6 6-6" />
-    </svg>
-  ),
-  alert: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7.5v5.5M12 16.5h.01" />
-    </svg>
-  ),
-  info: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 11v5.5M12 7.5h.01" />
-    </svg>
-  ),
-};
-// Shown until /public/djjs-emblem.png exists: a simple lamp flame.
-const FallbackEmblem = () => (
-  <svg viewBox="0 0 120 120" aria-hidden>
-    <defs>
-      <linearGradient id="ea-fl" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#fff3c4" />
-        <stop offset=".45" stopColor="#ffc23d" />
-        <stop offset="1" stopColor="#ff6a1f" />
-      </linearGradient>
-    </defs>
-    <path
-      d="M60 10c10 18 26 30 26 52a26 26 0 0 1-52 0c0-14 8-22 14-30 2 8 6 12 10 14-2-14 0-26 2-36z"
-      fill="url(#ea-fl)"
-    />
-    <path d="M24 92h72l-8 14H32z" fill="#ff9a2a" opacity=".85" />
-  </svg>
-);
-
-/* ---------- field ---------- */
-type FieldProps = {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-  type?: string;
-  value: string;
-  onChange: (v: string) => void;
-  onBlur: () => void;
-  error?: string;
-  good?: boolean;
-  shake?: boolean;
-  onShaken?: () => void;
-  autoComplete?: string;
-  eye?: boolean;
-  upper?: boolean;
-  i: number;
-  bare?: boolean;
-};
-const Field: React.FC<FieldProps> = ({
-  id,
-  label,
-  icon,
-  type = 'text',
-  value,
-  onChange,
-  onBlur,
-  error,
-  good,
-  shake,
-  onShaken,
-  autoComplete,
-  eye,
-  upper,
-  i,
-  bare,
-}) => {
-  const [show, setShow] = useState(false);
-  const [blink, setBlink] = useState(0);
-  const ref = useRef<HTMLInputElement>(null);
-  return (
-    <div
-      className={[
-        'ea-field',
-        bare ? '' : 'ea-f',
-        error ? 'bad' : '',
-        good && !error ? 'good' : '',
-        shake ? 'ea-shake' : '',
-      ].join(' ')}
-      style={{ '--i': i } as any}
-      onAnimationEnd={e => {
-        if (e.animationName === 'ea-shake') onShaken?.();
-      }}
-    >
-      <div className="ea-box">
-        <span className="ea-ico">{icon}</span>
-        <input
-          ref={ref}
-          id={id}
-          type={eye ? (show ? 'text' : 'password') : type}
-          placeholder=" "
-          autoComplete={autoComplete}
-          value={value}
-          className={upper ? 'upper' : undefined}
-          aria-invalid={!!error}
-          aria-describedby={`${id}-msg`}
-          onChange={e => onChange(upper ? e.target.value.toUpperCase() : e.target.value)}
-          onBlur={onBlur}
-        />
-        <label htmlFor={id}>{label}</label>
-        {eye && (
-          <span className="ea-trail">
-            <button
-              type="button"
-              className={'ea-eye' + (blink ? ' blink' : '')}
-              key={blink}
-              aria-pressed={show}
-              aria-label={show ? 'Hide password' : 'Show password'}
-              onClick={() => {
-                setShow(s => !s);
-                setBlink(b => b + 1);
-                ref.current?.focus({ preventScroll: true });
-              }}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <g className="lid">
-                  <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
-                  <circle cx="12" cy="12" r="3" />
-                </g>
-                <path className="slash" d="M4 4l16 16" />
-              </svg>
-            </button>
-          </span>
-        )}
-      </div>
-      <div className="ea-msg" id={`${id}-msg`} role={error ? 'alert' : undefined}>
-        {error}
-      </div>
-    </div>
-  );
-};
-
-/* ---------- primary button with ripple ---------- */
-const Primary: React.FC<{ label: string; loading: boolean; i: number; style?: React.CSSProperties }> = ({
-  label,
-  loading,
-  i,
-  style,
-}) => {
-  const ripple = (e: React.PointerEvent<HTMLButtonElement>) => {
-    const b = e.currentTarget,
-      r = b.getBoundingClientRect(),
-      d = Math.max(r.width, r.height),
-      s = document.createElement('span');
-    s.className = 'ea-ripple';
-    s.style.cssText = `width:${d}px;height:${d}px;left:${e.clientX - r.left - d / 2}px;top:${e.clientY - r.top - d / 2}px`;
-    b.appendChild(s);
-    setTimeout(() => s.remove(), 700);
-  };
-  return (
-    <button
-      className={'ea-btn ea-f' + (loading ? ' loading' : '')}
-      type="submit"
-      style={{ '--i': i, ...style } as any}
-      onPointerDown={ripple}
-      aria-busy={loading}
-    >
-      <span className="lbl">{label}</span>
-      {I.arrow}
-      <span className="spin" />
-    </button>
-  );
-};
 
 // Royal (dark + saffron) keeps the saffron page; every other theme gets the indigo version.
 const isRoyal = (settings: any) => settings?.theme === 'dark' && settings?.palette === 'saffron';

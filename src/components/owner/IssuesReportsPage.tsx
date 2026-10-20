@@ -92,17 +92,15 @@ export const IssuesReportsPage: React.FC = () => {
     setBusy(true);
     setError('');
     setNotice('');
-    const { error: e2 } = await supabase
-      .from('department_updates')
-      .insert({
-        organization_id: user.organizationId,
-        kind,
-        department,
-        title: title.trim(),
-        body: body.trim(),
-        author_id: user.id,
-        author_name: user.name || user.email || 'Administrator',
-      });
+    const { error: e2 } = await supabase.from('department_updates').insert({
+      organization_id: user.organizationId,
+      kind,
+      department,
+      title: title.trim(),
+      body: body.trim(),
+      author_id: user.id,
+      author_name: user.name || user.email || 'Administrator',
+    });
     setBusy(false);
     if (e2) {
       setError(e2.message);

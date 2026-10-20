@@ -239,25 +239,23 @@ export const MeetingsList: React.FC<{ eventId?: string }> = ({ eventId }) => {
     );
   const addMeetingTask = async (meeting: MeetingRow, draft: MeetingTaskDraft) => {
     const event = eventScope.events.find(item => item.id === meeting.eventId);
-    const { error } = await supabase
-      .from('manpower_tasks')
-      .insert({
-        id: `meeting-task-${crypto.randomUUID()}`,
-        organization_id: auth.currentUser?.organizationId,
-        event_id: meeting.eventId,
-        meeting_id: meeting.id,
-        parent_task_id: null,
-        department_id: draft.department,
-        title: draft.title.trim(),
-        details: `Action from meeting: ${meeting.title}${event ? ` · Event: ${event.name}` : ''}`,
-        resources: '',
-        team: DEPTS[draft.department],
-        assigned_to: '',
-        due_date: draft.dueDate,
-        priority_level: draft.priority,
-        priority_until: draft.priority === 'till_time' ? `${draft.dueDate}T23:59:00` : null,
-        status: 'todo',
-      });
+    const { error } = await supabase.from('manpower_tasks').insert({
+      id: `meeting-task-${crypto.randomUUID()}`,
+      organization_id: auth.currentUser?.organizationId,
+      event_id: meeting.eventId,
+      meeting_id: meeting.id,
+      parent_task_id: null,
+      department_id: draft.department,
+      title: draft.title.trim(),
+      details: `Action from meeting: ${meeting.title}${event ? ` · Event: ${event.name}` : ''}`,
+      resources: '',
+      team: DEPTS[draft.department],
+      assigned_to: '',
+      due_date: draft.dueDate,
+      priority_level: draft.priority,
+      priority_until: draft.priority === 'till_time' ? `${draft.dueDate}T23:59:00` : null,
+      status: 'todo',
+    });
     return error?.message || null;
   };
   if (!ready)

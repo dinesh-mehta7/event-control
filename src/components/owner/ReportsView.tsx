@@ -16,121 +16,17 @@ import { STATUS_LABEL } from '../../modules/requests/types';
 import { inr } from '../../views/orgData';
 import { Card, Empty, Stat, Tabs, btnGhost, btnPrimary, printLight, th } from '../ui';
 import { Swap } from '../Swap';
-
-const REPORT_TABS = [
-  'requests',
-  'purchase',
-  'inventory',
-  'wifi',
-  'people',
-  'accommodation',
-  'events',
-  'meetings',
-  'tasks',
-  'issues',
-  'radio',
-];
-
-const csvCell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-const download = (name: string, rows: (string | number)[][]) => {
-  const url = URL.createObjectURL(new Blob([rows.map(r => r.map(csvCell).join(',')).join('\n')], { type: 'text/csv' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
-};
-
-type WifiUsageRow = {
-  id: string;
-  event_id: string | null;
-  network_name: string;
-  access_point: string;
-  recipient_name: string;
-  department: string;
-  valid_until: string | null;
-  status: 'active' | 'expired' | 'revoked';
-  created_at: string;
-};
-const wifiStatus = (row: WifiUsageRow) =>
-  row.status === 'active' && row.valid_until && row.valid_until < new Date().toISOString().slice(0, 10)
-    ? 'expired'
-    : row.status;
-const wifiUsageError = (error: any) =>
-  /event_id|schema cache/i.test(error?.message || '')
-    ? `${error.message} — run supabase/migration_v74_wifi_event_usage.sql, then reload.`
-    : error?.message || 'Could not load Wi-Fi usage.';
-
-type ExtraReports = Record<string, any[]>;
-const extraReportTables = [
-  ['events', 'event_plans'],
-  ['requirements', 'event_requirements'],
-  ['eventTasks', 'manpower_tasks'],
-  ['eventReviews', 'event_reviews'],
-  ['attendance', 'event_attendance'],
-  ['issues', 'member_issues'],
-  ['updates', 'department_updates'],
-  ['memberTasks', 'accommodation_member_tasks'],
-  ['calls', 'accommodation_member_calls'],
-  ['radioReturns', 'event_radio_requests'],
-  ['inventoryMovements', 'inventory_movements'],
-  ['requestEvents', 'request_events'],
-  ['requestFulfilments', 'request_fulfilments'],
-  ['purchaseReceipts', 'purchase_receipts'],
-  ['purchasePayments', 'purchase_payments'],
-] as const;
-const fetchOrgReportRows = async (table: string, organizationId: string) => {
-  const rows: any[] = [];
-  for (let from = 0; ; from += 1000) {
-    const result = await supabase
-      .from(table)
-      .select('*')
-      .eq('organization_id', organizationId)
-      .range(from, from + 999);
-    if (result.error) return { rows: [], error: result.error.message };
-    rows.push(...(result.data || []));
-    if (!result.data || result.data.length < 1000) return { rows, error: '' };
-  }
-};
-const reportValue = (value: any) =>
-  value == null || value === '' ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value);
-const ReportTable: React.FC<{ rows: any[]; columns: [string, string][]; empty: string }> = ({
-  rows,
-  columns,
-  empty,
-}) => (
-  <div className="overflow-x-auto rounded-xl border border-line bg-surface">
-    <table className="w-full min-w-[640px] text-sm">
-      <thead>
-        <tr className="bg-canvas">
-          {columns.map(([key, label]) => (
-            <th key={key} className={th}>
-              {label}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-line">
-        {rows.map((row, index) => (
-          <tr key={row.id || index}>
-            {columns.map(([key]) => (
-              <td key={key} className="max-w-sm truncate px-4 py-2 text-ink-soft">
-                {reportValue(row[key])}
-              </td>
-            ))}
-          </tr>
-        ))}
-        {!rows.length && (
-          <tr>
-            <td colSpan={columns.length} className="p-8 text-center text-sm text-mute">
-              {empty}
-            </td>
-          </tr>
-        )}
-      </tbody>
-    </table>
-  </div>
-);
+import {
+  ExtraReports,
+  REPORT_TABS,
+  WifiUsageRow,
+  download,
+  extraReportTables,
+  fetchOrgReportRows,
+  wifiStatus,
+  wifiUsageError,
+} from './reports/reportData';
+import { ReportTable } from './reports/ReportTable';
 
 // Reports from the live data only (inventory, purchase, requests, manpower, accommodation). Each tab exports what it shows.
 export const ReportsView: React.FC = () => {
