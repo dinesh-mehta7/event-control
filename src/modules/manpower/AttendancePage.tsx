@@ -210,16 +210,24 @@ export const AttendancePage: React.FC = () => {
               <p className="p-5 text-sm text-mute">Loading roster…</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[850px] text-left text-xs">
+                <table className="w-full min-w-[1000px] text-left text-xs">
                   <thead className="bg-raised text-mute">
                     <tr>
-                      {['Sewadar', 'Team / sub-department', 'Status', 'Arrived', 'Returned', 'Badge', 'Actions'].map(
-                        label => (
-                          <th key={label} className="px-3 py-2.5">
-                            {label}
-                          </th>
-                        ),
-                      )}
+                      {[
+                        'Badge no.',
+                        'Sewadar',
+                        'Branch',
+                        'Team / sub-department',
+                        'Status',
+                        'Arrived',
+                        'Returned',
+                        'Badge status',
+                        'Actions',
+                      ].map(label => (
+                        <th key={label} className="px-3 py-2.5">
+                          {label}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line">
@@ -228,12 +236,16 @@ export const AttendancePage: React.FC = () => {
                       const b = opByMember.get(person.id);
                       return (
                         <tr key={person.id}>
+                          <td className="px-3 py-2.5 whitespace-nowrap tabular-nums text-ink-soft">
+                            {person.batchNo || '—'}
+                          </td>
                           <td className="px-3 py-2.5 font-medium text-ink">
                             {person.name}
                             {memberMeta(person) && (
                               <span className="block text-[10.5px] font-normal text-mute">{memberMeta(person)}</span>
                             )}
                           </td>
+                          <td className="px-3 py-2.5 text-mute">{person.branch || '—'}</td>
                           <td className="px-3 py-2.5 text-mute">{person.teamName || person.department || '—'}</td>
                           <td className="px-3 py-2.5 capitalize text-mute">
                             {(a?.status || 'expected').replace('_', ' ')}

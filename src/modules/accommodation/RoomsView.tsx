@@ -920,10 +920,12 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
             <table className="w-full text-xs">
               <thead>
                 <tr className={cx('text-left text-xs uppercase tracking-wider', muted)}>
+                  <th className="px-4 py-3 font-semibold">Badge no.</th>
                   <th className="px-4 py-3 font-semibold">Member</th>
-                  <th className="px-4 py-3 font-semibold">Type / badge no.</th>
+                  <th className="px-4 py-3 font-semibold">Type</th>
                   <th className="px-4 py-3 font-semibold">Department</th>
-                  <th className="px-4 py-3 font-semibold">Mobile / branch</th>
+                  <th className="px-4 py-3 font-semibold">Mobile</th>
+                  <th className="px-4 py-3 font-semibold">Branch</th>
                   <th className="px-4 py-3 font-semibold">Arrival / team</th>
                   <th className="px-4 py-3 font-semibold">Arrived at</th>
                   <th className="px-4 py-3 font-semibold">Room</th>
@@ -935,6 +937,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                   const room = m.roomId ? roomById.get(m.roomId) : null;
                   return (
                     <tr key={m.id}>
+                      <td className="px-4 py-2.5 whitespace-nowrap tabular-nums">{m.batchNo || '—'}</td>
                       <td className="px-4 py-2.5">
                         <div className="font-semibold">{m.name}</div>
                         <div className={cx('text-xs', muted)}>
@@ -943,21 +946,17 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                         </div>
                       </td>
                       <td className="px-4 py-2.5">
-                        <div>
-                          {m.memberType === 'salary_based'
-                            ? 'Salary based'
-                            : m.memberType === 'annual'
-                              ? 'Annual'
-                              : 'Monthly'}
-                        </div>
-                        <div className={cx('text-xs', muted)}>{m.batchNo || '—'}</div>
+                        {m.memberType === 'salary_based'
+                          ? 'Salary based'
+                          : m.memberType === 'annual'
+                            ? 'Annual'
+                            : 'Monthly'}
                       </td>
                       <td className={cx('px-4 py-2.5', muted)}>{DEPT_LABEL[m.department] || '—'}</td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">{m.mobile || '—'}</td>
                       <td className="px-4 py-2.5">
-                        <div>{m.mobile || '—'}</div>
-                        <div className={cx('text-xs', muted)}>
-                          {[m.branch, m.villageCity].filter(Boolean).join(' · ')}
-                        </div>
+                        <div>{m.branch || '—'}</div>
+                        {m.villageCity && <div className={cx('text-xs', muted)}>{m.villageCity}</div>}
                       </td>
                       <td className="px-4 py-2.5">
                         {canManageRooms ? (
@@ -1055,7 +1054,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                 })}
                 {!visibleMembers.length && (
                   <tr>
-                    <td colSpan={canManageRooms ? 8 : 7} className={cx('px-4 py-10 text-center text-sm', muted)}>
+                    <td colSpan={canManageRooms ? 10 : 9} className={cx('px-4 py-10 text-center text-sm', muted)}>
                       {members.length ? 'No members match.' : 'No members added yet.'}
                     </td>
                   </tr>
