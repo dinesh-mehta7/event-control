@@ -13,6 +13,7 @@ import type {
   Receipt,
   Vendor,
   VendorMode,
+  OfflineStatus,
 } from './types';
 import {
   collator,
@@ -26,6 +27,7 @@ import {
   mapVendor,
   uid,
 } from './mappers';
+import { itDepartmentOf } from '../../views/orgData';
 
 export interface VendorInput {
   name: string;
@@ -105,6 +107,8 @@ interface Ctx {
   deleteVendor: (id: string) => Promise<boolean>;
   createOrder: (partIds: string[]) => Promise<string | null>;
   saveDraft: (id: string, input: DraftInput, submit: boolean) => Promise<boolean>;
+  // Offline vendor orders: record how far the order has got (null clears it).
+  setOfflineStatus: (id: string, status: OfflineStatus | null) => Promise<boolean>;
   setStatus: (id: string, status: POStatus, doneMsg: string, note?: string) => Promise<boolean>;
   deleteOrder: (id: string) => Promise<boolean>;
   receive: (poId: string, lines: { itemId: string; qty: number }[], meta: ReceiveMeta) => Promise<boolean>;
@@ -146,7 +150,7 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [orders, setOrders] = useState<PO[]>([]);
   const isOwner = user?.level === 'owner';
   const departments: { id: string; name: string; itServices?: boolean }[] = w.departments || [];
-  const itDepartment = departments.find(d => d.itServices)?.id || null;
+  const itDepartment = itDepartmentOf(departments)?.id || null;
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const departmentName = (id?: string | null) => departments.find(d => d.id === id)?.name || '';
   // Requests made before departments existed belong to the IT department.
@@ -390,6 +394,21 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // Save vendor, date, note, and rates; optionally record that Purchase has placed the order.
+  const setOfflineStatus: Ctx['setOfflineStatus'] = async (id, status) => {
+    const { error } = await supabase.rpc('purchase_set_offline_status', { p_po: id, p_status: status });
+    if (error) {
+      toast(
+        /purchase_set_offline_status|schema cache/i.test(error.message || '')
+          ? 'Run supabase/migration_v104_offline_order_status.sql in the Supabase SQL Editor, then reload.'
+          : friendlyError(error),
+        'error',
+      );
+      return false;
+    }
+    await load();
+    return true;
+  };
+
   const saveDraft: Ctx['saveDraft'] = async (id, input, submit) => {
     if (!canManage) return deny();
     const po = ordersRef.current.find(o => o.id === id);
@@ -682,6 +701,7 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     deleteVendor,
     createOrder,
     saveDraft,
+    setOfflineStatus,
     setStatus,
     deleteOrder,
     receive,

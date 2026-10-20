@@ -1,5 +1,5 @@
 -- ============================================================================
--- v102 · Sewadars, Accommodation, Tasks, Event Planning and Meetings per department
+-- v102 · Sewadars, Accommodation, Tasks and Meetings per department; Event Planning shared
 -- ----------------------------------------------------------------------------
 -- Same idea as v101 (Inventory / Procurement), for the people, task and event modules:
 -- each row belongs to the department that owns it, people see their own department's rows,
@@ -16,6 +16,9 @@
 -- A Super Admin with no department chosen creates organisation-wide events, meetings and
 -- tasks (visible to everyone); sewadars, rooms, meals and teams always need a department.
 -- Emergency meetups stay organisation-wide. People invited to a meeting see it.
+-- EVENT PLANNING IS SHARED: every department sees and plans the same events (event_plans and
+-- their requirements, staffing, tasks, meetings, reviews). Those rows still record which
+-- department created them (owner_department_id), but nobody is restricted by it.
 -- Existing rows go to the IT department. Apply after migration_v101_department_stocks.sql.
 -- Safe to re-run.
 -- ============================================================================
@@ -60,7 +63,9 @@ begin
   if v is null and tg_table_name <> 'accommodation_members' and j->>'member_id' is not null then
     v := (select owner_department_id from public.accommodation_members where id = j->>'member_id');
   end if;
-  if v is null and tg_table_name <> 'event_plans' and j->>'event_id' is not null then
+  -- Only an event's own planning rows take the event's department; a department's sewadar, room,
+  -- task or meeting linked to a shared event stays with the department that created it.
+  if v is null and tg_table_name like 'event\_%' and tg_table_name <> 'event_attendance' and j->>'event_id' is not null then
     v := (select owner_department_id from public.event_plans where id::text = j->>'event_id');
   end if;
   if v is null and j->>'meeting_id' is not null then
@@ -131,12 +136,22 @@ declare t text;
 begin
   foreach t in array array['accommodation_members','accommodation_member_tasks','accommodation_member_calls',
                            'sewadar_event_operations','event_attendance','manpower_teams','sewa_duty_shifts',
-                           'manpower_tasks','manpower_task_members','manpower_task_resources',
-                           'event_plans','event_departments','event_requirements','event_tasks','event_meetings','event_reviews',
-                           'event_staffing_requirements'] loop
+                           'manpower_tasks','manpower_task_members','manpower_task_resources'] loop
     if to_regclass('public.' || t) is null then continue; end if;
     execute format('drop policy if exists department_scope on public.%I', t);
     execute format('create policy department_scope on public.%I as restrictive for all using (owner_department_id is null or public.in_my_department(owner_department_id)) with check (owner_department_id is null or public.in_my_department(owner_department_id))', t);
+  end loop;
+end $$;
+
+-- Event Planning is shared by every department: no department restriction on the event tables
+-- (dropped here too in case an earlier version of this file was run).
+do $$
+declare t text;
+begin
+  foreach t in array array['event_plans','event_departments','event_requirements','event_tasks','event_meetings','event_reviews',
+                           'event_staffing_requirements'] loop
+    if to_regclass('public.' || t) is null then continue; end if;
+    execute format('drop policy if exists department_scope on public.%I', t);
   end loop;
 end $$;
 

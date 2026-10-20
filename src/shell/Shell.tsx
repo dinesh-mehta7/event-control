@@ -40,6 +40,7 @@ import { CCTVControlRoomApp } from '../components/apps/CCTVControlRoomApp';
 import { InventoryApp } from '../modules/inventory';
 import { Accommodation, LiveMealChip } from '../modules/accommodation';
 import { AddingToDepartment } from './AddingToDepartment';
+import { permanentStaffLabel } from '../lib/roles';
 import { ManpowerApp } from '../modules/manpower';
 import { AttendancePage } from '../modules/manpower/AttendancePage';
 import { useRequests } from '../modules/requests';
@@ -259,7 +260,7 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
                   : tab === 'tasks'
                     ? 'Volunteer Tasks'
                     : tab === 'permanent'
-                      ? 'IT Department Permanent Staff'
+                      ? permanentStaffLabel(u.departmentName)
                       : tab === 'teams'
                         ? 'Teams'
                         : 'Sewadar Master'
@@ -445,7 +446,7 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
                             />
                             <SubItem
                               href="#/sewadars/permanent"
-                              label="IT Department Permanent Staff"
+                              label={permanentStaffLabel(u.departmentName)}
                               Icon={BadgeCheck}
                               active={key === 'sewadars' && tab === 'permanent'}
                             />
@@ -583,7 +584,7 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
                       {perms.can('sewadars:permanent') && (
                         <SubItem
                           href="#/sewadars/permanent"
-                          label="IT Department Permanent Staff"
+                          label={permanentStaffLabel(u.departmentName)}
                           Icon={BadgeCheck}
                           active={key === 'sewadars' && tab === 'permanent'}
                         />

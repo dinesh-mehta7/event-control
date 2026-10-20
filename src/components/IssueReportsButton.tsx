@@ -4,6 +4,8 @@ import { useApp as useWalkie } from '../modules/walkie/context/AppContext';
 import { supabase } from '../modules/walkie/lib/supabaseClient';
 import { useAnimatedPresence } from '../hooks/useAnimatedPresence';
 import { useEventScope } from '../context/EventScopeContext';
+import { DepartmentSelect } from './DepartmentSelect';
+import { homeDepartmentOf } from '../views/orgData';
 
 type Kind = 'issue' | 'feedback';
 type Issue = {
@@ -38,6 +40,8 @@ export const IssueReportsButton: React.FC = () => {
   const [notice, setNotice] = useState('');
   const [eventId, setEventId] = useState('');
   const [eventFilter, setEventFilter] = useState('all');
+  // Raised TO a department: only its people see and handle it. Defaults to the person's own department.
+  const [toDepartment, setToDepartment] = useState<string>(homeDepartmentOf(user));
 
   useEffect(() => {
     const saved = eventScope.scopeFor('issues');
@@ -86,6 +90,7 @@ export const IssueReportsButton: React.FC = () => {
       reporter_id: user.id,
       reporter_name: user.name || user.email || 'Member',
       event_id: eventId,
+      to_department_id: toDepartment || null,
       kind,
       material: material.trim(),
       location: location.trim(),
@@ -95,9 +100,11 @@ export const IssueReportsButton: React.FC = () => {
     setBusy(false);
     if (saveError) {
       setError(
-        /event_id|schema cache|column.*does not exist/i.test(saveError.message)
-          ? 'Run migration_v73_event_linked_reports.sql in Supabase to link reports to events.'
-          : saveError.message,
+        /to_department_id/i.test(saveError.message)
+          ? 'Run migration_v105_helpdesk_issues_to_department.sql in the Supabase SQL Editor, then reload.'
+          : /event_id|schema cache|column.*does not exist/i.test(saveError.message)
+            ? 'Run migration_v73_event_linked_reports.sql in Supabase to link reports to events.'
+            : saveError.message,
       );
       return;
     }
@@ -178,6 +185,17 @@ export const IssueReportsButton: React.FC = () => {
                     Feedback
                   </button>
                 </div>
+                <label className="block text-xs text-mute">
+                  Report to department
+                  <DepartmentSelect
+                    required
+                    value={toDepartment}
+                    onChange={setToDepartment}
+                    className="mt-1 w-full rounded-md border border-line bg-field px-3 py-2 text-sm text-ink"
+                    emptyOption="Choose a department"
+                    aria-label="Report to department"
+                  />
+                </label>
                 <label className="block text-xs text-mute">
                   Event
                   <select

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Card, Empty, Pill, linkBtn } from '../components/ui';
-import { DEPTS } from './orgData';
+import { DEPTS, itDepartmentOf, subDepartmentsFor } from './orgData';
 import { useWalkie } from '../modules/walkie';
 import { useAccommodation } from '../modules/accommodation';
 import { useManpower } from '../modules/manpower';
@@ -85,7 +85,7 @@ export const Home: React.FC = () => {
     void Promise.all([
       supabase
         .from('event_staffing_requirements')
-        .select('requirement_date,category,required_count')
+        .select('requirement_date,category,required_count,owner_department_id')
         .eq('organization_id', w.currentUser.organizationId)
         .eq('event_id', eventId)
         .order('requirement_date'),
@@ -96,7 +96,12 @@ export const Home: React.FC = () => {
         .eq('event_id', eventId),
     ]).then(([requirements, attendance]) => {
       if (!live) return;
-      if (!requirements.error) setStaffingRows(requirements.data || []);
+      // A department sees the headcount it set for its own sub-departments; the Super Admin sees all.
+      const depts: any[] = w.departments || [];
+      const itDept = itDepartmentOf(depts)?.id || '';
+      const mine = (row: any) =>
+        w.currentUser?.level === 'owner' || (row.owner_department_id || itDept) === w.currentUser?.departmentId;
+      if (!requirements.error) setStaffingRows((requirements.data || []).filter(mine));
       if (!attendance.error) setAttendanceRows(attendance.data || []);
     });
     return () => {
@@ -132,7 +137,12 @@ export const Home: React.FC = () => {
   const departmentChart = useMemo(() => {
     if (!staffingDate) return [];
     const needs = staffingRows.filter(row => row.requirement_date === staffingDate);
-    return Object.entries(DEPTS).map(([id, name]) => {
+    const ownDept = (w.departments || []).find((d: any) => d.id === w.currentUser?.departmentId);
+    const categories: [string, string][] =
+      w.currentUser?.level === 'owner'
+        ? Object.entries(DEPTS)
+        : subDepartmentsFor(ownDept).map(id => [id, (DEPTS as Record<string, string>)[id] || id]);
+    return categories.map(([id, name]) => {
       const req = needs
         .filter(row => staffingCategoryKey(row.category).toLowerCase() === id.toLowerCase())
         .reduce((n, row) => n + Number(row.required_count || 0), 0);

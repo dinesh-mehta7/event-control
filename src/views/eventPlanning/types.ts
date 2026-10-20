@@ -104,4 +104,5 @@ export type DailyStaffingRequirement = {
   category: string;
   required_count: number;
   notes: string;
+  owner_department_id?: string | null; // the department whose sub-department this headcount is for
 };

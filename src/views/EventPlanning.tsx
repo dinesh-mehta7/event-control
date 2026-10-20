@@ -23,7 +23,7 @@ import type { RoomRequirement } from '../modules/accommodation/types';
 import { useEventScope } from '../context/EventScopeContext';
 import { ClockTimePicker } from '../components/ClockTimePicker';
 import { MeetingsList } from './meetings/MeetingsList';
-import { DEPTS } from './orgData';
+import { DEPTS, itDepartmentOf, subDepartmentsFor } from './orgData';
 import * as XLSX from 'xlsx';
 import {
   Attendance,
@@ -38,6 +38,7 @@ import {
 } from './eventPlanning/types';
 import { attendanceDayCount, localDay, shiftDay } from './eventPlanning/dates';
 import { staffingCategoryKey } from './orgData';
+import { DepartmentSelect } from '../components/DepartmentSelect';
 
 // Events already loaded this session, per organization, so coming back shows the workspace at once.
 const eventsCache = new Map<string, any[]>();
@@ -115,6 +116,12 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
     (department: any) => department.id === profileDepartmentId || department.id === user?.subDepartment,
   );
   const ownDepartmentId = ownDepartment?.id || '';
+  // IT and Walkie-Talkie requirements belong to the IT department; other departments see Sewadar and
+  // Accommodation only. The Super Admin sees all four. (Until departments load, nothing is hidden.)
+  const requirementCategories =
+    user?.level === 'owner' || !ownDepartment || ownDepartment.itServices
+      ? ['it', 'sewadar', 'accommodation', 'walkie']
+      : ['sewadar', 'accommodation'];
   const requirementDepartments =
     user?.level === 'owner'
       ? departments
@@ -161,7 +168,21 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
     fromDepartment: '',
     fromLocation: '',
   });
-  const [staffingRequirements, setStaffingRequirements] = useState<DailyStaffingRequirement[]>([]);
+  const [allStaffingRequirements, setStaffingRequirements] = useState<DailyStaffingRequirement[]>([]);
+  // Events are shared, but each department sets the headcount for its own sub-departments.
+  // The Super Admin picks the department; everyone else works on their own.
+  const [ownerStaffingDept, setOwnerStaffingDept] = useState('');
+  const itDepartmentId = itDepartmentOf(departments)?.id || '';
+  const staffingDeptId =
+    user?.level === 'owner' ? ownerStaffingDept || user?.workingDepartmentId || itDepartmentId : ownDepartmentId;
+  const staffingDept = departments.find((d: any) => d.id === staffingDeptId);
+  const staffingRequirements = allStaffingRequirements.filter(
+    row => (row.owner_department_id || itDepartmentId) === staffingDeptId,
+  );
+  const staffingCategories: [string, string][] = subDepartmentsFor(staffingDept).map(id => [
+    id,
+    (DEPTS as Record<string, string>)[id] || id,
+  ]);
   const [review, setReview] = useState<Review>({
     id: '',
     lessons_learned: '',
@@ -182,7 +203,10 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
     fromDepartment: '',
     fromLocation: '',
   });
-  const [requirementCategory, setRequirementCategory] = useState('it');
+  const [chosenRequirementCategory, setRequirementCategory] = useState('it');
+  const requirementCategory = requirementCategories.includes(chosenRequirementCategory)
+    ? chosenRequirementCategory
+    : requirementCategories[0];
   const [feedback, setFeedback] = useState<EventFeedback[]>([]);
   const [eventSearch, setEventSearch] = useState('');
   const [staffingDaysBefore, setStaffingDaysBefore] = useState(7);
@@ -688,6 +712,7 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
       category,
       required_count: Math.max(0, Math.floor(Number(rawValue) || 0)),
       notes: existing?.notes || '',
+      owner_department_id: staffingDeptId || null,
       updated_at: new Date().toISOString(),
     };
     setStaffingBusy(true);
@@ -699,7 +724,14 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
     else
       setStaffingRequirements(old =>
         [
-          ...old.filter(item => !(item.requirement_date === date && staffingCategoryKey(item.category) === category)),
+          ...old.filter(
+            item =>
+              !(
+                item.requirement_date === date &&
+                staffingCategoryKey(item.category) === category &&
+                (item.owner_department_id || itDepartmentId) === staffingDeptId
+              ),
+          ),
           data as DailyStaffingRequirement,
         ].sort((a, b) => a.requirement_date.localeCompare(b.requirement_date) || a.category.localeCompare(b.category)),
       );
@@ -1612,7 +1644,7 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
                   <section className={`${panel} overflow-hidden`}>
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-3">
                       <div className="flex flex-wrap gap-2">
-                        {['it', 'sewadar', 'accommodation', 'walkie'].map(category => {
+                        {requirementCategories.map(category => {
                           const active = requirementCategory === category;
                           return (
                             <button
@@ -1730,12 +1762,12 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
                           const dateRows = staffingRequirements.filter(
                             row => row.requirement_date === staffingSelectedDate,
                           );
-                          const total = Object.keys(DEPTS).reduce((sum, id) => {
+                          const total = staffingCategories.reduce((sum, [id]) => {
                             const row = dateRows.find(item => staffingCategoryKey(item.category) === id);
                             const draft = staffingCellDrafts[`${staffingSelectedDate}:${id}`];
                             return sum + Number(draft !== undefined ? draft : (row?.required_count ?? 0) || 0);
                           }, 0);
-                          const configured = Object.entries(DEPTS).filter(([id]) => {
+                          const configured = staffingCategories.filter(([id]) => {
                             const row = dateRows.find(item => staffingCategoryKey(item.category) === id);
                             const draft = staffingCellDrafts[`${staffingSelectedDate}:${id}`];
                             return draft !== undefined ? draft.trim() !== '' : !!row;
@@ -1803,13 +1835,18 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
                               <div className="p-3 sm:p-4">
                                 <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
                                   <div>
-                                    <h4 className="text-xs font-semibold text-ink">Sub-department staffing</h4>
+                                    <h4 className="text-xs font-semibold text-ink">
+                                      Sub-department staffing{staffingDept ? ` · ${staffingDept.name}` : ''}
+                                    </h4>
                                     <p className="mt-0.5 text-[10.5px] text-mute">
                                       Enter the number needed. Leave blank when none are required.
                                     </p>
                                   </div>
+                                  {user?.level === 'owner' && (
+                                    <DepartmentSelect value={staffingDeptId} onChange={setOwnerStaffingDept} />
+                                  )}
                                   <span className="rounded-md border border-line bg-raised px-2 py-1 text-[10.5px] tabular-nums text-mute">
-                                    {configured} / {Object.keys(DEPTS).length} planned
+                                    {configured} / {staffingCategories.length} planned
                                   </span>
                                 </div>
                                 <div className="mb-1 hidden grid-cols-[minmax(0,1fr)_5rem] gap-3 px-2 text-[10px] font-medium uppercase tracking-wide text-mute sm:grid">
@@ -1820,7 +1857,7 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
                                   key={staffingSelectedDate}
                                   className="animate-calm-enter grid gap-1.5 sm:grid-cols-2"
                                 >
-                                  {Object.entries(DEPTS).map(([id, label]) => {
+                                  {staffingCategories.map(([id, label]) => {
                                     const row = dateRows.find(item => staffingCategoryKey(item.category) === id);
                                     const key = `${staffingSelectedDate}:${id}`;
                                     const value = staffingCellDrafts[key] ?? (row ? String(row.required_count) : '');

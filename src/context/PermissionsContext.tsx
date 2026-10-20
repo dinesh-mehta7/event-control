@@ -3,7 +3,7 @@ import { supabase } from '../modules/walkie/lib/supabaseClient';
 import { useApp as useWalkie } from '../modules/walkie/context/AppContext';
 import { IT_MODULES, isAllowed, permKey } from '../lib/permissions';
 import type { ModuleKey, ModuleQuery, PermissionMap } from '../lib/permissions';
-import { applyCustomSubDepartments } from '../views/orgData';
+import { applyCustomSubDepartments, itDepartmentOf } from '../views/orgData';
 import type { CustomSubDepartment } from '../views/orgData';
 
 // Which modules each sub-department of each department can open. The Super Admin sees everything; a
@@ -49,7 +49,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [chosenGridDept, setGridDept] = useState('');
   const gridDept =
     level === 'owner'
-      ? chosenGridDept || departments.find(d => d.itServices)?.id || departments[0]?.id || ''
+      ? chosenGridDept || itDepartmentOf(departments)?.id || departments[0]?.id || ''
       : u?.departmentId || '';
   const [map, setMap] = useState<PermissionMap>({});
   const [ready, setReady] = useState(false);

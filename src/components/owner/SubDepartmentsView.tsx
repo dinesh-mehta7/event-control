@@ -3,7 +3,7 @@ import { Check, Eye, EyeOff, Layers, Pencil, Plus, RotateCcw, ShieldCheck, Trash
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAccess } from '../../context/AccessContext';
 import { useManpower } from '../../modules/manpower/ManpowerContext';
-import { BUILT_IN_DEPTS, DEPTS, IT_SERVICE_SUBS } from '../../views/orgData';
+import { BUILT_IN_DEPTS, DEPTS, IT_SERVICE_SUBS, itDepartmentOf } from '../../views/orgData';
 import { useApp as useWalkie } from '../../modules/walkie/context/AppContext';
 import { btnGhost, btnPrimary, inputCls } from '../ui';
 
@@ -23,7 +23,7 @@ export const SubDepartmentsView: React.FC = () => {
   const ro = !isOwner && level !== 'dept_head';
   const canEditRow = (builtIn: boolean, departmentId?: string | null) =>
     isOwner || (!builtIn && level === 'dept_head' && departmentId === myDepartment);
-  const itName = departments.find(d => d.itServices)?.name || 'the IT department';
+  const itName = itDepartmentOf(departments)?.name || 'the IT department';
   const [addDept, setAddDept] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);

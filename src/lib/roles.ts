@@ -20,6 +20,9 @@ export const ROLE_TONE: Record<string, string> = {
   staff: 'bg-raised text-ink-soft',
   other: 'bg-raised text-mute',
 };
+// "LANGER Permanent Staff" for a department's people; just "Permanent Staff" for the Super Admin (all departments).
+export const permanentStaffLabel = (departmentName?: string | null) =>
+  departmentName ? `${departmentName} Permanent Staff` : 'Permanent Staff';
 export const subDeptLabel = (sub?: string | null) => (sub ? DEPTS[sub as keyof typeof DEPTS] || sub : '');
 
 // "Department Head · IT COMMUNICATIONS", "Sub-department Head · CCTV · IT COMMUNICATIONS", "Super Admin".

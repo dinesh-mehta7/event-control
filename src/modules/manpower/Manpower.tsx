@@ -27,6 +27,7 @@ import {
   UserMinus,
 } from 'lucide-react';
 import { useWalkie } from '../walkie';
+import { permanentStaffLabel } from '../../lib/roles';
 import { supabase } from '../walkie/lib/supabaseClient';
 import { DEPT_LABEL, DEPT_OPTIONS } from '../accommodation/types';
 import { Modal, ConfirmModal, btnGhost, btnPrimary, cx, inputCls } from '../accommodation/ui';
@@ -120,6 +121,8 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
   const m = useManpower();
   const inventory = useInventory();
   const auth: any = useWalkie();
+  const myDepartmentName: string =
+    (auth.departments || []).find((d: any) => d.id === auth.currentUser?.departmentId)?.name || '';
   const eventScope = useEventScope();
   const scopedEventId = eventScope.scopeFor('sewadars');
   const callingEvent = eventScope.events.find(event => event.id === scopedEventId);
@@ -1057,7 +1060,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
             {workspace === 'tasks'
               ? 'Tasks'
               : workspace === 'permanent'
-                ? 'IT Department Permanent Staff'
+                ? permanentStaffLabel(myDepartmentName)
                 : 'Sewadar Master'}
           </h1>
           <p className="text-xs text-mute">
@@ -3096,7 +3099,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
             <section className={cx(panel, 'overflow-hidden')}>
               <div className="flex items-center gap-2 border-b border-line px-2.5 py-2 text-[11.5px] text-mute">
                 <span className="font-semibold text-ink">
-                  {workspace === 'permanent' ? 'IT Department Permanent Staff' : 'Members'}
+                  {workspace === 'permanent' ? permanentStaffLabel(myDepartmentName) : 'Members'}
                 </span>
                 <span className="rounded bg-raised px-1.5 py-0.5 tabular-nums">{rows.length}</span>
                 {canManage && (

@@ -54,6 +54,10 @@ export interface PO {
   requestedBy: string;
   deliverTo: string;
   expectedDate: string;
+  // Offline vendors: progress recorded by hand while the goods are awaited (online orders use tracking).
+  offlineStatus: OfflineStatus | null;
+  offlineStatusAt: string | null;
+  offlineStatusBy: string;
   status: POStatus;
   notes: string;
   miscAmount: number;
@@ -145,3 +149,10 @@ export const poUnitsLeft = (p: PO) => p.items.reduce((a, i) => a + Math.max(0, i
 export const PAYABLE: POStatus[] = ['approved', 'ordered', 'partial', 'received'];
 // Statuses in which goods are expected to arrive.
 export const INCOMING: POStatus[] = ['ordered', 'partial'];
+
+export type OfflineStatus = 'confirmed' | 'ready' | 'dispatched';
+export const OFFLINE_STEPS: { id: OfflineStatus; label: string }[] = [
+  { id: 'confirmed', label: 'Vendor confirmed' },
+  { id: 'ready', label: 'Ready for pickup' },
+  { id: 'dispatched', label: 'Dispatched' },
+];

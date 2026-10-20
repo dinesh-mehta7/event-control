@@ -61,7 +61,7 @@ export const MODULES: { key: ModuleKey; label: string; group: ModuleGroup; hint:
   },
   {
     key: 'sewadars:permanent',
-    label: 'IT Department Permanent Staff',
+    label: 'Permanent Staff',
     group: 'Volunteer Management',
     hint: 'Permanent staff, home leave',
   },

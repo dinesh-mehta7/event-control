@@ -124,6 +124,7 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           subDepartment: r.sub_department || null,
           departmentId: r.department_id || null,
           departmentName: walkieDepartments.find(d => d.id === r.department_id)?.name || '',
+          fromDepartmentName: walkieDepartments.find(d => d.id === r.from_department_id)?.name || '',
           deliveryTeam: r.delivery_team || '',
           deliveryMemberId: r.delivery_member_id || null,
           title: r.title,

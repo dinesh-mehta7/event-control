@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { LifeBuoy, Search, Send, Ticket as TicketIcon } from 'lucide-react';
 import { inputCls, labelCls } from '../accommodation/ui';
-import { DEPTS } from '../../views/orgData';
+import { DEPTS, homeDepartmentOf } from '../../views/orgData';
+import { useApp as useWalkie } from '../walkie/context/AppContext';
 import { Badge, D, Empty, Section, cx, ghost, panel, primary } from '../inventory/ui/kit';
 import type { Helpdesk } from './useHelpdesk';
 import { PRIORITIES, STATUS, relative, ticketNo } from './types';
+import { DepartmentSelect } from '../../components/DepartmentSelect';
 
 // Submit a request. Technicians can also log one on behalf of someone else.
 export const NewTicketForm: React.FC<{ hd: Helpdesk; onDone: (id: string) => void; onCancel?: () => void }> = ({
@@ -12,7 +14,10 @@ export const NewTicketForm: React.FC<{ hd: Helpdesk; onDone: (id: string) => voi
   onDone,
   onCancel,
 }) => {
+  const walkie: any = useWalkie();
   const [f, setF] = useState({
+    // Raised TO a department: only its people handle it. Defaults to the person's own department.
+    toDepartment: homeDepartmentOf(walkie.currentUser),
     subject: '',
     description: '',
     category: hd.settings.categories[0] || 'Other',
@@ -126,6 +131,19 @@ export const NewTicketForm: React.FC<{ hd: Helpdesk; onDone: (id: string) => voi
               </option>
             ))}
           </select>
+        </div>
+        <div>
+          <label className={labelCls(D)} htmlFor="nt-to">
+            Raise to department
+          </label>
+          <DepartmentSelect
+            id="nt-to"
+            required
+            value={f.toDepartment}
+            onChange={v => set('toDepartment', v)}
+            className={inputCls(D)}
+            emptyOption="Choose a department"
+          />
         </div>
         <div>
           <label className={labelCls(D)} htmlFor="nt-dep">

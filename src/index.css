@@ -54,6 +54,19 @@ html:not(.dark) [class~='bg-surface'] {
   box-shadow: 0 1px 0 rgb(255 255 255 / 0.02) inset;
 }
 
+/* Native parts the browser draws itself (dropdown lists of <select>, their scrollbars, date pickers)
+   follow color-scheme, not the ::-webkit-scrollbar rules below. Dark and Royal themes → dark. */
+html.dark {
+  color-scheme: dark;
+}
+html:not(.dark) {
+  color-scheme: light;
+}
+.dark select option {
+  background-color: rgb(var(--c-surface));
+  color: rgb(var(--c-ink));
+}
+
 /* ── Scrollbars ──────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 5px;

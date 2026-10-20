@@ -152,7 +152,8 @@ export const RequestDetail: React.FC<{
             {r.requesterName}
             {r.subDepartment ? ` · ${DEPTS[r.subDepartment]}` : ''}
           </Info>
-          <Info label="Department">{r.departmentName || ''}</Info>
+          <Info label="From department">{r.fromDepartmentName || '—'}</Info>
+          <Info label="Requested to">{r.departmentName || ''}</Info>
           <Info label="Raised on">{fmtDate(r.createdAt)}</Info>
           <Info label="Deliver to">{r.deliverTo}</Info>
           <Info label="Needed by">{r.neededBy ? fmtDate(r.neededBy) : ''}</Info>

@@ -33,6 +33,7 @@ import { subDepartmentsFor } from '../../views/orgData';
 import { useApp as useWalkie } from '../../modules/walkie/context/AppContext';
 import type { ModuleKey } from '../../lib/permissions';
 import { subDeptLabel } from '../../lib/roles';
+import { DepartmentSelect } from '../DepartmentSelect';
 
 const ICON: Record<ModuleKey, React.ComponentType<{ className?: string }>> = {
   helpdesk: Headset,
@@ -148,18 +149,11 @@ export const SubDeptPermissionsView: React.FC = () => {
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {isOwner ? (
-            <select
-              aria-label="Department"
+            <DepartmentSelect
               value={perms.gridDept}
-              onChange={e => perms.setGridDept(e.target.value)}
+              onChange={perms.setGridDept}
               className="h-9 max-w-[16rem] rounded-lg border border-line bg-field px-2.5 text-xs font-medium text-ink outline-none focus:border-blue-500"
-            >
-              {departments.map(d => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+            />
           ) : (
             dept && <span className="text-xs font-semibold text-ink">{dept.name}</span>
           )}

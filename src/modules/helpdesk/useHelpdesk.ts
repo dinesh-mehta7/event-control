@@ -181,8 +181,10 @@ export function useHelpdesk() {
     location: string;
     requesterName?: string;
     requesterEmail?: string;
+    toDepartment?: string; // the department the ticket is raised to (default: the person's own)
   }) => {
-    const { data, error } = await supabase.rpc('helpdesk_submit', {
+    const { data, error } = await supabase.rpc('helpdesk_submit_to', {
+      p_to_department: f.toDepartment || null,
       p_subject: f.subject,
       p_description: f.description,
       p_category: f.category,

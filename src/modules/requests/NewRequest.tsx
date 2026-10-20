@@ -6,6 +6,8 @@ import { useRequests } from './RequestsContext';
 import type { NewLine } from './types';
 import { useWalkie } from '../walkie';
 import { supabase } from '../walkie/lib/supabaseClient';
+import { DepartmentSelect } from '../../components/DepartmentSelect';
+import { homeDepartmentOf } from '../../views/orgData';
 
 const UNITS = ['pcs', 'box', 'roll', 'meter', 'set', 'pair', 'kg', 'litre', 'packet'];
 const blank = (): NewLine => ({
@@ -36,7 +38,11 @@ export const NewRequest: React.FC<{
   const [title, setTitle] = useState(copyFrom?.title || '');
   const [purpose, setPurpose] = useState(copyFrom?.purpose || '');
   const [deliverTo, setDeliverTo] = useState(copyFrom?.deliverTo || '');
-  const [departmentId, setDepartmentId] = useState(currentUser?.departmentId || '');
+  // From: the person's own department (their profile), not editable. To: chosen; that department's head
+  // confirms it and it is fulfilled from that department's stock. Defaults to the person's own department.
+  const isOwner = currentUser?.level === 'owner';
+  const homeDepartment: string = homeDepartmentOf(currentUser);
+  const [departmentId, setDepartmentId] = useState(homeDepartment);
   const [neededBy, setNeededBy] = useState('');
   const [neededByText, setNeededByText] = useState('');
   const [urgent, setUrgent] = useState(false);
@@ -76,15 +82,11 @@ export const NewRequest: React.FC<{
   const ownDept = departments.find(d => d.id === currentUser?.departmentId);
   const selectedDept = departments.find(d => d.id === departmentId);
   useEffect(() => {
-    if (!departmentId && currentUser?.departmentId && departments.some(d => d.id === currentUser.departmentId))
-      setDepartmentId(currentUser.departmentId);
+    if (!departmentId && homeDepartment && departments.some(d => d.id === homeDepartment))
+      setDepartmentId(homeDepartment);
     else if (departmentId && !departments.some(d => d.id === departmentId))
-      setDepartmentId(
-        currentUser?.departmentId && departments.some(d => d.id === currentUser.departmentId)
-          ? currentUser.departmentId
-          : '',
-      );
-  }, [departmentId, departments, currentUser?.departmentId]);
+      setDepartmentId(homeDepartment && departments.some(d => d.id === homeDepartment) ? homeDepartment : '');
+  }, [departmentId, departments, homeDepartment]);
   useEffect(() => {
     if (!orgId) return;
     supabase
@@ -131,7 +133,7 @@ export const NewRequest: React.FC<{
     if (!title.trim()) return setErr('Give the request a short title.');
     if (!purpose.trim()) return setErr('Say why this is needed. The approvers use it to decide.');
     if (!deliverTo.trim()) return setErr('Say where it should be delivered.');
-    if (!selectedDept) return setErr('Choose the department for this request.');
+    if (!selectedDept) return setErr('Choose which department you are requesting to.');
     if (neededByText.trim() && !neededBy) return setErr('Enter a date today or later as DD/MM/YYYY.');
     const clean = lines.filter(l => l.name.trim());
     if (!clean.length) return setErr('Add at least one item.');
@@ -155,7 +157,7 @@ export const NewRequest: React.FC<{
   };
 
   const route =
-    "The request goes to the Department Head of the department you request from. They set the budget and decide what comes from that department's stock or is bought, then approve it or escalate it to the Super Admin.";
+    "The request goes to the Department Head of the department you request to. They set the budget and decide what comes from that department's stock or is bought, then approve it or escalate it to the Super Admin.";
   const handleEnter = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Enter' || event.defaultPrevented || event.nativeEvent.isComposing) return;
     const target = event.target;
@@ -226,15 +228,19 @@ export const NewRequest: React.FC<{
                 placeholder="Place or counter"
               />
             </Field>
-            <Field label="Request from department">
-              <select className={inputCls} value={departmentId} onChange={e => changeDepartment(e.target.value)}>
-                <option value="">Choose a department</option>
-                {departments.map(d => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
+            <Field label="From department">
+              <div className={inputCls + ' cursor-default select-none text-ink-soft'} aria-readonly="true">
+                {ownDept?.name || (isOwner ? 'Super Admin' : 'No department yet — ask the Super Admin to set yours')}
+              </div>
+            </Field>
+            <Field label="Request to department">
+              <DepartmentSelect
+                className={inputCls}
+                value={departmentId}
+                onChange={changeDepartment}
+                emptyOption="Choose a department"
+                aria-label="Request to department"
+              />
             </Field>
             <Field label="Needed by (optional)">
               <div className="relative">

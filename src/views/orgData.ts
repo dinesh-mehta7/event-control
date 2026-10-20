@@ -85,6 +85,12 @@ export const subDepartmentsFor = (department?: { id?: string; itServices?: boole
       ? !!department?.itServices
       : isBuiltInSub(k) || !SUB_OWNER[k] || SUB_OWNER[k] === department?.id,
   );
+// The department that runs the IT services (departments.it_services), from the walkie departments list.
+export const itDepartmentOf = <T extends { itServices?: boolean }>(departments: T[]): T | undefined =>
+  departments.find(d => d.itServices);
+// The department a person works in; the Super Admin (no department) uses their "Adding to" choice.
+export const homeDepartmentOf = (user?: { departmentId?: string | null; workingDepartmentId?: string | null } | null) =>
+  user?.departmentId || user?.workingDepartmentId || '';
 // Which department a custom sub-department belongs to (null for built-ins).
 export const subDepartmentOwner = (key: string): string | null => SUB_OWNER[key] || null;
 
