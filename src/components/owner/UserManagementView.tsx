@@ -16,13 +16,15 @@ const USER_TABS = ['members', 'requests', 'codes', 'organization', 'audit'];
 
 export const UserManagementView: React.FC<{ initialTab?: string }> = ({ initialTab = 'members' }) => {
   const { members, requests, isOwner, loading } = useAccess();
-  const departments: { id: string; name: string }[] = (useWalkie() as any).departments || [];
+  const departments: { id: string; name: string; itServices?: boolean }[] = (useWalkie() as any).departments || [];
   const [tab, setTab] = useState(initialTab === 'users_all' ? 'members' : initialTab);
   const [q, setQ] = useState('');
   const [dept, setDept] = useState('all');
+  const [departmentId, setDepartmentId] = useState('all');
   const needle = q.trim().toLowerCase();
   const rows = members.filter(
     m =>
+      (departmentId === 'all' || m.departmentId === departmentId) &&
       (dept === 'all' || m.subDepartment === dept) &&
       (!needle || m.name.toLowerCase().includes(needle) || m.email.toLowerCase().includes(needle)),
   );
@@ -30,9 +32,9 @@ export const UserManagementView: React.FC<{ initialTab?: string }> = ({ initialT
   return (
     <div className="space-y-4">
       <PageIntro>
-        Super Admin → Department Head (one of {departments.length || 'the'} departments) → Sub-department Head (CCTV,
-        WiFi, Walkie-Talkie…) → Staff. New people sign up with their sub-department's code, then the Super Admin
-        approves them.
+        Super Admin → Department Head (one of {departments.length || 'the'} departments) → Sub-department Head → Staff.
+        Everyone belongs to a department and one of its sub-departments. New people sign up with that department's
+        sub-department code, then the Super Admin approves them.
       </PageIntro>
       <Tabs
         label="Users"
@@ -64,6 +66,19 @@ export const UserManagementView: React.FC<{ initialTab?: string }> = ({ initialT
                   onChange={e => setQ(e.target.value)}
                 />
               </div>
+              <select
+                className={inputCls + ' !w-auto'}
+                aria-label="Department"
+                value={departmentId}
+                onChange={e => setDepartmentId(e.target.value)}
+              >
+                <option value="all">All departments</option>
+                {departments.map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
               <select
                 className={inputCls + ' !w-auto'}
                 aria-label="Sub-department"

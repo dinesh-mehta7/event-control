@@ -66,6 +66,12 @@ export const applyCustomSubDepartments = (rows: CustomSubDepartment[]) => {
   });
 };
 
+// Sub-departments that only the IT department (departments.it_services) has.
+export const IT_SERVICE_SUBS = ['cctv', 'wifi', 'walkie', 'control'];
+// The sub-departments a person in this department can be given (visible ones only).
+export const subDepartmentsFor = (department?: { itServices?: boolean } | null): SubDepartmentId[] =>
+  (Object.keys(DEPTS) as SubDepartmentId[]).filter(k => !IT_SERVICE_SUBS.includes(k) || !!department?.itServices);
+
 export const staffingCategoryKey = (value: string) => {
   const normalized = value.toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
   return (

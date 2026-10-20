@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { UserCheck, Check, X } from 'lucide-react';
 import { useAccess } from '../../context/AccessContext';
 import type { GrantLevel, Member } from '../../context/AccessContext';
-import { DEPTS } from '../../views/orgData';
+import { DEPTS, subDepartmentsFor } from '../../views/orgData';
 import { Card, Empty, Pill, btnGhost, btnPrimary, inputCls } from '../ui';
 import type { SubDepartmentId } from '../../types';
 import { useApp as useWalkie } from '../../modules/walkie/context/AppContext';
@@ -19,8 +19,10 @@ const AccessRow: React.FC<{ m: Member; canDecide: boolean }> = ({ m, canDecide }
   const [level, setLevel] = useState<GrantLevel>('staff');
   const [sub, setSub] = useState<SubDepartmentId | ''>(m.requestedSub || (m.subDepartment as SubDepartmentId) || '');
   const [sewadarId, setSewadarId] = useState('');
-  const departments: { id: string; name: string }[] = (useWalkie() as any).departments || [];
-  const [deptId, setDeptId] = useState(m.departmentId || '');
+  const departments: { id: string; name: string; itServices?: boolean }[] = (useWalkie() as any).departments || [];
+  const [deptId, setDeptId] = useState(m.requestedDepartmentId || m.departmentId || '');
+  const subOptions = subDepartmentsFor(departments.find(d => d.id === deptId));
+  const askedDept = departments.find(d => d.id === m.requestedDepartmentId)?.name;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const go = async (approve: boolean) => {
@@ -28,19 +30,17 @@ const AccessRow: React.FC<{ m: Member; canDecide: boolean }> = ({ m, canDecide }
       setErr('Choose the Sewadar roster member for this account.');
       return;
     }
-    if (approve && level === 'dept_head' && !deptId) {
-      setErr('Choose the department this Department Head leads.');
+    if (approve && !deptId) {
+      setErr(level === 'dept_head' ? 'Choose the department this Department Head leads.' : 'Choose the department.');
+      return;
+    }
+    if (approve && level !== 'dept_head' && !subOptions.includes(sub as SubDepartmentId)) {
+      setErr('Choose a sub-department of this department.');
       return;
     }
     setBusy(true);
     setErr('');
-    const e = await review(
-      m.id,
-      approve,
-      level,
-      level === 'dept_head' ? null : sub || null,
-      level === 'dept_head' ? deptId : null,
-    );
+    const e = await review(m.id, approve, level, level === 'dept_head' ? null : sub || null, deptId);
     if (!e && approve && sub === 'sewadars' && sewadarId) {
       const linkError = await linkSewadar(m.id, sewadarId);
       setBusy(false);
@@ -56,7 +56,9 @@ const AccessRow: React.FC<{ m: Member; canDecide: boolean }> = ({ m, canDecide }
         <span className="text-sm font-semibold text-ink">{m.name}</span>
         <span className="text-xs text-mute">{m.email}</span>
         <Pill c="bg-blue-500/15 text-blue-300">
-          {m.requestedSub ? `Asked for ${DEPTS[m.requestedSub]}` : 'New sign-up'}
+          {m.requestedSub
+            ? `Asked for ${[askedDept, DEPTS[m.requestedSub] || m.requestedSub].filter(Boolean).join(' · ')}`
+            : 'New sign-up'}
         </Pill>
       </div>
       {canDecide ? (
@@ -75,7 +77,7 @@ const AccessRow: React.FC<{ m: Member; canDecide: boolean }> = ({ m, canDecide }
               ))}
             </select>
           </label>
-          {level === 'dept_head' && (
+          {
             <label className="text-xs text-mute">
               Department
               <select className={inputCls + ' mt-1 !w-52'} value={deptId} onChange={e => setDeptId(e.target.value)}>
@@ -87,7 +89,7 @@ const AccessRow: React.FC<{ m: Member; canDecide: boolean }> = ({ m, canDecide }
                 ))}
               </select>
             </label>
-          )}
+          }
           {level !== 'dept_head' && (
             <label className="text-xs text-mute">
               Sub-department
@@ -97,7 +99,7 @@ const AccessRow: React.FC<{ m: Member; canDecide: boolean }> = ({ m, canDecide }
                 onChange={e => setSub(e.target.value as SubDepartmentId)}
               >
                 <option value="">Choose…</option>
-                {(Object.keys(DEPTS) as SubDepartmentId[]).map(k => (
+                {subOptions.map(k => (
                   <option key={k} value={k}>
                     {DEPTS[k]}
                   </option>

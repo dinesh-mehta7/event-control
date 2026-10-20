@@ -20,8 +20,15 @@ export interface Member {
   isActive: boolean;
   approved: boolean;
   requestedSub: SubDepartmentId | null;
+  requestedDepartmentId: string | null;
   requestedAt: string | null;
   createdAt: string;
+}
+// A sign-up code: one per department + sub-department.
+export interface JoinCode {
+  departmentId: string;
+  sub: SubDepartmentId;
+  code: string;
 }
 export interface SewadarAccountLink {
   id: string;
@@ -42,6 +49,7 @@ const mapMember = (p: any): Member => ({
   isActive: p.is_active !== false,
   approved: p.approved !== false,
   requestedSub: p.requested_sub_department || null,
+  requestedDepartmentId: p.requested_department_id || null,
   requestedAt: p.requested_at || null,
   createdAt: p.created_at,
 });
@@ -56,7 +64,7 @@ const dbMessage = (e: any): string => {
 interface Ctx {
   members: Member[];
   requests: Member[];
-  codes: Partial<Record<SubDepartmentId, string>>;
+  codes: JoinCode[];
   isOwner: boolean;
   loading: boolean;
   sewadarMembers: SewadarAccountLink[];
@@ -68,7 +76,7 @@ interface Ctx {
     departmentId?: string | null,
   ) => Promise<string | null>;
   linkSewadar: (userId: string, memberId: string | null) => Promise<string | null>;
-  regenerate: (sub: SubDepartmentId) => Promise<string | null>;
+  regenerate: (sub: SubDepartmentId, departmentId: string) => Promise<string | null>;
   deleteMember: (userId: string) => Promise<{ error: string | null; result?: 'deleted' | 'disabled' }>;
   requestAccess: (code: string) => Promise<string | null>;
   refresh: () => Promise<void>;
@@ -85,7 +93,7 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const seesCodes = seesPeople || level === 'sub_dept_head';
   const [members, setMembers] = useState<Member[]>([]);
   const [sewadarMembers, setSewadarMembers] = useState<SewadarAccountLink[]>([]);
-  const [codes, setCodes] = useState<Partial<Record<SubDepartmentId, string>>>({});
+  const [codes, setCodes] = useState<JoinCode[]>([]);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -111,8 +119,13 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         );
     }
     if (seesCodes) {
-      const { data, error } = await supabase.from('department_codes').select('sub_department, code');
-      if (!error && data) setCodes(Object.fromEntries(data.map((d: any) => [d.sub_department, d.code])));
+      const { data, error } = await supabase.from('department_codes').select('department_id, sub_department, code');
+      if (!error && data)
+        setCodes(
+          data
+            .filter((d: any) => d.department_id)
+            .map((d: any) => ({ departmentId: d.department_id, sub: d.sub_department, code: d.code })),
+        );
     }
     setLoading(false);
   }, [uid, seesPeople, seesCodes]);
@@ -120,7 +133,7 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     if (!uid || !seesCodes) {
       setMembers([]);
-      setCodes({});
+      setCodes([]);
       return;
     }
     refresh();
@@ -150,8 +163,8 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         p_department: departmentId,
       });
       if (error)
-        return /p_department|review_access_request/i.test(error.message || '')
-          ? 'Run supabase/migration_v90_role_hierarchy.sql in the Supabase SQL Editor, then reload.'
+        return /p_department|review_access_request|requested_department_id/i.test(error.message || '')
+          ? 'Run supabase/migration_v99_department_membership.sql in the Supabase SQL Editor, then reload.'
           : dbMessage(error);
       await refresh();
       return null;
@@ -173,8 +186,8 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const regenerate = useCallback(
-    async (sub: SubDepartmentId) => {
-      const { error } = await supabase.rpc('regenerate_department_code', { p_sub: sub });
+    async (sub: SubDepartmentId, departmentId: string) => {
+      const { error } = await supabase.rpc('regenerate_department_code', { p_sub: sub, p_department_id: departmentId });
       if (error) return dbMessage(error);
       await refresh();
       return null;

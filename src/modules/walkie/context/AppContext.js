@@ -30,6 +30,8 @@ const mapDepartment = row => ({
   description: row.description || '',
   channelNumber: row.channel_number,
   code: row.code || '',
+  // Runs CCTV / WiFi / Walkie / Control Rooms (IT COMMUNICATIONS).
+  itServices: !!row.it_services,
 });
 
 const mapAllocation = row => ({
@@ -401,6 +403,7 @@ export function AppProvider({ children }) {
                   // head) takes effect without logging out and in again
                   level: row.level || prev.level,
                   subDepartment: row.sub_department || null,
+                  departmentId: row.department_id || null,
                 }
               : prev,
           );

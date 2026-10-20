@@ -3,8 +3,8 @@ import { DEPTS } from '../views/orgData';
 // The organisation hierarchy, top to bottom. Database `profiles.level` values on the left.
 //   owner          Super Admin            — over all departments
 //   dept_head      Department Head        — heads one department (profiles.department_id → departments)
-//   sub_dept_head  Sub-department Head    — heads one sub-department (profiles.sub_department: cctv, wifi, …)
-//   staff          Staff                  — works in one sub-department
+//   sub_dept_head  Sub-department Head    — heads one sub-department of their department (profiles.sub_department)
+//   staff          Staff                  — works in one sub-department of their department
 //   other          No access yet          — signed up, not yet given a role
 export const ROLE_LABEL: Record<string, string> = {
   owner: 'Super Admin',
@@ -22,10 +22,11 @@ export const ROLE_TONE: Record<string, string> = {
 };
 export const subDeptLabel = (sub?: string | null) => (sub ? DEPTS[sub as keyof typeof DEPTS] || sub : '');
 
-// "Department Head · IT Department", "Sub-department Head · CCTV", "Super Admin".
+// "Department Head · IT COMMUNICATIONS", "Sub-department Head · CCTV · IT COMMUNICATIONS", "Super Admin".
 export const roleLabel = (level?: string | null, sub?: string | null, departmentName?: string | null) => {
   const base = ROLE_LABEL[level || 'other'] || ROLE_LABEL.other;
   if (level === 'dept_head') return departmentName ? `${base} · ${departmentName}` : base;
-  if (level === 'sub_dept_head' || level === 'staff') return sub ? `${base} · ${subDeptLabel(sub)}` : base;
+  if (level === 'sub_dept_head' || level === 'staff')
+    return [base, subDeptLabel(sub), departmentName].filter(Boolean).join(' · ');
   return base;
 };

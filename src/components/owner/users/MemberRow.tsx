@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { useAccess } from '../../../context/AccessContext';
 import type { GrantLevel, Member } from '../../../context/AccessContext';
-import { DEPTS } from '../../../views/orgData';
+import { DEPTS, subDepartmentsFor } from '../../../views/orgData';
 import { Pill, btnDanger, btnGhost, btnPrimary, inputCls } from '../../ui';
 import type { SubDepartmentId } from '../../../types';
 import { ROLE_TONE, roleLabel } from '../../../lib/roles';
 
-export const MemberRow: React.FC<{ m: Member; canEdit: boolean; departments: { id: string; name: string }[] }> = ({
+type DepartmentOption = { id: string; name: string; itServices?: boolean };
+
+export const MemberRow: React.FC<{ m: Member; canEdit: boolean; departments: DepartmentOption[] }> = ({
   m,
   canEdit,
   departments,
@@ -21,23 +23,22 @@ export const MemberRow: React.FC<{ m: Member; canEdit: boolean; departments: { i
     (['staff', 'sub_dept_head', 'dept_head'].includes(m.level) ? m.level : 'staff') as GrantLevel,
   );
   const [sub, setSub] = useState<SubDepartmentId | ''>((m.subDepartment as SubDepartmentId) || '');
+  const subOptions = subDepartmentsFor(departments.find(d => d.id === deptId));
   const [sewadarId, setSewadarId] = useState(() => sewadarMembers.find(s => s.profileId === m.id)?.id || '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const save = async () => {
-    if (level === 'dept_head' && !deptId) {
-      setErr('Choose the department this Department Head leads.');
+    if (!deptId) {
+      setErr(level === 'dept_head' ? 'Choose the department this Department Head leads.' : 'Choose the department.');
+      return;
+    }
+    if (level !== 'dept_head' && !subOptions.includes(sub as SubDepartmentId)) {
+      setErr('Choose a sub-department of this department.');
       return;
     }
     setBusy(true);
     setErr('');
-    const e = await review(
-      m.id,
-      true,
-      level,
-      level === 'dept_head' ? null : sub || null,
-      level === 'dept_head' ? deptId : null,
-    );
+    const e = await review(m.id, true, level, level === 'dept_head' ? null : sub || null, deptId);
     if (!e && sub === 'sewadars') {
       const le = await linkSewadar(m.id, sewadarId || null);
       if (le) {
@@ -82,7 +83,11 @@ export const MemberRow: React.FC<{ m: Member; canEdit: boolean; departments: { i
         ) : m.subDepartment ? (
           <>
             {DEPTS[m.subDepartment]}
-            <span className="block text-xs text-faint">Sub-department{deptName ? ` · ${deptName}` : ''}</span>
+            {deptName ? (
+              <span className="block text-xs text-faint">{deptName}</span>
+            ) : (
+              <span className="block text-xs text-amber-300">Department not set</span>
+            )}
           </>
         ) : (
           <span className="text-faint">—</span>
@@ -154,7 +159,7 @@ export const MemberRow: React.FC<{ m: Member; canEdit: boolean; departments: { i
               <option value="sub_dept_head">Sub-department Head</option>
               <option value="dept_head">Department Head</option>
             </select>
-            {level === 'dept_head' && (
+            {
               <select
                 className={inputCls + ' !w-52'}
                 aria-label="Department"
@@ -168,7 +173,7 @@ export const MemberRow: React.FC<{ m: Member; canEdit: boolean; departments: { i
                   </option>
                 ))}
               </select>
-            )}
+            }
             {level !== 'dept_head' && (
               <select
                 className={inputCls + ' !w-40'}
@@ -177,7 +182,7 @@ export const MemberRow: React.FC<{ m: Member; canEdit: boolean; departments: { i
                 onChange={e => setSub(e.target.value as SubDepartmentId)}
               >
                 <option value="">Sub-department…</option>
-                {(Object.keys(DEPTS) as SubDepartmentId[]).map(k => (
+                {subOptions.map(k => (
                   <option key={k} value={k}>
                     {DEPTS[k]}
                   </option>
