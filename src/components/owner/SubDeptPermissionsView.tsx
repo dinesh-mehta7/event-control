@@ -28,7 +28,9 @@ import {
 } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAccess } from '../../context/AccessContext';
-import { MODULES, MODULE_GROUPS, SUB_DEPARTMENTS, defaultAllowed, permKey } from '../../lib/permissions';
+import { IT_MODULES, MODULES as ALL_MODULES, MODULE_GROUPS, defaultAllowed, permKey } from '../../lib/permissions';
+import { subDepartmentsFor } from '../../views/orgData';
+import { useApp as useWalkie } from '../../modules/walkie/context/AppContext';
 import type { ModuleKey } from '../../lib/permissions';
 import { subDeptLabel } from '../../lib/roles';
 
@@ -89,14 +91,29 @@ export const SubDeptPermissionsView: React.FC = () => {
   const perms = usePermissions();
   const { members } = useAccess();
   const [view, setView] = useState<'sub' | 'module'>('sub');
-  const [sub, setSub] = useState<string>(SUB_DEPARTMENTS[0]);
+  const walkie: any = useWalkie();
+  const departments: { id: string; name: string; itServices?: boolean }[] = walkie.departments || [];
+  const isOwner = walkie.currentUser?.level === 'owner';
+  const dept = departments.find(d => d.id === perms.gridDept);
+  // This department's sub-departments, and the pages it can have (IT services only for the IT department).
+  const SUB_DEPARTMENTS: string[] = subDepartmentsFor(dept);
+  const MODULES = dept?.itServices ? ALL_MODULES : ALL_MODULES.filter(m => !IT_MODULES.includes(m.key));
+  const [pickedSub, setSub] = useState('');
+  const sub = SUB_DEPARTMENTS.includes(pickedSub) ? pickedSub : SUB_DEPARTMENTS[0] || '';
   const [q, setQ] = useState('');
   const ro = !perms.canEdit;
   const headcount = (s: string) =>
-    members.filter(m => m.approved && m.subDepartment === s && ['sub_dept_head', 'staff'].includes(m.level)).length;
+    members.filter(
+      m =>
+        m.approved &&
+        m.departmentId === perms.gridDept &&
+        m.subDepartment === s &&
+        ['sub_dept_head', 'staff'].includes(m.level),
+    ).length;
   const onCount = (s: string) => MODULES.filter(m => perms.allowedFor(s, m.key)).length;
-  const changedCount = (s: string) => MODULES.filter(m => perms.map[permKey(s, m.key)] !== undefined).length;
-  const isChanged = (s: string, k: ModuleKey) => perms.map[permKey(s, k)] !== undefined;
+  const changedCount = (s: string) =>
+    MODULES.filter(m => perms.map[permKey(perms.gridDept, s, m.key)] !== undefined).length;
+  const isChanged = (s: string, k: ModuleKey) => perms.map[permKey(perms.gridDept, s, k)] !== undefined;
   // Only differences from the default are stored.
   const set = (s: string, k: ModuleKey, on: boolean) => perms.setAccess(s, k, on === defaultAllowed(s, k) ? null : on);
   const toggle = (s: string, k: ModuleKey) => {
@@ -109,7 +126,7 @@ export const SubDeptPermissionsView: React.FC = () => {
   const t = q.trim().toLowerCase();
   const shown = useMemo(
     () => MODULES.filter(m => !t || `${m.label} ${m.hint} ${m.group}`.toLowerCase().includes(t)),
-    [t],
+    [t, MODULES],
   );
   const pct = Math.round((onCount(sub) / MODULES.length) * 100);
   const actionBtn =
@@ -125,10 +142,27 @@ export const SubDeptPermissionsView: React.FC = () => {
             Sub-department Permissions
           </h2>
           <p className="mt-0.5 text-xs text-mute">
-            Choose which pages each sub-department can open. Super Admin and Department Heads always see everything.
+            Choose which pages each sub-department of a department can open. The Super Admin and the department's head
+            always see everything in it.
           </p>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          {isOwner ? (
+            <select
+              aria-label="Department"
+              value={perms.gridDept}
+              onChange={e => perms.setGridDept(e.target.value)}
+              className="h-9 max-w-[16rem] rounded-lg border border-line bg-field px-2.5 text-xs font-medium text-ink outline-none focus:border-blue-500"
+            >
+              {departments.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            dept && <span className="text-xs font-semibold text-ink">{dept.name}</span>
+          )}
           <div
             role="tablist"
             aria-label="Permissions view"

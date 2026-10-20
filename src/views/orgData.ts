@@ -35,8 +35,11 @@ export const BUILT_IN_DEPTS: Record<SubDepartmentId, string> = {
 // Built-in sub-departments plus the organization's own (Administration → Sub-departments).
 // Filled in at runtime by PermissionsProvider, so every list and label in the app picks them up.
 export const DEPTS: Record<SubDepartmentId, string> = { ...BUILT_IN_DEPTS };
-// A row from org_sub_departments: either a custom one (key 'sd_…') or a rename/hide of a built-in one.
-export type CustomSubDepartment = { key: string; name: string; hidden: boolean };
+// A row from org_sub_departments: either a custom one (key 'sd_…', owned by one department) or an
+// organization-wide rename/hide of a built-in one (departmentId null).
+export type CustomSubDepartment = { key: string; name: string; hidden: boolean; departmentId?: string | null };
+// Custom sub-department key → the department it belongs to.
+const SUB_OWNER: Record<string, string> = {};
 export const isBuiltInSub = (key: string) => Object.prototype.hasOwnProperty.call(BUILT_IN_DEPTS, key);
 export const applyCustomSubDepartments = (rows: CustomSubDepartment[]) => {
   const all = DEPTS as Record<string, string>;
@@ -56,6 +59,12 @@ export const applyCustomSubDepartments = (rows: CustomSubDepartment[]) => {
     Object.defineProperty(all, k, { value: label, enumerable: !hidden, writable: true, configurable: true }),
   );
   SUB_DEPARTMENTS.splice(0, SUB_DEPARTMENTS.length, ...(Object.keys(all) as SubDepartmentId[]));
+  Object.keys(SUB_OWNER).forEach(k => {
+    delete SUB_OWNER[k];
+  });
+  rows.forEach(r => {
+    if (!isBuiltInSub(r.key) && r.departmentId) SUB_OWNER[r.key] = r.departmentId;
+  });
   // Sewadar pickers use DEPT_OPTIONS / DEPT_LABEL.
   DEPT_OPTIONS.splice(0, DEPT_OPTIONS.length, ...Object.entries(all));
   Object.keys(DEPT_LABEL).forEach(k => {
@@ -68,9 +77,16 @@ export const applyCustomSubDepartments = (rows: CustomSubDepartment[]) => {
 
 // Sub-departments that only the IT department (departments.it_services) has.
 export const IT_SERVICE_SUBS = ['cctv', 'wifi', 'walkie', 'control'];
-// The sub-departments a person in this department can be given (visible ones only).
-export const subDepartmentsFor = (department?: { itServices?: boolean } | null): SubDepartmentId[] =>
-  (Object.keys(DEPTS) as SubDepartmentId[]).filter(k => !IT_SERVICE_SUBS.includes(k) || !!department?.itServices);
+// The sub-departments a person in this department can be given (visible ones only): the general
+// built-ins, the IT services for the IT department, and that department's own custom ones.
+export const subDepartmentsFor = (department?: { id?: string; itServices?: boolean } | null): SubDepartmentId[] =>
+  (Object.keys(DEPTS) as SubDepartmentId[]).filter(k =>
+    IT_SERVICE_SUBS.includes(k)
+      ? !!department?.itServices
+      : isBuiltInSub(k) || !SUB_OWNER[k] || SUB_OWNER[k] === department?.id,
+  );
+// Which department a custom sub-department belongs to (null for built-ins).
+export const subDepartmentOwner = (key: string): string | null => SUB_OWNER[key] || null;
 
 export const staffingCategoryKey = (value: string) => {
   const normalized = value.toLocaleLowerCase().replace(/[^a-z0-9]/g, '');

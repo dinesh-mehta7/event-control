@@ -246,7 +246,9 @@ begin
     if v_sub is not null and not (v_sub = any(coalesce(public.department_sub_keys(v_dept), array[]::text[]))) then
       raise exception '% does not have that sub-department.', v_dept_name;
     end if;
-    v_role := case when (v_sub = 'walkie' or p_level = 'dept_head') and t.role = 'Client' then 'Operator' else t.role end;
+    -- Walkie operator rights: the Walkie sub-department, and the IT department's head.
+    v_role := case when (v_sub = 'walkie' or (p_level = 'dept_head' and exists (select 1 from public.departments where id = v_dept and it_services)))
+                    and t.role = 'Client' then 'Operator' else t.role end;
     update public.profiles
       set approved = true, is_active = true, level = p_level, sub_department = v_sub, department_id = v_dept, role = v_role,
           requested_sub_department = null, requested_department_id = null, requested_at = null

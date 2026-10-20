@@ -3,16 +3,28 @@ import { Check, Eye, EyeOff, Layers, Pencil, Plus, RotateCcw, ShieldCheck, Trash
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAccess } from '../../context/AccessContext';
 import { useManpower } from '../../modules/manpower/ManpowerContext';
-import { BUILT_IN_DEPTS, DEPTS } from '../../views/orgData';
+import { BUILT_IN_DEPTS, DEPTS, IT_SERVICE_SUBS } from '../../views/orgData';
+import { useApp as useWalkie } from '../../modules/walkie/context/AppContext';
 import { btnGhost, btnPrimary, inputCls } from '../ui';
 
-// Administration → Sub-departments. Every sub-department can be renamed or hidden. Built-in ones keep
-// their key (their module pages depend on it), so they can be reset but not deleted; custom ones can be deleted.
+// Administration → Sub-departments. Each department adds its own sub-departments (its "services"); the
+// Super Admin can add to any department, a Department Head to their own. Built-in ones are shared by every
+// department (CCTV / WiFi / Walkie / Control Rooms only by the IT department); only the Super Admin renames
+// or hides them, and they can be reset but not deleted.
 export const SubDepartmentsView: React.FC = () => {
   const perms = usePermissions();
   const { members } = useAccess();
   const manpower = useManpower();
-  const ro = !perms.canEdit;
+  const walkie: any = useWalkie();
+  const departments: { id: string; name: string; itServices?: boolean }[] = walkie.departments || [];
+  const level: string = walkie.currentUser?.level || 'other';
+  const myDepartment: string = walkie.currentUser?.departmentId || '';
+  const isOwner = level === 'owner';
+  const ro = !isOwner && level !== 'dept_head';
+  const canEditRow = (builtIn: boolean, departmentId?: string | null) =>
+    isOwner || (!builtIn && level === 'dept_head' && departmentId === myDepartment);
+  const itName = departments.find(d => d.itServices)?.name || 'the IT department';
+  const [addDept, setAddDept] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -37,7 +49,9 @@ export const SubDepartmentsView: React.FC = () => {
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return setErr('Give the sub-department a name.');
-    if (await run(() => perms.createSub(name.trim()))) setName('');
+    const department = isOwner ? addDept : myDepartment;
+    if (!department) return setErr('Choose the department.');
+    if (await run(() => perms.createSub(name.trim(), department))) setName('');
   };
 
   const iconBtn = 'rounded-lg p-1.5 text-mute hover:bg-raised hover:text-ink disabled:opacity-40';
@@ -48,6 +62,7 @@ export const SubDepartmentsView: React.FC = () => {
     const original = builtIn ? BUILT_IN_DEPTS[k as keyof typeof BUILT_IN_DEPTS] : '';
     const hidden = !!row?.hidden;
     const inUse = users(k) + sewadars(k);
+    const editable = canEditRow(builtIn, row?.departmentId);
     return (
       <div
         key={k}
@@ -94,13 +109,16 @@ export const SubDepartmentsView: React.FC = () => {
                 {hidden && (
                   <span className="rounded-full bg-raised px-2 py-0.5 text-[10.5px] font-medium text-mute">Hidden</span>
                 )}
+                {builtIn && IT_SERVICE_SUBS.includes(k) && (
+                  <span className="text-[11px] font-normal text-faint">{itName} only</span>
+                )}
               </div>
               <span className="text-xs text-mute tabular-nums">
                 {users(k)} user{users(k) === 1 ? '' : 's'} · {sewadars(k)} sewadar{sewadars(k) === 1 ? '' : 's'}
                 {hidden && inUse > 0 ? ' · still shown on them, but no longer offered in pickers' : ''}
               </span>
             </div>
-            {!ro &&
+            {editable &&
               (confirmDelete === k ? (
                 <>
                   <span className="text-xs text-rose-300">Delete? Sewadars in it lose their sub-department.</span>
@@ -179,6 +197,10 @@ export const SubDepartmentsView: React.FC = () => {
     );
   };
   const custom = perms.customSubs.filter(r => r.key.startsWith('sd_'));
+  // Super Admin: every department that has its own sub-departments. Department Head: their own department.
+  const groups = departments
+    .filter(d => (isOwner ? custom.some(r => r.departmentId === d.id) : d.id === myDepartment))
+    .map(d => ({ d, rows: custom.filter(r => r.departmentId === d.id) }));
   const heading = 'border-b border-line px-4 py-2.5 text-[10.5px] font-semibold uppercase tracking-wider text-faint';
 
   return (
@@ -190,8 +212,8 @@ export const SubDepartmentsView: React.FC = () => {
             Sub-departments
           </h2>
           <p className="mt-0.5 text-xs text-mute">
-            Add, rename or hide sub-departments. They can be given to user accounts and sewadars, and their pages are
-            set in Sub-department Permissions.
+            Each department has its own sub-departments. They can be given to that department's people and sewadars, and
+            their pages are set in Sub-department Permissions.
           </p>
         </div>
         <a href="#/permissions" className={btnGhost}>
@@ -216,6 +238,19 @@ export const SubDepartmentsView: React.FC = () => {
           onSubmit={add}
           className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4 sm:flex-row sm:items-end"
         >
+          {isOwner && (
+            <label className="min-w-0 sm:w-56">
+              <span className="mb-1 block text-xs font-medium text-mute">Department</span>
+              <select className={inputCls} value={addDept} onChange={e => setAddDept(e.target.value)}>
+                <option value="">Choose department…</option>
+                {departments.map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="min-w-0 flex-1">
             <span className="mb-1 block text-xs font-medium text-mute">New sub-department</span>
             <input
@@ -241,15 +276,25 @@ export const SubDepartmentsView: React.FC = () => {
         </div>
       )}
 
-      <section className="overflow-hidden rounded-xl border border-line bg-surface">
-        <h3 className={heading}>Your sub-departments ({custom.length})</h3>
-        {!custom.length && <p className="px-4 py-6 text-center text-sm text-mute">None yet. Add one above.</p>}
-        {custom.map(r => renderRow(r.key, false))}
-      </section>
+      {groups.map(({ d, rows }) => (
+        <section key={d.id} className="overflow-hidden rounded-xl border border-line bg-surface">
+          <h3 className={heading}>
+            {d.name} ({rows.length})
+          </h3>
+          {!rows.length && <p className="px-4 py-6 text-center text-sm text-mute">None yet. Add one above.</p>}
+          {rows.map(r => renderRow(r.key, false))}
+        </section>
+      ))}
+      {!groups.length && (
+        <p className="rounded-xl border border-line bg-surface px-4 py-6 text-center text-sm text-mute">
+          No department has its own sub-departments yet. Add one above.
+        </p>
+      )}
 
       <section className="overflow-hidden rounded-xl border border-line bg-surface">
         <h3 className={heading}>
-          Built-in ({Object.keys(BUILT_IN_DEPTS).length}) · rename or hide; their module pages stay as they are
+          Built-in ({Object.keys(BUILT_IN_DEPTS).length}) · every department · only the Super Admin renames or hides
+          these
         </h3>
         {Object.keys(BUILT_IN_DEPTS).map(k => renderRow(k, true))}
       </section>

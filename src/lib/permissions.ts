@@ -107,12 +107,21 @@ export const defaultAllowed = (sub: string, module: ModuleKey): boolean => {
   return sub === module;
 };
 
-// Saved overrides: "<sub>:<module>" → allowed. Only differences from the defaults are stored.
+// IT services: only the IT department (departments.it_services) and the Super Admin can open these.
+export const IT_MODULES: ModuleKey[] = ['cctv', 'wifi', 'walkie', 'control', 'cctv-control-room', 'networking-support'];
+
+// Saved overrides: "<department>|<sub>:<module>" → allowed. Only differences from the defaults are stored.
 export type PermissionMap = Record<string, boolean>;
-export const permKey = (sub: string, module: string) => `${sub}:${module}`;
-export const isAllowed = (map: PermissionMap, sub: string | null | undefined, module: ModuleQuery): boolean => {
-  if (module === 'sewadars') return SEWADAR_TABS.some(t => isAllowed(map, sub, `sewadars:${t}` as ModuleKey));
+export const permKey = (department: string, sub: string, module: string) => `${department}|${sub}:${module}`;
+export const isAllowed = (
+  map: PermissionMap,
+  department: string | null | undefined,
+  sub: string | null | undefined,
+  module: ModuleQuery,
+): boolean => {
+  if (module === 'sewadars')
+    return SEWADAR_TABS.some(t => isAllowed(map, department, sub, `sewadars:${t}` as ModuleKey));
   if (!sub) return module === 'helpdesk' || module === 'requests'; // no sub-department yet: raise tickets and requests only
-  const saved = map[permKey(sub, module)];
+  const saved = map[permKey(department || '', sub, module)];
   return saved === undefined ? defaultAllowed(sub, module) : saved;
 };

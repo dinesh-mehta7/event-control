@@ -210,7 +210,7 @@ export const resolveRoute = (
             : own[0];
   const exec = role === 'owner' || role === 'dept_head';
   const procurementRole = exec || can('purchase');
-  const controlRoomAllowed = exec || can('cctv-control-room');
+  const controlRoomAllowed = can('cctv-control-room'); // IT department and Super Admin
   // Shared pages for sub-department roles follow the permission grid.
   const shared = (m: ModuleQuery) => exec || can(m);
   const subRole = !exec && role !== 'volunteer';
@@ -218,7 +218,8 @@ export const resolveRoute = (
     (seg === 'helpdesk' && shared('helpdesk')) ||
     (has(ORG_PAGES, seg) &&
       ORG_PAGES[seg].roles.includes(role) &&
-      (!['tasks', 'events'].includes(seg) || shared(seg as ModuleKey))) ||
+      (!['tasks', 'events'].includes(seg) || shared(seg as ModuleKey)) &&
+      (seg !== 'networking-support' || can(seg))) ||
     (seg === 'tasks' && apps.includes('sewadars')) ||
     (seg === 'issues' && role !== 'volunteer' && shared('issues')) ||
     (subRole && ['reports', 'networking-support'].includes(seg) && can(seg as ModuleKey)) ||

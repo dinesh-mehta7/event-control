@@ -196,7 +196,10 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
   const showWorkspaceNav = u.role === 'owner' || u.role === 'dept_head';
-  const canOpenCctvControlRoom = showWorkspaceNav || perms.can('cctv-control-room');
+  const canOpenCctvControlRoom = perms.can('cctv-control-room'); // IT department and Super Admin
+  // Other departments keep Help Desk and Issues here; the IT services only show for IT and the Super Admin.
+  const operationsTitle =
+    itOperationsKeys.length > 0 || canOpenCctvControlRoom ? 'IT Services & Operations' : 'Services & Operations';
   const canOpenProcurement = showWorkspaceNav || perms.can('purchase');
   const showSupport = u.role === 'volunteer' || home === 'support';
   const hasNav =
@@ -509,19 +512,19 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
                       </div>
                     </section>
                   )}
-                  {(itOperationsKeys.length > 0 || canOpenCctvControlRoom) && (
+                  {
                     <section className="mt-1" {...hoverProps('operations')}>
                       <button
                         type="button"
-                        title="IT Services & Operations"
-                        aria-label="IT Services & Operations"
+                        title={operationsTitle}
+                        aria-label={operationsTitle}
                         aria-expanded={operationsOpen}
                         onClick={() => setOperationsOpen(value => !value)}
                         className={head(isOperationsPage)}
                       >
                         <Monitor size={16} className="shrink-0" />
                         <span className={`flex-1 truncate text-left ${collapsed ? 'md:hidden' : ''}`}>
-                          IT Services &amp; Operations
+                          {operationsTitle}
                         </span>
                         <ChevronDown
                           size={14}
@@ -536,15 +539,19 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
                           {itOperationsKeys.map(k => (
                             <Item key={k} id={k} label={DEPTS[k as keyof typeof DEPTS]} Icon={APP_VIEWS[k][1]} />
                           ))}
-                          <Item id="cctv-control-room" label="CCTV Control Room" Icon={Monitor} />
-                          <Item id="networking-support" label="Networking Support · Coming Soon" Icon={Wifi} />
+                          {canOpenCctvControlRoom && (
+                            <Item id="cctv-control-room" label="CCTV Control Room" Icon={Monitor} />
+                          )}
+                          {perms.can('networking-support') && (
+                            <Item id="networking-support" label="Networking Support · Coming Soon" Icon={Wifi} />
+                          )}
                           {orgKeys.includes('issues') && (
                             <Item id="issues" label="Issues & Reports" Icon={ClipboardList} />
                           )}
                         </div>
                       </div>
                     </section>
-                  )}
+                  }
                 </>
               )}
               {!showWorkspaceNav && u.role !== 'volunteer' && (

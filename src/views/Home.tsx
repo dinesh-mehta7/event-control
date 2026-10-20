@@ -278,16 +278,15 @@ export const Home: React.FC = () => {
       mp.badgePending,
     ],
   };
-  const keys = (Object.keys(cards) as DashboardDepartment[]).filter(
-    k => exec || k === 'accommodation' || canAccessApp(k),
-  );
-  const canAccessCctvControlRoom = exec || ['cctv', 'control'].includes(currentUser.subDepartmentId || '');
+  const keys = (Object.keys(cards) as DashboardDepartment[]).filter(k => k === 'accommodation' || canAccessApp(k));
+  // IT services: the IT department, its CCTV / Control Rooms people, and the Super Admin.
+  const canAccessCctvControlRoom = canAccessApp('cctv') || canAccessApp('control');
 
   // Keep this panel intentionally narrow: control-room alerts and inactive CCTV only.
   const items: Attention[] = [];
   const alertedRooms = controlRooms.filter(room => room.status === 'alert');
   const inactiveCameras = cameras.filter(camera => camera.status !== 'online');
-  if (alertedRooms.length && (exec || canAccessApp('control')))
+  if (alertedRooms.length && canAccessApp('control'))
     items.push({
       id: 'control-alerts',
       title: `${alertedRooms.length} control room${alertedRooms.length === 1 ? '' : 's'} on alert`,
@@ -298,7 +297,7 @@ export const Home: React.FC = () => {
       priority: 'Critical',
       href: '#/control',
     });
-  if (inactiveCameras.length && (exec || canAccessApp('cctv')))
+  if (inactiveCameras.length && canAccessApp('cctv'))
     items.push({
       id: 'cctv-inactive',
       title: `${inactiveCameras.length} camera${inactiveCameras.length === 1 ? '' : 's'} not active`,
