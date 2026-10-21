@@ -745,7 +745,7 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
         </header>
         <main ref={mainRef} className="flex-1 overflow-y-auto [scrollbar-gutter:stable] p-4 sm:p-6">
           <Swap
-            k={key === 'sewadars' ? `${key}/${tab || ''}` : key}
+            k={`${key}/${tab || ''}`}
             indexOf={navIndex}
             className="w-full max-w-[1600px] mx-auto"
           >
