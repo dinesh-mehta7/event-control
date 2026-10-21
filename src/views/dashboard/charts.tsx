@@ -304,7 +304,7 @@ export const DepartmentCoverage: React.FC<{ rows: DepartmentPoint[] }> = ({ rows
     );
   return (
     <div>
-      <ul className="stagger divide-y divide-line">
+      <ul className="divide-y divide-line">
         {active.map(r => {
           const s = statusOf(r);
           const c = coverage(r.expected, r.arrived);

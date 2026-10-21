@@ -148,7 +148,7 @@ export const RoomReadinessCard: React.FC<{
           </div>
           <StatusBar counts={sum.counts} total={rooms.length} tall />
           <Legend items={STATUS_LEGEND} />
-          <ul className="stagger mt-1 divide-y divide-line border-t border-line">
+          <ul className="mt-1 divide-y divide-line border-t border-line">
             {preview.map(r => {
               const s = STATE[stateOf(r)];
               return (

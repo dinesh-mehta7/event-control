@@ -417,7 +417,7 @@ tbody tr {
   animation: drawerExit var(--dur-fast) var(--ease-in-out) both;
 }
 .animate-page-enter {
-  animation: pageEnter 260ms var(--ease-out) both;
+  /* intentionally no animation: views appear instantly */
 }
 @keyframes toastExit {
   to {
@@ -462,47 +462,6 @@ tbody tr {
     background-color var(--dur) var(--ease-out);
 }
 
-/* Lists and grids reveal their children in a quick cascade (first 12 items). */
-.stagger > * {
-  animation: pageEnter 300ms var(--ease-out) both;
-}
-.stagger > :nth-child(1) {
-  animation-delay: 0ms;
-}
-.stagger > :nth-child(2) {
-  animation-delay: 30ms;
-}
-.stagger > :nth-child(3) {
-  animation-delay: 60ms;
-}
-.stagger > :nth-child(4) {
-  animation-delay: 90ms;
-}
-.stagger > :nth-child(5) {
-  animation-delay: 120ms;
-}
-.stagger > :nth-child(6) {
-  animation-delay: 150ms;
-}
-.stagger > :nth-child(7) {
-  animation-delay: 180ms;
-}
-.stagger > :nth-child(8) {
-  animation-delay: 210ms;
-}
-.stagger > :nth-child(9) {
-  animation-delay: 240ms;
-}
-.stagger > :nth-child(10) {
-  animation-delay: 270ms;
-}
-.stagger > :nth-child(11) {
-  animation-delay: 300ms;
-}
-.stagger > :nth-child(n + 12) {
-  animation-delay: 330ms;
-}
-
 /* Interactive cards rise slightly and gain a soft shadow on hover. */
 .lift {
   transition:
@@ -536,65 +495,6 @@ tbody tr {
 }
 .animate-loading-sweep {
   animation: loading-sweep 1.7s ease-in-out infinite;
-}
-
-/* ── View switching (Swap): slide + blur out, then slide in from the chosen side with a cascade ──
-   --dx is 1 when moving forward through the tabs/menu and -1 when moving back.
-   Fill mode "backwards" leaves no transform/filter behind, so fixed modals inside pages stay put. */
-@keyframes vtIn {
-  from {
-    opacity: 0;
-    transform: translateX(calc(var(--dx, 1) * 28px));
-    filter: blur(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-    filter: none;
-  }
-}
-@keyframes vtOut {
-  from {
-    opacity: 1;
-    transform: none;
-    filter: none;
-  }
-  to {
-    opacity: 0;
-    transform: translateX(calc(var(--dx, 1) * -28px));
-    filter: blur(6px);
-  }
-}
-.vt-out {
-  animation: vtOut 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
-  pointer-events: none;
-}
-.vt-in > *,
-.vt-in > :only-child > * {
-  animation: vtIn 560ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
-}
-.vt-in > :only-child {
-  animation: none;
-}
-.vt-in > :nth-child(2),
-.vt-in > :only-child > :nth-child(2) {
-  animation-delay: 55ms;
-}
-.vt-in > :nth-child(3),
-.vt-in > :only-child > :nth-child(3) {
-  animation-delay: 110ms;
-}
-.vt-in > :nth-child(4),
-.vt-in > :only-child > :nth-child(4) {
-  animation-delay: 165ms;
-}
-.vt-in > :nth-child(5),
-.vt-in > :only-child > :nth-child(5) {
-  animation-delay: 220ms;
-}
-.vt-in > :nth-child(n + 6),
-.vt-in > :only-child > :nth-child(n + 6) {
-  animation-delay: 270ms;
 }
 
 /* ── Royal theme (html.dark.theme-saffron): the sign-in page's look across the app ──────────────
@@ -784,10 +684,6 @@ tbody tr {
   .animate-toast-exit,
   .chart-grow-y,
   .chart-grow-x,
-  .stagger > *,
-  .vt-in > *,
-  .vt-in > :only-child > *,
-  .vt-out,
   .animate-menu-enter {
     animation: none !important;
   }

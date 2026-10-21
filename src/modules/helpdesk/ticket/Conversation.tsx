@@ -43,7 +43,7 @@ export const Conversation: React.FC<{ ticket: Ticket; events: TicketEvent[] | nu
             <li
               key={e.id}
               className={cx(
-                'animate-calm-enter rounded-xl border p-3',
+                'rounded-xl border p-3',
                 e.kind === 'note'
                   ? 'border-amber-500/30 bg-amber-500/5'
                   : e.authorId === ticket.requesterId
