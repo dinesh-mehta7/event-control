@@ -8,7 +8,7 @@ import type { Req, ReqItem } from '../types';
 import { productKey } from './FulfilmentPanel';
 import { Err } from './shared';
 
-// ── IT Department Head: approve with a budget, reject, or escalate ──────────────────────────────
+// ── Department Head: approve with a budget, reject, or escalate ──────────────────────────────
 export const ItReviewPanel: React.FC<{ r: Req }> = ({ r }) => {
   const { itDecide, loadAvailability } = useRequests();
   const inventory = useInventory();
@@ -112,7 +112,7 @@ export const ItReviewPanel: React.FC<{ r: Req }> = ({ r }) => {
     if (e) setErr(e);
   };
   return (
-    <Card title="IT Department Head review" tone="text-amber-300">
+    <Card title="Department Head review" tone="text-amber-300">
       <p className="text-sm text-mute mb-3">
         Set each quantity and budget, then confirm stock for every approved item. Enter 0 when none will come from
         stock; Super Admin receives this saved plan if escalated.

@@ -24,7 +24,7 @@ const Row: React.FC<{ r: Req }> = ({ r }) => {
   const superApproved = r.events.some(e => e.kind === 'approved' && e.text.toLowerCase().includes('super admin'));
   const chain = [
     {
-      label: 'IT Head',
+      label: 'Dept Head',
       state:
         r.status === 'pending_it'
           ? 'current'

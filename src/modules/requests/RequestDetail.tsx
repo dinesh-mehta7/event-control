@@ -174,7 +174,7 @@ export const RequestDetail: React.FC<{
             )}
             {r.itNote && (
               <div>
-                <div className="text-xs text-mute mb-1">IT Department Head's comment</div>
+                <div className="text-xs text-mute mb-1">Department Head's comment</div>
                 <p className="text-sm text-ink-soft bg-raised/50 rounded-lg px-3 py-2">{r.itNote}</p>
               </div>
             )}
@@ -264,7 +264,7 @@ export const RequestDetail: React.FC<{
       </Card>
       {r.status === 'pending_it' && r.requesterId === me.id && (
         <p className="text-xs text-mute print:hidden">
-          The IT Department Head is reviewing this request. They can approve the plan or escalate it to the Super Admin.
+          The Department Head is reviewing this request. They can approve the plan or escalate it to the Super Admin.
         </p>
       )}
       {r.status === 'pending_owner' && me.isOwner === false && r.requesterId === me.id && (

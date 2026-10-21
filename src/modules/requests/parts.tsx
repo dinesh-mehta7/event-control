@@ -9,7 +9,7 @@ export const StatusBadge: React.FC<{ status: ReqStatus; closed?: boolean }> = ({
 );
 export const UrgentBadge: React.FC = () => <Pill c="bg-red-500/15 text-red-300">Urgent</Pill>;
 
-// The IT Department Head's review includes the arrangement, so there is no separate Arranged step.
+// The Department Head's review includes the arrangement, so there is no separate Arranged step.
 export const Stepper: React.FC<{
   r: Pick<Req, 'status' | 'items' | 'parts'> & Partial<Req>;
   orders: Record<string, OrderInfo>;
@@ -28,7 +28,7 @@ export const Stepper: React.FC<{
   const approved = ['pending_owner', 'approved', 'fulfilled'].includes(r.status);
   const steps: { label: string; state: 'done' | 'current' | 'idle' }[] = [
     { label: 'Requested', state: !dead && r.status !== 'pending_sub' ? 'done' : 'idle' },
-    { label: 'IT Department Head', state: r.status === 'pending_it' ? 'current' : approved ? 'done' : 'idle' },
+    { label: 'Department Head', state: r.status === 'pending_it' ? 'current' : approved ? 'done' : 'idle' },
     ...(hasEscalation
       ? [
           {

@@ -140,7 +140,7 @@ export interface PlanPart {
 
 export const STATUS_LABEL: Record<ReqStatus, string> = {
   pending_sub: 'With Sub Admin',
-  pending_it: 'With IT Department Head',
+  pending_it: 'With Department Head',
   pending_owner: 'With Super Admin',
   approved: 'Approved',
   fulfilled: 'Delivered',
@@ -184,7 +184,7 @@ export const lineStatus = (
       text: (
         {
           pending_sub: 'With Sub Admin',
-          pending_it: 'With IT Department Head',
+          pending_it: 'With Department Head',
           pending_owner: 'With Super Admin',
         } as const
       )[r.status],

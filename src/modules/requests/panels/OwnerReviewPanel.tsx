@@ -22,7 +22,7 @@ export const OwnerReviewPanel: React.FC<{ r: Req }> = ({ r }) => {
   return (
     <Card title="Super Admin review" tone="text-amber-300">
       <p className="text-sm text-mute mb-3">
-        Review the IT Department Head’s saved arrangement. Approve it, send it back for changes, or reject it.
+        Review the Department Head’s saved arrangement. Approve it, send it back for changes, or reject it.
       </p>
       <div className="overflow-x-auto rounded-lg border border-line">
         <table className="w-full min-w-[640px] text-left text-xs">

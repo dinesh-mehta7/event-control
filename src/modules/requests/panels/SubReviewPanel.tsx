@@ -22,9 +22,9 @@ export const SubReviewPanel: React.FC<{ r: Req }> = ({ r }) => {
   return (
     <Card title="Your decision" tone="text-amber-300">
       <p className="text-sm text-mute mb-3">
-        Approving forwards this request to the IT Department Head, who can approve it or escalate it to the Super Admin.
+        Approving forwards this request to the Department Head, who can approve it or escalate it to the Super Admin.
       </p>
-      <Field label="Comment for the IT Department Head (required if you reject)">
+      <Field label="Comment for the Department Head (required if you reject)">
         <textarea className={inputCls} rows={2} value={note} onChange={e => setNote(e.target.value)} />
       </Field>
       <div className="mt-3">
@@ -37,7 +37,7 @@ export const SubReviewPanel: React.FC<{ r: Req }> = ({ r }) => {
         </button>
         <button className={btnPrimary} disabled={busy} onClick={() => go(true)}>
           <Check size={14} />
-          Approve and send to IT Department Head
+          Approve and send to Department Head
         </button>
       </div>
     </Card>
