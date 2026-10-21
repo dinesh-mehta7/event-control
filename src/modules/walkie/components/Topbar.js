@@ -4,15 +4,7 @@ import { ProfileMenu } from '../../../components/ProfileMenu';
 import { Search, Menu, LogOut, ClipboardList } from 'lucide-react';
 
 export default function Topbar({ extra = null }) {
-  const {
-    settings,
-    globalSearch,
-    setGlobalSearch,
-    setCurrentTab,
-    currentTab,
-    currentUser,
-    logout,
-  } = useApp();
+  const { settings, globalSearch, setGlobalSearch, setCurrentTab, currentTab, currentUser, logout } = useApp();
 
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
@@ -24,31 +16,32 @@ export default function Topbar({ extra = null }) {
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'walkies', label: 'Walkie Talkies' },
     { id: 'departments', label: 'Departments' },
-    ...(!isClient ? [
-      { id: 'allocation', label: 'Allocations' },
-      { id: 'returns', label: 'Returns' },
-      { id: 'maintenance', label: 'Maintenance' },
-    ] : []),
+    ...(!isClient
+      ? [
+          { id: 'allocation', label: 'Allocations' },
+          { id: 'returns', label: 'Returns' },
+          { id: 'maintenance', label: 'Maintenance' },
+        ]
+      : []),
     { id: 'history', label: 'Activity History' },
     ...(!isClient && currentUser?.role === 'Admin' ? [{ id: 'users', label: 'Team & Users' }] : []),
   ];
 
   return (
-    <header className={`h-14 border-b px-3 md:px-6 flex items-center justify-between z-20 transition-colors duration-300 
-      ${isDark ? 'bg-slate-950 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'}`}>
-      
+    <header
+      className={`h-14 border-b px-3 md:px-6 flex items-center justify-between z-20 transition-colors duration-300 
+      ${isDark ? 'bg-slate-950 border-slate-800 text-slate-100' : 'bg-white border-slate-100 text-slate-800'}`}
+    >
       {/* Left: Mobile Menu Trigger & Title */}
       <div className="flex items-center gap-3">
-        <button 
-          onClick={() => setShowMobileMenu(!showMobileMenu)} 
+        <button
+          onClick={() => setShowMobileMenu(!showMobileMenu)}
           className="lg:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
         >
           <Menu className="w-5 h-5" />
         </button>
         <div className="hidden md:block">
-          <h2 className="text-lg font-semibold tracking-tight capitalize">
-            {currentTab.replace('-', ' ')} Overview
-          </h2>
+          <h2 className="text-lg font-semibold tracking-tight capitalize">{currentTab.replace('-', ' ')} Overview</h2>
           <p className="text-xs text-slate-400">Manage and monitor radio assets</p>
         </div>
       </div>
@@ -61,22 +54,28 @@ export default function Topbar({ extra = null }) {
             type="text"
             placeholder="Search walkie ID, model..."
             value={globalSearch}
-            onChange={(e) => setGlobalSearch(e.target.value)}
+            onChange={e => setGlobalSearch(e.target.value)}
             className={`w-full pl-9 pr-4 py-2 text-sm rounded-full border outline-none transition-all
-              ${isDark 
-                ? 'bg-slate-900 border-slate-800 text-slate-100 placeholder-slate-500 focus:border-blue-500' 
-                : 'bg-slate-100 border-slate-200 text-slate-800 placeholder-slate-400 focus:bg-white focus:border-blue-500'}`}
+              ${
+                isDark
+                  ? 'bg-slate-900 border-slate-800 text-slate-100 placeholder-slate-500 focus:border-blue-500'
+                  : 'bg-slate-100 border-slate-200 text-slate-800 placeholder-slate-400 focus:bg-white focus:border-blue-500'
+              }`}
           />
         </div>
       </div>
 
       {/* Right: Quick Controls */}
       <div className="flex items-center gap-1.5 md:gap-3 shrink min-w-0">
-        
         {extra ? <div className="min-w-0 hidden sm:block">{extra}</div> : null}
 
-        <a href="#/requests" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold text-blue-400 hover:bg-blue-500/10 whitespace-nowrap" aria-label="Open material requests">
-          <ClipboardList className="w-4 h-4" /><span className="hidden sm:inline">Requests</span>
+        <a
+          href="#/requests"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold text-blue-400 hover:bg-blue-500/10 whitespace-nowrap"
+          aria-label="Open material requests"
+        >
+          <ClipboardList className="w-4 h-4" />
+          <span className="hidden sm:inline">Requests</span>
         </a>
 
         {/* Account menu: Command Center, theme, Sign out */}
@@ -86,10 +85,10 @@ export default function Topbar({ extra = null }) {
       {/* Mobile Drawer Menu */}
       {showMobileMenu && (
         <div className="fixed inset-0 bg-black/55 z-40 lg:hidden">
-          <div 
+          <div
             className={`w-64 h-full p-6 flex flex-col justify-between transition-transform duration-200 
               ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}
-            onClick={(e) => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
           >
             <div>
               <div className="flex items-center gap-3 mb-8">
@@ -97,16 +96,18 @@ export default function Topbar({ extra = null }) {
                 <h1 className="font-bold text-md tracking-wide uppercase">{settings.orgName}</h1>
               </div>
               <nav className="space-y-2">
-                {menuItems.map((item) => (
+                {menuItems.map(item => (
                   <button
                     key={item.id}
                     onClick={() => {
                       setCurrentTab(item.id);
                     }}
                     className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors
-                      ${currentTab === item.id 
-                        ? 'bg-blue-600 text-white' 
-                        : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-300'}`}
+                      ${
+                        currentTab === item.id
+                          ? 'bg-blue-600 text-white'
+                          : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-300'
+                      }`}
                   >
                     {item.label}
                   </button>
@@ -115,7 +116,10 @@ export default function Topbar({ extra = null }) {
             </div>
             <div className="space-y-3">
               <button
-                onClick={() => { setShowMobileMenu(false); logout(); }}
+                onClick={() => {
+                  setShowMobileMenu(false);
+                  logout();
+                }}
                 className="w-full py-2 bg-rose-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2"
               >
                 <LogOut className="w-4 h-4" />

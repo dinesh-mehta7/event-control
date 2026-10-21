@@ -18,7 +18,16 @@ export default function PendingApprovalView() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Waiting for Approval</h1>
           <p className="text-sm text-mute mt-2">
-            Hi {currentUser?.name}, your account has been created{currentOrganization ? <> for <span className="text-ink font-semibold">{currentOrganization.name}</span></> : ''}, but an Admin still needs to approve you before you can get in.
+            Hi {currentUser?.name}, your account has been created
+            {currentOrganization ? (
+              <>
+                {' '}
+                for <span className="text-ink font-semibold">{currentOrganization.name}</span>
+              </>
+            ) : (
+              ''
+            )}
+            , but an Admin still needs to approve you before you can get in.
           </p>
         </div>
 

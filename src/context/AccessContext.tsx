@@ -10,29 +10,73 @@ import type { SubDepartmentId } from '../types';
 export type GrantLevel = 'staff' | 'sub_dept_head' | 'dept_head';
 
 export interface Member {
-  id: string; name: string; email: string; role: string; level: string; subDepartment: SubDepartmentId | null; departmentId: string | null;
-  isActive: boolean; approved: boolean; requestedSub: SubDepartmentId | null; requestedAt: string | null; createdAt: string;
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  level: string;
+  subDepartment: SubDepartmentId | null;
+  departmentId: string | null;
+  isActive: boolean;
+  approved: boolean;
+  requestedSub: SubDepartmentId | null;
+  requestedDepartmentId: string | null;
+  requestedAt: string | null;
+  createdAt: string;
 }
-export interface SewadarAccountLink { id: string; name: string; memberType: string; teamName: string; profileId: string | null }
+// A sign-up code: one per department + sub-department.
+export interface JoinCode {
+  departmentId: string;
+  sub: SubDepartmentId;
+  code: string;
+}
+export interface SewadarAccountLink {
+  id: string;
+  name: string;
+  memberType: string;
+  teamName: string;
+  profileId: string | null;
+}
 
 const mapMember = (p: any): Member => ({
-  id: p.id, name: p.name || p.email, email: p.email, role: p.role, level: p.level || 'other',
-  subDepartment: p.sub_department || null, departmentId: p.department_id || null, isActive: p.is_active !== false, approved: p.approved !== false,
-  requestedSub: p.requested_sub_department || null, requestedAt: p.requested_at || null, createdAt: p.created_at,
+  id: p.id,
+  name: p.name || p.email,
+  email: p.email,
+  role: p.role,
+  level: p.level || 'other',
+  subDepartment: p.sub_department || null,
+  departmentId: p.department_id || null,
+  isActive: p.is_active !== false,
+  approved: p.approved !== false,
+  requestedSub: p.requested_sub_department || null,
+  requestedDepartmentId: p.requested_department_id || null,
+  requestedAt: p.requested_at || null,
+  createdAt: p.created_at,
 });
 
 const dbMessage = (e: any): string => {
   const m: string = e?.message || 'Something went wrong.';
-  if (/could not find the function|schema cache|does not exist/i.test(m)) return 'Run supabase/migration_v31_meeting_audience_groups.sql in the Supabase SQL Editor first.';
+  if (/could not find the function|schema cache|does not exist/i.test(m))
+    return 'Run supabase/migration_v31_meeting_audience_groups.sql in the Supabase SQL Editor first.';
   return m;
 };
 
 interface Ctx {
-  members: Member[]; requests: Member[]; codes: Partial<Record<SubDepartmentId, string>>; isOwner: boolean; loading: boolean;
+  members: Member[];
+  requests: Member[];
+  codes: JoinCode[];
+  isOwner: boolean;
+  loading: boolean;
   sewadarMembers: SewadarAccountLink[];
-  review: (userId: string, approve: boolean, level?: GrantLevel, sub?: SubDepartmentId | null, departmentId?: string | null) => Promise<string | null>;
+  review: (
+    userId: string,
+    approve: boolean,
+    level?: GrantLevel,
+    sub?: SubDepartmentId | null,
+    departmentId?: string | null,
+  ) => Promise<string | null>;
   linkSewadar: (userId: string, memberId: string | null) => Promise<string | null>;
-  regenerate: (sub: SubDepartmentId) => Promise<string | null>;
+  regenerate: (sub: SubDepartmentId, departmentId: string) => Promise<string | null>;
   deleteMember: (userId: string) => Promise<{ error: string | null; result?: 'deleted' | 'disabled' }>;
   requestAccess: (code: string) => Promise<string | null>;
   refresh: () => Promise<void>;
@@ -49,7 +93,7 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const seesCodes = seesPeople || level === 'sub_dept_head';
   const [members, setMembers] = useState<Member[]>([]);
   const [sewadarMembers, setSewadarMembers] = useState<SewadarAccountLink[]>([]);
-  const [codes, setCodes] = useState<Partial<Record<SubDepartmentId, string>>>({});
+  const [codes, setCodes] = useState<JoinCode[]>([]);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -58,54 +102,114 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (seesPeople) {
       const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: true });
       if (!error && data) setMembers(data.map(mapMember));
-      const roster = await supabase.from('accommodation_members').select('id,name,member_type,team_name,profile_id').eq('organization_id', u.organizationId).order('name');
-      if (!roster.error && roster.data) setSewadarMembers(roster.data.map((r: any) => ({ id: r.id, name: r.name, memberType: r.member_type || 'salary_based', teamName: r.team_name || '', profileId: r.profile_id || null })));
+      const roster = await supabase
+        .from('accommodation_members')
+        .select('id,name,member_type,team_name,profile_id')
+        .eq('organization_id', u.organizationId)
+        .order('name');
+      if (!roster.error && roster.data)
+        setSewadarMembers(
+          roster.data.map((r: any) => ({
+            id: r.id,
+            name: r.name,
+            memberType: r.member_type || 'salary_based',
+            teamName: r.team_name || '',
+            profileId: r.profile_id || null,
+          })),
+        );
     }
     if (seesCodes) {
-      const { data, error } = await supabase.from('department_codes').select('sub_department, code');
-      if (!error && data) setCodes(Object.fromEntries(data.map((d: any) => [d.sub_department, d.code])));
+      const { data, error } = await supabase.from('department_codes').select('department_id, sub_department, code');
+      if (!error && data)
+        setCodes(
+          data
+            .filter((d: any) => d.department_id)
+            .map((d: any) => ({ departmentId: d.department_id, sub: d.sub_department, code: d.code })),
+        );
     }
     setLoading(false);
   }, [uid, seesPeople, seesCodes]);
 
   useEffect(() => {
-    if (!uid || !seesCodes) { setMembers([]); setCodes({}); return; }
+    if (!uid || !seesCodes) {
+      setMembers([]);
+      setCodes([]);
+      return;
+    }
     refresh();
-    const ch = supabase.channel(`access-${uid}`)
+    const ch = supabase
+      .channel(`access-${uid}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => refresh())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'department_codes' }, () => refresh())
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      supabase.removeChannel(ch);
+    };
   }, [uid, seesCodes, refresh]);
 
-  const review = useCallback(async (userId: string, approve: boolean, lvl: GrantLevel = 'staff', sub: SubDepartmentId | null = null, departmentId: string | null = null) => {
-    const { error } = await supabase.rpc('review_access_request', { p_user: userId, p_approve: approve, p_level: lvl, p_sub: sub, p_department: departmentId });
-    if (error) return /p_department|review_access_request/i.test(error.message || '') ? 'Run supabase/migration_v90_role_hierarchy.sql in the Supabase SQL Editor, then reload.' : dbMessage(error);
-    await refresh();
-    return null;
-  }, [refresh]);
+  const review = useCallback(
+    async (
+      userId: string,
+      approve: boolean,
+      lvl: GrantLevel = 'staff',
+      sub: SubDepartmentId | null = null,
+      departmentId: string | null = null,
+    ) => {
+      const { error } = await supabase.rpc('review_access_request', {
+        p_user: userId,
+        p_approve: approve,
+        p_level: lvl,
+        p_sub: sub,
+        p_department: departmentId,
+      });
+      if (error)
+        return /p_department|review_access_request|requested_department_id/i.test(error.message || '')
+          ? 'Run supabase/migration_v99_department_membership.sql in the Supabase SQL Editor, then reload.'
+          : dbMessage(error);
+      await refresh();
+      return null;
+    },
+    [refresh],
+  );
 
-  const linkSewadar = useCallback(async (userId: string, memberId: string | null) => {
-    const { error } = await supabase.rpc('link_profile_to_sewadar', { p_profile: userId, p_member_id: memberId || '' });
-    if (error) return dbMessage(error);
-    await refresh();
-    return null;
-  }, [refresh]);
+  const linkSewadar = useCallback(
+    async (userId: string, memberId: string | null) => {
+      const { error } = await supabase.rpc('link_profile_to_sewadar', {
+        p_profile: userId,
+        p_member_id: memberId || '',
+      });
+      if (error) return dbMessage(error);
+      await refresh();
+      return null;
+    },
+    [refresh],
+  );
 
-  const regenerate = useCallback(async (sub: SubDepartmentId) => {
-    const { error } = await supabase.rpc('regenerate_department_code', { p_sub: sub });
-    if (error) return dbMessage(error);
-    await refresh();
-    return null;
-  }, [refresh]);
+  const regenerate = useCallback(
+    async (sub: SubDepartmentId, departmentId: string) => {
+      const { error } = await supabase.rpc('regenerate_department_code', { p_sub: sub, p_department_id: departmentId });
+      if (error) return dbMessage(error);
+      await refresh();
+      return null;
+    },
+    [refresh],
+  );
 
   // Super Admin only. 'disabled' means records still need this person, so the account was locked instead.
-  const deleteMember = useCallback(async (userId: string) => {
-    const { data, error } = await supabase.rpc('delete_org_member', { p_user: userId });
-    if (error) return { error: /delete_org_member|schema cache/i.test(error.message || '') ? 'Run supabase/migration_v94_org_profile_and_delete_member.sql in the Supabase SQL Editor, then reload.' : dbMessage(error) };
-    await refresh();
-    return { error: null, result: data === 'disabled' ? 'disabled' as const : 'deleted' as const };
-  }, [refresh]);
+  const deleteMember = useCallback(
+    async (userId: string) => {
+      const { data, error } = await supabase.rpc('delete_org_member', { p_user: userId });
+      if (error)
+        return {
+          error: /delete_org_member|schema cache/i.test(error.message || '')
+            ? 'Run supabase/migration_v94_org_profile_and_delete_member.sql in the Supabase SQL Editor, then reload.'
+            : dbMessage(error),
+        };
+      await refresh();
+      return { error: null, result: data === 'disabled' ? ('disabled' as const) : ('deleted' as const) };
+    },
+    [refresh],
+  );
 
   const requestAccess = useCallback(async (code: string) => {
     const { error } = await supabase.rpc('request_department_access', { p_code: code });
@@ -115,8 +219,36 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Waiting for a decision: not approved yet, or approved but asked for a department. Declined sign-ups are inactive and drop out.
   const requests = useMemo(() => members.filter(m => m.isActive && (!m.approved || m.requestedSub)), [members]);
 
-  const value = useMemo<Ctx>(() => ({ members, requests, codes, isOwner, loading, sewadarMembers, review, linkSewadar, regenerate, deleteMember, requestAccess, refresh }),
-    [members, requests, codes, isOwner, loading, sewadarMembers, review, linkSewadar, regenerate, deleteMember, requestAccess, refresh]);
+  const value = useMemo<Ctx>(
+    () => ({
+      members,
+      requests,
+      codes,
+      isOwner,
+      loading,
+      sewadarMembers,
+      review,
+      linkSewadar,
+      regenerate,
+      deleteMember,
+      requestAccess,
+      refresh,
+    }),
+    [
+      members,
+      requests,
+      codes,
+      isOwner,
+      loading,
+      sewadarMembers,
+      review,
+      linkSewadar,
+      regenerate,
+      deleteMember,
+      requestAccess,
+      refresh,
+    ],
+  );
   return <C.Provider value={value}>{children}</C.Provider>;
 };
 

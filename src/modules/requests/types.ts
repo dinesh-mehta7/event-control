@@ -1,96 +1,253 @@
 import type { SubDepartmentId } from '../../types';
 
-export type ReqStatus = 'pending_sub' | 'pending_it' | 'pending_owner' | 'approved' | 'fulfilled' | 'rejected' | 'cancelled';
+export type ReqStatus =
+  | 'pending_sub'
+  | 'pending_it'
+  | 'pending_owner'
+  | 'approved'
+  | 'fulfilled'
+  | 'rejected'
+  | 'cancelled';
 export type LineKind = 'item' | 'radio';
 export type PartSource = 'inventory' | 'purchase' | 'walkie';
 
 export interface ReqItem {
-  id: string; requestId: string; position: number; kind: LineKind; name: string; unit: string;
-  requested: number; approved: number | null; note: string;
+  id: string;
+  requestId: string;
+  position: number;
+  kind: LineKind;
+  name: string;
+  unit: string;
+  requested: number;
+  approved: number | null;
+  note: string;
   budgetRate: number | null;
   budgetAmount: number | null;
   reviewPlan: PlanPart[];
   returnRequired: boolean;
-  reason: string;               // why the requester needs this line
-  cutReason: string;            // why the owner approved less (or none)
+  reason: string; // why the requester needs this line
+  cutReason: string; // why the owner approved less (or none)
   inventoryItemId: string | null; // the catalogue item it was picked from
 }
 export interface ReqPart {
-  id: string; requestId: string; itemId: string; source: PartSource; qty: number; returnedQty: number;
-  inventoryItemId: string | null; purchaseItemId: string | null; status: 'planned' | 'done';
-  location: string; receivedBy: string; note: string; doneBy: string; doneAt: string;
+  id: string;
+  requestId: string;
+  itemId: string;
+  source: PartSource;
+  qty: number;
+  returnedQty: number;
+  inventoryItemId: string | null;
+  purchaseItemId: string | null;
+  status: 'planned' | 'done';
+  location: string;
+  receivedBy: string;
+  note: string;
+  doneBy: string;
+  doneAt: string;
 }
-export interface ReqEvent { id: string; requestId: string; at: string; by: string; kind: string; text: string }
+export interface ReqEvent {
+  id: string;
+  requestId: string;
+  at: string;
+  by: string;
+  kind: string;
+  text: string;
+}
 export interface Req {
-  id: string; number: string; requesterId: string; requesterName: string; subDepartment: SubDepartmentId | null;
-  departmentId: string | null; departmentName: string;
-  deliveryTeam: string; deliveryMemberId: string | null;
-  title: string; purpose: string; deliverTo: string; neededBy: string; priority: 'normal' | 'urgent'; miscItems: string; miscBudget: number;
-  status: ReqStatus; subNote: string; itNote: string; ownerNote: string; createdAt: string; updatedAt: string;
-  confirmedAt: string | null; confirmedBy: string;   // the requester confirmed receipt: the ticket is closed
-  items: ReqItem[]; parts: ReqPart[]; events: ReqEvent[];
+  id: string;
+  number: string;
+  requesterId: string;
+  requesterName: string;
+  subDepartment: SubDepartmentId | null;
+  departmentId: string | null; // the department the request is made TO
+  departmentName: string;
+  fromDepartmentName: string; // the requester's own department
+  deliveryTeam: string;
+  deliveryMemberId: string | null;
+  title: string;
+  purpose: string;
+  deliverTo: string;
+  neededBy: string;
+  priority: 'normal' | 'urgent';
+  miscItems: string;
+  miscBudget: number;
+  status: ReqStatus;
+  subNote: string;
+  itNote: string;
+  ownerNote: string;
+  createdAt: string;
+  updatedAt: string;
+  confirmedAt: string | null;
+  confirmedBy: string; // the requester confirmed receipt: the ticket is closed
+  items: ReqItem[];
+  parts: ReqPart[];
+  events: ReqEvent[];
 }
 // Progress of a part that is being bought. The PO number is role-limited; vendor and rate are visible to request viewers.
 export interface OrderInfo {
-  purchaseItemId: string; requestId: string; itemId: string; received: number; ordered: number;
-  poNumber: string | null; poStatus: string; expectedDate: string | null; vendor: string | null; rate: number | null;
-  marketplace: string | null; marketplaceOrderNumber: string | null; trackingStatus: string | null; trackingSubStatus: string | null; trackingLocation: string | null; trackingAt: string | null; trackingUrl: string | null;
+  purchaseItemId: string;
+  requestId: string;
+  itemId: string;
+  received: number;
+  ordered: number;
+  poNumber: string | null;
+  poStatus: string;
+  expectedDate: string | null;
+  vendor: string | null;
+  rate: number | null;
+  marketplace: string | null;
+  marketplaceOrderNumber: string | null;
+  trackingStatus: string | null;
+  trackingSubStatus: string | null;
+  trackingLocation: string | null;
+  trackingAt: string | null;
+  trackingUrl: string | null;
 }
 
-export interface NewLine { kind: LineKind; name: string; unit: string; qty: number; chargerQty?: number; earphoneQty?: number; reason: string; note: string; inventoryItemId: string | null; returnRequired: boolean }
-export interface CatalogueItem { id: string; name: string; unit: string; category: string }
-export interface NewRequest { title: string; purpose: string; deliverTo: string; departmentId: string; neededBy: string; priority: 'normal' | 'urgent'; lines: NewLine[] }
-export interface PlanPart { source: PartSource; qty: number; inventoryItemId: string | null }
+export interface NewLine {
+  kind: LineKind;
+  name: string;
+  unit: string;
+  qty: number;
+  chargerQty?: number;
+  earphoneQty?: number;
+  reason: string;
+  note: string;
+  inventoryItemId: string | null;
+  returnRequired: boolean;
+}
+export interface CatalogueItem {
+  id: string;
+  name: string;
+  unit: string;
+  category: string;
+  departmentId: string | null; // whose stock it is
+}
+export interface NewRequest {
+  title: string;
+  purpose: string;
+  deliverTo: string;
+  departmentId: string;
+  neededBy: string;
+  priority: 'normal' | 'urgent';
+  lines: NewLine[];
+}
+export interface PlanPart {
+  source: PartSource;
+  qty: number;
+  inventoryItemId: string | null;
+}
 
 export const STATUS_LABEL: Record<ReqStatus, string> = {
-  pending_sub: 'With Sub Admin', pending_it: 'With IT Department Head', pending_owner: 'With Super Admin', approved: 'Approved',
-  fulfilled: 'Delivered', rejected: 'Rejected', cancelled: 'Cancelled',
+  pending_sub: 'With Sub Admin',
+  pending_it: 'With Department Head',
+  pending_owner: 'With Super Admin',
+  approved: 'Approved',
+  fulfilled: 'Delivered',
+  rejected: 'Rejected',
+  cancelled: 'Cancelled',
 };
 export const STATUS_TONE: Record<ReqStatus, string> = {
-  pending_sub: 'bg-amber-500/15 text-amber-300', pending_it: 'bg-amber-500/15 text-amber-300', pending_owner: 'bg-amber-500/15 text-amber-300',
-  approved: 'bg-blue-500/15 text-blue-300', fulfilled: 'bg-emerald-500/15 text-emerald-300',
-  rejected: 'bg-red-500/15 text-red-300', cancelled: 'bg-raised text-mute',
+  pending_sub: 'bg-amber-500/15 text-amber-300',
+  pending_it: 'bg-amber-500/15 text-amber-300',
+  pending_owner: 'bg-amber-500/15 text-amber-300',
+  approved: 'bg-blue-500/15 text-blue-300',
+  fulfilled: 'bg-emerald-500/15 text-emerald-300',
+  rejected: 'bg-red-500/15 text-red-300',
+  cancelled: 'bg-raised text-mute',
 };
-export const SOURCE_LABEL: Record<PartSource, string> = { inventory: 'From stock', purchase: 'To be purchased', walkie: 'Radio pool' };
+export const SOURCE_LABEL: Record<PartSource, string> = {
+  inventory: 'From stock',
+  purchase: 'To be purchased',
+  walkie: 'Radio pool',
+};
 
 // IT Department Head saves the arrangement as part of their decision, so it is not a separate stage.
-export const linePlannedQty = (r: Req, item: ReqItem): number => r.parts.filter(p => p.itemId === item.id).reduce((total, part) => total + part.qty, 0);
-export const lineRemainingToAllocate = (r: Req, item: ReqItem): number => Math.max(0, (item.approved ?? 0) - linePlannedQty(r, item));
-export const unlinkedPurchaseParts = (r: Req): ReqPart[] => r.status === 'approved'
-  ? r.parts.filter(part => part.source === 'purchase' && part.status === 'planned' && !part.purchaseItemId)
-  : [];
+export const linePlannedQty = (r: Req, item: ReqItem): number =>
+  r.parts.filter(p => p.itemId === item.id).reduce((total, part) => total + part.qty, 0);
+export const lineRemainingToAllocate = (r: Req, item: ReqItem): number =>
+  Math.max(0, (item.approved ?? 0) - linePlannedQty(r, item));
+export const unlinkedPurchaseParts = (r: Req): ReqPart[] =>
+  r.status === 'approved'
+    ? r.parts.filter(part => part.source === 'purchase' && part.status === 'planned' && !part.purchaseItemId)
+    : [];
 // Plain-language status of one approved line, for the ticket. No vendor, no price, no stock.
-export const lineStatus = (r: Req, i: ReqItem, orders: Record<string, OrderInfo>): { text: string; tone: 'ok' | 'warn' | 'mute' | 'bad' } => {
-  if (r.status === 'rejected' || (r.status === 'cancelled')) return { text: r.status === 'rejected' ? 'Rejected' : 'Cancelled', tone: 'bad' };
-  if (r.status === 'pending_sub' || r.status === 'pending_it' || r.status === 'pending_owner') return { text: ({ pending_sub: 'With Sub Admin', pending_it: 'With IT Department Head', pending_owner: 'With Super Admin' } as const)[r.status], tone: 'warn' };
+export const lineStatus = (
+  r: Req,
+  i: ReqItem,
+  orders: Record<string, OrderInfo>,
+): { text: string; tone: 'ok' | 'warn' | 'mute' | 'bad' } => {
+  if (r.status === 'rejected' || r.status === 'cancelled')
+    return { text: r.status === 'rejected' ? 'Rejected' : 'Cancelled', tone: 'bad' };
+  if (r.status === 'pending_sub' || r.status === 'pending_it' || r.status === 'pending_owner')
+    return {
+      text: (
+        {
+          pending_sub: 'With Sub Admin',
+          pending_it: 'With Department Head',
+          pending_owner: 'With Super Admin',
+        } as const
+      )[r.status],
+      tone: 'warn',
+    };
   const ap = i.approved ?? 0;
   if (ap === 0) return { text: 'Not approved', tone: 'bad' };
   const parts = r.parts.filter(p => p.itemId === i.id);
   const done = parts.filter(p => p.status === 'done').reduce((t, p) => t + p.qty, 0);
-  if (done >= ap) { const last = parts.filter(p => p.status === 'done').sort((a, b) => a.doneAt.localeCompare(b.doneAt)).pop(); return { text: `Delivered${last ? ` to ${last.receivedBy || last.location}` : ''}`, tone: 'ok' }; }
+  if (done >= ap) {
+    const last = parts
+      .filter(p => p.status === 'done')
+      .sort((a, b) => a.doneAt.localeCompare(b.doneAt))
+      .pop();
+    return { text: `Delivered${last ? ` to ${last.receivedBy || last.location}` : ''}`, tone: 'ok' };
+  }
   if (lineRemainingToAllocate(r, i) > 0) return { text: 'Being arranged', tone: 'mute' };
   const buying = parts.filter(p => p.source === 'purchase' && p.status === 'planned');
-  const waiting = buying.filter(p => { const o = p.purchaseItemId ? orders[p.purchaseItemId] : undefined; return !o || o.received < p.qty; });
+  const waiting = buying.filter(p => {
+    const o = p.purchaseItemId ? orders[p.purchaseItemId] : undefined;
+    return !o || o.received < p.qty;
+  });
   const bits: string[] = [];
   if (done > 0) bits.push(`${done} delivered`);
   if (waiting.length) {
     // Show the earliest stage among the parts that are still on their way.
-    const stage = (p: typeof waiting[number]) => {
+    const stage = (p: (typeof waiting)[number]) => {
       const o = p.purchaseItemId ? orders[p.purchaseItemId] : undefined;
       if (!o) return 0;
-      return ({ draft: 1, rejected: 1, pending: 2, approved: 3, ordered: 4, partial: 4 } as Record<string, number>)[o.poStatus] ?? 1;
+      return (
+        ({ draft: 1, rejected: 1, pending: 2, approved: 3, ordered: 4, partial: 4 } as Record<string, number>)[
+          o.poStatus
+        ] ?? 1
+      );
     };
     const first = waiting.reduce((m, p) => (stage(p) < stage(m) ? p : m), waiting[0]);
     const o = first.purchaseItemId ? orders[first.purchaseItemId] : undefined;
-    const exp = waiting.map(p => (p.purchaseItemId ? orders[p.purchaseItemId]?.expectedDate : null)).filter(Boolean).sort()[0];
-    bits.push(['To be purchased', 'Order being prepared', 'Order ready to place', 'Order approved', `Ordered${exp ? `, expected ${fmtDate(exp)}` : ''}`][stage(first)] + (o && o.poStatus === 'partial' ? ` (${o.received} of ${o.ordered} arrived)` : ''));
+    const exp = waiting
+      .map(p => (p.purchaseItemId ? orders[p.purchaseItemId]?.expectedDate : null))
+      .filter(Boolean)
+      .sort()[0];
+    bits.push(
+      [
+        'To be purchased',
+        'Order being prepared',
+        'Order ready to place',
+        'Order approved',
+        `Ordered${exp ? `, expected ${fmtDate(exp)}` : ''}`,
+      ][stage(first)] + (o && o.poStatus === 'partial' ? ` (${o.received} of ${o.ordered} arrived)` : ''),
+    );
   }
   const ready = parts.filter(p => p.status === 'planned' && !waiting.includes(p)).reduce((t, p) => t + p.qty, 0);
   if (ready > 0) bits.push(`${ready} ready in store`);
   return { text: bits.join(' · ') || 'Being arranged', tone: waiting.length ? 'warn' : 'mute' };
 };
-export const isOverdue = (r: Req) => !!r.neededBy && r.status === 'approved' && r.neededBy < new Date().toISOString().slice(0, 10);
-export const lineDone = (r: Req, i: ReqItem) => r.parts.filter(p => p.itemId === i.id && p.status === 'done').reduce((t, p) => t + p.qty, 0);
+export const isOverdue = (r: Req) =>
+  !!r.neededBy && r.status === 'approved' && r.neededBy < new Date().toISOString().slice(0, 10);
+export const lineDone = (r: Req, i: ReqItem) =>
+  r.parts.filter(p => p.itemId === i.id && p.status === 'done').reduce((t, p) => t + p.qty, 0);
 export const linePlanned = linePlannedQty;
-export const fmtDate = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
-export const fmtDateTime = (iso?: string | null) => iso ? new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+export const fmtDate = (iso?: string | null) =>
+  iso ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+export const fmtDateTime = (iso?: string | null) =>
+  iso
+    ? new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : '';

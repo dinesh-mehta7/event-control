@@ -1,7 +1,4 @@
-// All dates are handled in the viewer's LOCAL time as plain 'YYYY-MM-DD'
-// strings. (Using toISOString() would give the previous day for the first
-// 5.5 hours after midnight in India.)
-const pad = (n: number) => String(n).padStart(2, '0');
+import { pad } from '../../lib/format';
 
 export const toDateStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const todayStr = () => toDateStr(new Date());
@@ -14,7 +11,10 @@ export const shiftDate = (s: string, days: number) => {
 export const prettyDate = (s: string, withYear = false) => {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('en-IN', {
-    weekday: 'short', day: 'numeric', month: 'short', ...(withYear ? { year: 'numeric' } : {}),
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    ...(withYear ? { year: 'numeric' } : {}),
   });
 };
 

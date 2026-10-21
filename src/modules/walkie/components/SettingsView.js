@@ -13,10 +13,13 @@ export default function SettingsView() {
 
   const handleCopyJoinCode = () => {
     if (!currentOrganization?.joinCode) return;
-    navigator.clipboard.writeText(currentOrganization.joinCode).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch(() => addToast('Could not copy — select and copy the code manually.', 'error'));
+    navigator.clipboard
+      .writeText(currentOrganization.joinCode)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => addToast('Could not copy — select and copy the code manually.', 'error'));
   };
 
   const handleRegenerateJoinCode = () => {
@@ -40,16 +43,22 @@ export default function SettingsView() {
         <p className="text-sm text-slate-500 dark:text-slate-400">The people who can use this workspace.</p>
       </div>
       {currentOrganization && (
-        <div className={`p-6 rounded-xl border relative ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+        <div
+          className={`p-6 rounded-xl border relative ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}
+        >
           <h3 className="font-bold text-lg mb-1 flex items-center gap-2">
             <Users className="w-5 h-5 text-blue-500" />
             Join Code
           </h3>
           <p className="text-xs text-slate-400 mb-4">
-            {currentOrganization.name} is its own isolated organization — its data never mixes with any other organization. Share this code with people who should be able to request access; approve each of them below before they can sign in.
+            {currentOrganization.name} is its own isolated organization — its data never mixes with any other
+            organization. Share this code with people who should be able to request access; approve each of them below
+            before they can sign in.
           </p>
           <div className="flex flex-wrap items-center gap-3">
-            <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+            <div
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}
+            >
               <span className="text-lg font-mono font-bold tracking-[0.2em]">{currentOrganization.joinCode}</span>
             </div>
             <button

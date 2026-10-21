@@ -31,15 +31,32 @@ export interface Member {
   department: string; // sub-department id or ''
   roomId: string | null;
   memberType: 'salary_based' | 'monthly' | 'annual';
-  serialNo: string; batchNo: string; relation: string; relationName: string; mobile: string;
-  villageCity: string; branch: string; occupation: string; remarks: string; joiningDate: string;
-  employeeCode: string; employeeId: string; address: string; address2: string;
-  callCount: number; lastCallOutcome: string; lastCallAt: string;
-  expectedArrival: string; arrivalStatus: 'pending' | 'arrived' | 'not_coming'; arrivedAt: string;
-  teamName: string; teamLead: string;
+  serialNo: string;
+  batchNo: string;
+  relation: string;
+  relationName: string;
+  mobile: string;
+  villageCity: string;
+  branch: string;
+  occupation: string;
+  remarks: string;
+  joiningDate: string;
+  employeeCode: string;
+  employeeId: string;
+  address: string;
+  address2: string;
+  callCount: number;
+  lastCallOutcome: string;
+  lastCallAt: string;
+  expectedArrival: string;
+  arrivalStatus: 'pending' | 'arrived' | 'not_coming';
+  arrivedAt: string;
+  teamName: string;
+  teamLead: string;
 }
 
-export type MemberImportRow = Partial<Omit<Member, 'id' | 'roomId'>> & Pick<Member, 'name'> & { roomId?: string | null };
+export type MemberImportRow = Partial<Omit<Member, 'id' | 'roomId'>> &
+  Pick<Member, 'name'> & { roomId?: string | null };
 
 export interface MealRow {
   id: string;
@@ -70,7 +87,13 @@ export const MEAL_PRESETS: { key: MealKey; label: string; start: string; end: st
   { key: 'snacks', label: 'Snacks', start: '17:30', end: '18:30' },
   { key: 'dinner', label: 'Dinner', start: '19:30', end: '21:30' },
 ];
-export const mealSlug = (label: string) => label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+export const mealSlug = (label: string) =>
+  label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40);
 
 export const STATUS_STEPS: { key: MealStatus; label: string; short: string }[] = [
   { key: 'scheduled', label: 'Not started', short: 'Scheduled' },
@@ -80,7 +103,13 @@ export const STATUS_STEPS: { key: MealStatus; label: string; short: string }[] =
 ];
 
 export const DEPT_OPTIONS: [string, string][] = [
-  ['cctv', 'CCTV'], ['wifi', 'WiFi'], ['walkie', 'Walkie-Talkie'], ['control', 'Control Rooms'],
-  ['inventory', 'Inventory'], ['purchase', 'Purchase'], ['accommodation', 'Accommodation'], ['sewadars', 'Sewadars'],
+  ['cctv', 'CCTV'],
+  ['wifi', 'WiFi'],
+  ['walkie', 'Walkie-Talkie'],
+  ['control', 'Control Rooms'],
+  ['inventory', 'Inventory'],
+  ['purchase', 'Purchase'],
+  ['accommodation', 'Accommodation'],
+  ['sewadars', 'Sewadars'],
 ];
 export const DEPT_LABEL: Record<string, string> = Object.fromEntries(DEPT_OPTIONS);

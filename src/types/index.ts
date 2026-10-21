@@ -1,4 +1,4 @@
-export type SubDepartmentId = 
+export type SubDepartmentId =
   | 'cctv'
   | 'wifi'
   | 'walkie'
@@ -9,22 +9,14 @@ export type SubDepartmentId =
   | 'accommodation'
   | 'sewadars';
 
-export type UserRole = 
-  | 'owner'               // Super Admin
-  | 'dept_head'           // Department Head
-  | 'sub_dept_head'       // Sub-Department Head
-  | 'staff'               // Sub-department staff/operator
-  | 'volunteer';          // Guest / Unassigned
+export type UserRole =
+  | 'owner' // Super Admin
+  | 'dept_head' // Department Head
+  | 'sub_dept_head' // Sub-Department Head
+  | 'staff' // Sub-department staff/operator
+  | 'volunteer'; // Guest / Unassigned
 
-export type PermissionKey = 
-  | 'view'
-  | 'create'
-  | 'edit'
-  | 'delete'
-  | 'approve'
-  | 'assign'
-  | 'export'
-  | 'manage_users';
+export type PermissionKey = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'assign' | 'export' | 'manage_users';
 
 export interface UserProfile {
   id: string;

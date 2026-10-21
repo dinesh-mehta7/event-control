@@ -48,7 +48,14 @@ export interface Sewadar {
   lastCallBy: string;
 }
 
-export interface CallLog { id: string; sewadarId: string; outcome: CallOutcome; note: string; calledBy: string; calledAt: string }
+export interface CallLog {
+  id: string;
+  sewadarId: string;
+  outcome: CallOutcome;
+  note: string;
+  calledBy: string;
+  calledAt: string;
+}
 
 export const OUTCOMES: { key: CallOutcome; label: string; tone: 'ok' | 'warn' | 'bad' | 'mute' }[] = [
   { key: 'coming', label: 'Answered · Coming', tone: 'ok' },
@@ -59,8 +66,12 @@ export const OUTCOMES: { key: CallOutcome; label: string; tone: 'ok' | 'warn' | 
   { key: 'off', label: 'Switched off / unreachable', tone: 'mute' },
   { key: 'wrong', label: 'Wrong number', tone: 'bad' },
 ];
-export const OUTCOME_LABEL: Record<CallOutcome, string> = Object.fromEntries(OUTCOMES.map(o => [o.key, o.label])) as any;
-export const OUTCOME_TONE: Record<CallOutcome, 'ok' | 'warn' | 'bad' | 'mute'> = Object.fromEntries(OUTCOMES.map(o => [o.key, o.tone])) as any;
+export const OUTCOME_LABEL: Record<CallOutcome, string> = Object.fromEntries(
+  OUTCOMES.map(o => [o.key, o.label]),
+) as any;
+export const OUTCOME_TONE: Record<CallOutcome, 'ok' | 'warn' | 'bad' | 'mute'> = Object.fromEntries(
+  OUTCOMES.map(o => [o.key, o.tone]),
+) as any;
 
 export const DEVICES: { key: DeviceType; label: string }[] = [
   { key: 'none', label: 'No device' },
