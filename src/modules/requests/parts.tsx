@@ -9,6 +9,15 @@ export const StatusBadge: React.FC<{ status: ReqStatus; closed?: boolean }> = ({
 );
 export const UrgentBadge: React.FC = () => <Pill c="bg-red-500/15 text-red-300">Urgent</Pill>;
 
+// Approved by the Super Admin: the request was escalated, not sent back after its last escalation, and is now
+// approved (the approval text is the same whoever approves, so it cannot be used to tell them apart).
+export const approvedBySuperAdmin = (r: Pick<Req, 'status'> & Partial<Pick<Req, 'events'>>) => {
+  if (!['approved', 'fulfilled'].includes(r.status)) return false;
+  const events = [...(r.events || [])].sort((a, b) => a.at.localeCompare(b.at));
+  const lastEscalation = events.map(e => e.kind).lastIndexOf('escalated');
+  return lastEscalation >= 0 && !events.slice(lastEscalation + 1).some(e => e.kind === 'sent_back');
+};
+
 // The Department Head's review includes the arrangement, so there is no separate Arranged step.
 export const Stepper: React.FC<{
   r: Pick<Req, 'status' | 'items' | 'parts'> & Partial<Req>;
@@ -16,7 +25,7 @@ export const Stepper: React.FC<{
 }> = ({ r, orders }) => {
   const dead = r.status === 'rejected' || r.status === 'cancelled';
   const hasEscalation = r.status === 'pending_owner' || !!r.events?.some(e => e.kind === 'escalated');
-  const superApproved = !!r.events?.some(e => e.kind === 'approved' && e.text.toLowerCase().includes('super admin'));
+  const superApproved = approvedBySuperAdmin(r);
   const purchaseParts = r.parts.filter(part => part.source === 'purchase');
   const hasPurchase = purchaseParts.length > 0;
   const ordered =

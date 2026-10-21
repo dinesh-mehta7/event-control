@@ -7,7 +7,7 @@ import { DEPTS } from '../../views/orgData';
 import { useRequests } from './RequestsContext';
 import { NewRequest } from './NewRequest';
 import { RequestDetail } from './RequestDetail';
-import { StatusBadge, UrgentBadge } from './parts';
+import { StatusBadge, UrgentBadge, approvedBySuperAdmin } from './parts';
 import { exportRequestsXlsx } from './exportXlsx';
 import { fmtDate, isOverdue } from './types';
 import type { NewLine, Req } from './types';
@@ -21,7 +21,7 @@ const Row: React.FC<{ r: Req }> = ({ r }) => {
     ? r.items.reduce((sum, i) => sum + (i.budgetAmount || 0), 0) + r.miscBudget
     : null;
   const escalated = r.events.some(e => e.kind === 'escalated');
-  const superApproved = r.events.some(e => e.kind === 'approved' && e.text.toLowerCase().includes('super admin'));
+  const superApproved = approvedBySuperAdmin(r);
   const chain = [
     {
       label: 'Dept Head',
