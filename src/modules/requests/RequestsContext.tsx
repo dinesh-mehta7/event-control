@@ -5,6 +5,7 @@ import type { SubDepartmentId } from '../../types';
 import { lineRemainingToAllocate } from './types';
 import type { CatalogueItem, NewRequest, OrderInfo, PlanPart, Req, ReqStatus } from './types';
 import { dbMessage, fetchAll, mapEvent, mapItem, mapPart } from './mappers';
+import { itDepartmentOf } from '../../views/orgData';
 
 export interface Availability {
   inStock: number;
@@ -256,9 +257,12 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [isOwner, level, team],
   );
   // A Department Head reviews only requests sent to their own department (old requests without one: any head).
+  // A Department Head decides only requests made TO their department. Requests from before departments
+  // existed have none and belong to the IT department (same as the database guard).
+  const itDepartmentId = itDepartmentOf(walkieDepartments)?.id || '';
   const isMyDepartment = useCallback(
-    (r: Req) => level === 'dept_head' && (!r.departmentId || r.departmentId === departmentId),
-    [level, departmentId],
+    (r: Req) => level === 'dept_head' && !!departmentId && (r.departmentId || itDepartmentId) === departmentId,
+    [level, departmentId, itDepartmentId],
   );
   const canReviewIt = useCallback((r: Req) => r.status === 'pending_it' && isMyDepartment(r), [isMyDepartment]);
   const canAssignDelivery = useCallback((r: Req) => r.status === 'approved' && isMyDepartment(r), [isMyDepartment]);
