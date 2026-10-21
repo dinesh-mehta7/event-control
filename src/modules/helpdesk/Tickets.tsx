@@ -205,7 +205,7 @@ export const TicketsView: React.FC<{
           </div>
 
           {picked.length > 0 && (
-            <div className="animate-calm-enter flex flex-wrap items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs">
               <ListChecks className="h-4 w-4 text-blue-300" />
               <b className="text-ink">{picked.length} selected</b>
               <select

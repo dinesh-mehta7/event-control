@@ -318,7 +318,7 @@ export const Home: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <section aria-label="Department status" className="stagger grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+      <section aria-label="Department status" className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         {keys.map(k => {
           const [main, sub, bad] = cards[k];
           const I = ICONS[k];

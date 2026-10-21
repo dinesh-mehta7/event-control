@@ -74,7 +74,7 @@ export const OverviewView: React.FC<{ hd: Helpdesk; go: (v: SavedView) => void; 
   }, [hd.orgId, latest]);
   return (
     <div className="space-y-4">
-      <div className="stagger grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <StatCard label="Open" value={openT.length} tone="info" onClick={() => go('open')} />
         <StatCard
           label="Unassigned"
@@ -299,7 +299,7 @@ export const ReportsView: React.FC<{ hd: Helpdesk }> = ({ hd }) => {
           </button>
         </div>
       </div>
-      <div className="stagger grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <StatCard label="Tickets created" value={rows.length} />
         <StatCard label="Closed" value={closed.length} tone="ok" />
         <StatCard

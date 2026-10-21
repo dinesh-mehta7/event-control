@@ -1315,7 +1315,7 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
       {error && (
         <div
           role="alert"
-          className="animate-calm-enter flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300"
         >
           <span>{error}</span>
           {orgId && !loading && (
@@ -1452,10 +1452,7 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
                 </div>
               </section>
               {showCreate && (
-                <form
-                  onSubmit={createEvent}
-                  className={`animate-calm-enter ${panel} grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4`}
-                >
+                <form onSubmit={createEvent} className={`${panel} grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4`}>
                   <label className="text-xs text-mute">
                     Event name
                     <input
@@ -1853,10 +1850,7 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
                                   <span>Sub-department</span>
                                   <span className="text-center">Needed</span>
                                 </div>
-                                <div
-                                  key={staffingSelectedDate}
-                                  className="animate-calm-enter grid gap-1.5 sm:grid-cols-2"
-                                >
+                                <div key={staffingSelectedDate} className="grid gap-1.5 sm:grid-cols-2">
                                   {staffingCategories.map(([id, label]) => {
                                     const row = dateRows.find(item => staffingCategoryKey(item.category) === id);
                                     const key = `${staffingSelectedDate}:${id}`;

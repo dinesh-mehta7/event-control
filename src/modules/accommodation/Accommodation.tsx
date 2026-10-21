@@ -14,10 +14,7 @@ export const Accommodation: React.FC = () => {
   return (
     <div className="space-y-3">
       {loadError && (
-        <div
-          role="alert"
-          className="animate-calm-enter rounded-md border border-rose-500/40 bg-rose-500/10 text-rose-500 text-sm p-3"
-        >
+        <div role="alert" className="rounded-md border border-rose-500/40 bg-rose-500/10 text-rose-500 text-sm p-3">
           Could not load Accommodation data: {loadError}
         </div>
       )}
