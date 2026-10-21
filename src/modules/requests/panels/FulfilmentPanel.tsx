@@ -388,7 +388,7 @@ export const FulfilmentPanel: React.FC<{ r: Req }> = ({ r }) => {
   const {
     canArrange,
     canDecideArrangement,
-    canOrder,
+    canOrderFor,
     canConfirm,
     loadAvailability,
     createPO,
@@ -454,7 +454,7 @@ export const FulfilmentPanel: React.FC<{ r: Req }> = ({ r }) => {
       tone="text-emerald-300"
       action={
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {needsPO && canOrder && (
+          {needsPO && canOrderFor(r) && (
             <button className={btnPrimary} disabled={busy} onClick={mkPO}>
               <ShoppingCart size={14} />
               {busy ? 'Creating…' : 'Create purchase order'}

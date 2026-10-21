@@ -36,6 +36,8 @@ interface Ctx {
   canArrange: (kind: 'item' | 'radio') => boolean;
   canDecideArrangement: boolean;
   canOrder: boolean;
+  // May create the purchase order for THIS request: only the department that approved it (or the Super Admin).
+  canOrderFor: (r: Req) => boolean;
   canConfirm: (r: Req) => boolean;
   // queues (drive the badges)
   waitingForMe: Req[];
@@ -277,6 +279,10 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   );
   const canDecideArrangement = isExec;
   const canOrder = isExec || team === 'purchase';
+  const canOrderFor = useCallback(
+    (r: Req) => isOwner || (canOrder && !!departmentId && (r.departmentId || itDepartmentId) === departmentId),
+    [isOwner, canOrder, departmentId, itDepartmentId],
+  );
   const canConfirm = useCallback(
     (r: Req) => r.status === 'fulfilled' && !r.confirmedAt && (r.requesterId === uid || isExec),
     [uid, isExec],
@@ -466,6 +472,7 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       canArrange,
       canDecideArrangement,
       canOrder,
+      canOrderFor,
       canConfirm,
       waitingForMe,
       toArrange,
@@ -500,6 +507,7 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       canArrange,
       canDecideArrangement,
       canOrder,
+      canOrderFor,
       canConfirm,
       waitingForMe,
       toArrange,
