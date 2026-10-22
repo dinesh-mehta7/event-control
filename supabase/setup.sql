@@ -8224,3 +8224,3198 @@ for each row execute function public.sync_manpower_task_team_link();
 
 notify pgrst, 'reload schema';
 -- <<< END supabase/migration_v84_task_team_links.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v84_task_team_links.sql >>>
+-- Persist task-to-team assignment as a real team relation while keeping the
+-- legacy team label readable by older clients.
+alter table public.manpower_tasks
+  add column if not exists team_id text;
+
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.manpower_tasks'::regclass
+      and conname = 'manpower_tasks_team_id_fkey'
+  ) then
+    alter table public.manpower_tasks
+      add constraint manpower_tasks_team_id_fkey
+      foreign key (team_id) references public.manpower_teams(id) on delete set null;
+  end if;
+end $$;
+
+create index if not exists manpower_tasks_team_id_idx
+  on public.manpower_tasks (organization_id, team_id)
+  where team_id is not null;
+
+-- This is a controlled schema backfill; the app's row-level task guard should
+-- not block linking legacy assignments owned by other users.
+do $$ begin
+  execute 'alter table public.manpower_tasks disable trigger manpower_tasks_guard';
+  begin
+    update public.manpower_tasks task
+    set team_id = team.id,
+        team = team.name
+    from public.manpower_teams team
+    where task.organization_id = team.organization_id
+      and task.team_id is null
+      and lower(trim(coalesce(task.team, ''))) = lower(trim(team.name));
+  exception when others then
+    execute 'alter table public.manpower_tasks enable trigger manpower_tasks_guard';
+    raise;
+  end;
+  execute 'alter table public.manpower_tasks enable trigger manpower_tasks_guard';
+end $$;
+
+create or replace function public.sync_manpower_task_team_link()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare linked_id text; linked_name text;
+begin
+  if new.team_id is not null then
+    select team.id, team.name into linked_id, linked_name
+    from public.manpower_teams team
+    where team.id = new.team_id and team.organization_id = new.organization_id;
+    if linked_id is null then
+      raise exception 'Choose a team from this organization.';
+    end if;
+    new.team_id := linked_id;
+    new.team := linked_name;
+  elsif coalesce(trim(new.team), '') <> '' then
+    select team.id, team.name into linked_id, linked_name
+    from public.manpower_teams team
+    where team.organization_id = new.organization_id
+      and lower(trim(team.name)) = lower(trim(new.team))
+    limit 1;
+    if linked_id is not null then
+      new.team_id := linked_id;
+      new.team := linked_name;
+    end if;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists manpower_tasks_sync_team_link on public.manpower_tasks;
+create trigger manpower_tasks_sync_team_link
+before insert or update on public.manpower_tasks
+for each row execute function public.sync_manpower_task_team_link();
+
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v84_task_team_links.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v85_task_resource_reservations.sql >>>
+-- Task resources reserve stock when they are allocated, not only when the team leader confirms receipt.
+-- Available to issue = in store − reserved for approved requests − allocated to tasks but not yet received.
+-- Run after migration_v83.
+
+-- 1. Reservation helpers ------------------------------------------------------------------
+create or replace function public._inv_reserved_requests(p_item_id text)
+returns integer language sql stable security definer set search_path = public as $$
+  select coalesce(sum(case when f.source = 'inventory' then f.qty else least(f.qty, coalesce(pi.qty_received, 0)) end), 0)::integer
+  from public.request_fulfilments f left join public.purchase_items pi on pi.id = f.purchase_item_id
+  where f.status = 'planned' and f.inventory_item_id = p_item_id;
+$$;
+
+create or replace function public._inv_reserved_tasks(p_item_id text, p_exclude_resource text default null)
+returns integer language sql stable security definer set search_path = public as $$
+  select coalesce(sum(qty), 0)::integer from public.manpower_task_resources
+  where item_id = p_item_id and received_at is null and id is distinct from p_exclude_resource;
+$$;
+revoke all on function public._inv_reserved_requests(text) from public, anon, authenticated;
+revoke all on function public._inv_reserved_tasks(text, text) from public, anon, authenticated;
+
+-- 2. What can be issued for every item in the caller's organization (used by the allocate picker).
+create or replace function public.inventory_availability()
+returns table (item_id text, in_stock integer, reserved_requests integer, reserved_tasks integer, available integer)
+language sql stable security definer set search_path = public as $$
+  select i.id, i.in_stock, x.req, x.tsk, greatest(i.in_stock - x.req - x.tsk, 0)
+  from public.inventory_items i
+  cross join lateral (select public._inv_reserved_requests(i.id) as req, public._inv_reserved_tasks(i.id) as tsk) x
+  where i.organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved();
+$$;
+revoke all on function public.inventory_availability() from public, anon;
+grant execute on function public.inventory_availability() to authenticated;
+
+-- 3. Direct issues cannot take stock reserved by requests or by other task allocations ---------
+create or replace function public.inventory_reserve_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare stock integer; req integer; tsk integer; avail integer;
+begin
+  if new.type <> 'issue' then return new; end if;
+  if coalesce(current_setting('app.request_issue', true), '') = '1' then return new; end if;
+  select in_stock into stock from public.inventory_items where id = new.item_id;
+  if stock is null then return new; end if;
+  req := public._inv_reserved_requests(new.item_id);
+  -- A task receipt issues its own allocation, so that allocation is not counted against it.
+  tsk := public._inv_reserved_tasks(new.item_id, nullif(current_setting('app.task_resource', true), ''));
+  avail := stock - req - tsk;
+  if new.qty > avail then
+    raise exception 'Only % can be issued right now (% in store, % reserved for approved requests, % allocated to other tasks).',
+      greatest(avail, 0), stock, req, tsk;
+  end if;
+  return new;
+end $$;
+-- (Re)attach the guard so this migration stands on its own. The a0_ name keeps it firing BEFORE the
+-- ledger trigger (inventory_apply_movement): same-kind triggers run in name order.
+drop trigger if exists inventory_a0_reserve_guard on public.inventory_movements;
+create trigger inventory_a0_reserve_guard before insert on public.inventory_movements
+  for each row execute function public.inventory_reserve_guard();
+
+-- 4. Allocate: same rules as v83, plus a stock check that holds the item row while it reserves.
+create or replace function public.manpower_task_add_resource(p_task_id text, p_item_id text, p_location text, p_qty integer)
+returns text language plpgsql security definer set search_path = public as $$
+declare t public.manpower_tasks%rowtype; lead_name text; it public.inventory_items%rowtype; location_org text; new_id text; req integer; tsk integer; avail integer;
+begin
+  if not public.can_manage_manpower() then raise exception 'You cannot allocate task resources.'; end if;
+  if p_qty is null or p_qty < 1 then raise exception 'Enter a positive whole-number quantity.'; end if;
+  select * into t from public.manpower_tasks where id=p_task_id and organization_id=public.current_organization_id() for update;
+  if not found then raise exception 'Task not found.'; end if;
+  if t.status='complete' then raise exception 'Resources cannot be added after the task is complete.'; end if;
+  select lead into lead_name from public.manpower_teams where organization_id=t.organization_id and lower(trim(name))=lower(trim(t.team));
+  if coalesce(trim(lead_name),'')='' then
+    select m.name into lead_name
+    from public.manpower_task_members tm join public.accommodation_members m on m.id=tm.member_id
+    where tm.organization_id=t.organization_id and tm.task_id=t.id
+    order by tm.created_at asc limit 1;
+  end if;
+  lead_name := coalesce(nullif(trim(lead_name),''), nullif(trim(t.assigned_to),''));
+  if coalesce(trim(lead_name),'')='' then raise exception 'Assign a team lead, Sewadar, or task owner before allocating resources.'; end if;
+  select * into it from public.inventory_items where id=p_item_id for update;
+  if not found or it.organization_id is distinct from t.organization_id then raise exception 'Choose an inventory item from this organization.'; end if;
+  select organization_id into location_org from public.inventory_locations where id=p_location;
+  if location_org is distinct from t.organization_id then raise exception 'Choose a valid inventory location.'; end if;
+  req := public._inv_reserved_requests(it.id);
+  tsk := public._inv_reserved_tasks(it.id);
+  avail := it.in_stock - req - tsk;
+  if p_qty > avail then
+    raise exception 'Only % % of % available (% in store, % reserved for approved requests, % allocated to other tasks).',
+      greatest(avail, 0), it.unit, it.name, it.in_stock, req, tsk;
+  end if;
+  new_id := 'task-resource-' || gen_random_uuid()::text;
+  insert into public.manpower_task_resources(id,organization_id,task_id,item_id,location,qty,team_leader,created_by)
+  values(new_id,t.organization_id,t.id,p_item_id,p_location,p_qty,lead_name,auth.uid());
+  return new_id;
+end $$;
+
+-- 5. Receipt: same as v67, but tells the guard which allocation is being issued.
+create or replace function public.manpower_task_receive_resource(p_resource_id text)
+returns void language plpgsql security definer set search_path = public as $$
+declare r public.manpower_task_resources%rowtype; t public.manpower_tasks%rowtype; actor_name text; item_name text;
+begin
+  select name into actor_name from public.profiles where id = auth.uid();
+  select * into r from public.manpower_task_resources where id = p_resource_id and organization_id = public.current_organization_id() for update;
+  if not found then raise exception 'Task resource allocation not found.'; end if;
+  if not public.can_manage_manpower() and lower(trim(coalesce(actor_name,''))) <> lower(trim(r.team_leader)) then raise exception 'Only the assigned team leader can confirm receipt.'; end if;
+  select * into t from public.manpower_tasks where id = r.task_id and organization_id = r.organization_id for update;
+  if t.status = 'complete' then raise exception 'The task is already complete.'; end if;
+  if r.received_at is not null then raise exception 'Receipt has already been recorded.'; end if;
+  select name into item_name from public.inventory_items where id = r.item_id;
+  perform set_config('app.task_resource', r.id, true);
+  insert into public.inventory_movements(id, organization_id, item_id, type, qty, location, given_by, received_by, ref, note, done_by)
+    values ('task-issue-' || gen_random_uuid()::text, r.organization_id, r.item_id, 'issue', r.qty, r.location, coalesce(actor_name,'Team'), r.team_leader, t.id, 'Task resource: ' || coalesce(item_name,'item'), coalesce(actor_name,'System'));
+  perform set_config('app.task_resource', '', true);
+  update public.manpower_task_resources set received_by = r.team_leader, received_at = now() where id = r.id;
+end $$;
+
+-- 6. Allocations that were never received can be cancelled, which releases their reservation.
+create or replace function public.manpower_task_cancel_resource(p_resource_id text)
+returns void language plpgsql security definer set search_path = public as $$
+declare r public.manpower_task_resources%rowtype;
+begin
+  if not public.can_manage_manpower() then raise exception 'You cannot change task resources.'; end if;
+  select * into r from public.manpower_task_resources where id = p_resource_id and organization_id = public.current_organization_id() for update;
+  if not found then raise exception 'Task resource allocation not found.'; end if;
+  if r.received_at is not null then raise exception 'Already received. Record a return instead.'; end if;
+  delete from public.manpower_task_resources where id = r.id;
+end $$;
+
+revoke all on function public.manpower_task_add_resource(text,text,text,integer) from public;
+revoke all on function public.manpower_task_receive_resource(text) from public;
+revoke all on function public.manpower_task_cancel_resource(text) from public;
+grant execute on function public.manpower_task_add_resource(text,text,text,integer) to authenticated;
+grant execute on function public.manpower_task_receive_resource(text) to authenticated;
+grant execute on function public.manpower_task_cancel_resource(text) to authenticated;
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v85_task_resource_reservations.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v86_duties_and_shifts.sql >>>
+-- Duties & Shifts: date-wise shift assignments for arrived members of every department.
+-- CCTV members keep using cctv_control_room_duties (one shared roster with CCTV Control Room);
+-- every other department is stored here with the same shift keys (morning / noon / evening / night / special-HHMM-HHMM).
+-- Run after migration_v85.
+
+create table if not exists public.sewa_duty_shifts (
+  id text primary key,
+  organization_id text not null references public.organizations(id) on delete cascade,
+  event_id text references public.event_plans(id) on delete cascade,
+  event_scope_key text not null default 'normal',
+  member_id text not null references public.accommodation_members(id) on delete cascade,
+  member_name text not null,
+  department text not null default '',
+  shift_date date not null,
+  shift_key text not null,
+  shift_label text not null default '',
+  shift_start time,
+  shift_end time,
+  location text not null default '',
+  assigned_by text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check ((event_id is null and event_scope_key = 'normal') or event_scope_key = event_id)
+);
+create unique index if not exists sewa_duty_shifts_member_once_idx
+  on public.sewa_duty_shifts (organization_id, event_scope_key, shift_date, shift_key, member_id);
+create index if not exists sewa_duty_shifts_scope_idx
+  on public.sewa_duty_shifts (organization_id, event_scope_key, shift_date);
+
+alter table public.sewa_duty_shifts enable row level security;
+drop policy if exists sewa_duty_shifts_read on public.sewa_duty_shifts;
+create policy sewa_duty_shifts_read on public.sewa_duty_shifts for select using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+);
+drop policy if exists sewa_duty_shifts_manage on public.sewa_duty_shifts;
+create policy sewa_duty_shifts_manage on public.sewa_duty_shifts for all using (
+  organization_id = public.current_organization_id() and public.can_manage_manpower()
+) with check (
+  organization_id = public.current_organization_id() and public.can_manage_manpower()
+);
+
+-- Volunteer managers may also plan CCTV duties from Duties & Shifts (CCTV staff keep their existing rights).
+drop policy if exists cctv_control_room_duties_insert on public.cctv_control_room_duties;
+create policy cctv_control_room_duties_insert on public.cctv_control_room_duties for insert with check (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.can_manage_manpower() or exists (select 1 from public.profiles p where p.id = auth.uid() and (
+    p.level in ('owner','dept_head') or p.sub_department in ('cctv','control')
+  )))
+);
+drop policy if exists cctv_control_room_duties_update on public.cctv_control_room_duties;
+create policy cctv_control_room_duties_update on public.cctv_control_room_duties for update using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.can_manage_manpower() or exists (select 1 from public.profiles p where p.id = auth.uid() and (
+    p.level in ('owner','dept_head') or p.sub_department in ('cctv','control')
+  )))
+) with check (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.can_manage_manpower() or exists (select 1 from public.profiles p where p.id = auth.uid() and (
+    p.level in ('owner','dept_head') or p.sub_department in ('cctv','control')
+  )))
+);
+drop policy if exists cctv_control_room_duties_delete on public.cctv_control_room_duties;
+create policy cctv_control_room_duties_delete on public.cctv_control_room_duties for delete using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.can_manage_manpower() or exists (select 1 from public.profiles p where p.id = auth.uid() and (
+    p.level in ('owner','dept_head') or (p.level = 'sub_dept_head' and p.sub_department in ('cctv','control'))
+  )))
+);
+
+do $$ begin
+  begin execute 'alter publication supabase_realtime add table public.sewa_duty_shifts';
+  exception when duplicate_object then null; end;
+end $$;
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v86_duties_and_shifts.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v87_helpdesk.sql >>>
+-- Helpdesk (Spiceworks-style): tickets, conversation (public replies, internal notes, change log),
+-- SLA due times, technicians, categories and canned replies. Run after migration_v86.
+
+-- Settings: one row per organization ---------------------------------------------------------------
+create table if not exists public.helpdesk_settings (
+  organization_id text primary key references public.organizations(id) on delete cascade,
+  sla_hours jsonb not null default '{"critical":4,"high":8,"medium":24,"low":72}',
+  categories text[] not null default array['Hardware','Software','Network / WiFi','CCTV','Walkie-Talkie','Access / Accounts','Printer','Other'],
+  technician_ids uuid[] not null default '{}',
+  next_number integer not null default 1001,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.helpdesk_tickets (
+  id uuid primary key default gen_random_uuid(),
+  organization_id text not null references public.organizations(id) on delete cascade,
+  number integer not null,
+  subject text not null check (length(trim(subject)) > 0),
+  description text not null default '',
+  status text not null default 'open' check (status in ('open','in_progress','waiting','closed')),
+  priority text not null default 'medium' check (priority in ('critical','high','medium','low')),
+  category text not null default 'Other',
+  department text not null default '',
+  location text not null default '',
+  requester_id uuid references public.profiles(id) on delete set null,
+  requester_name text not null default '',
+  requester_email text not null default '',
+  assignee_id uuid references public.profiles(id) on delete set null,
+  assignee_name text not null default '',
+  due_at timestamptz,
+  resolution text not null default '',
+  first_response_at timestamptz,
+  closed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (organization_id, number)
+);
+create index if not exists helpdesk_tickets_org_status_idx on public.helpdesk_tickets (organization_id, status, created_at desc);
+create index if not exists helpdesk_tickets_requester_idx on public.helpdesk_tickets (requester_id, created_at desc);
+
+create table if not exists public.helpdesk_ticket_events (
+  id uuid primary key default gen_random_uuid(),
+  organization_id text not null references public.organizations(id) on delete cascade,
+  ticket_id uuid not null references public.helpdesk_tickets(id) on delete cascade,
+  kind text not null check (kind in ('reply','note','log')),
+  body text not null,
+  author_id uuid references public.profiles(id) on delete set null,
+  author_name text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists helpdesk_ticket_events_ticket_idx on public.helpdesk_ticket_events (ticket_id, created_at);
+
+create table if not exists public.helpdesk_canned_replies (
+  id uuid primary key default gen_random_uuid(),
+  organization_id text not null references public.organizations(id) on delete cascade,
+  title text not null check (length(trim(title)) > 0),
+  body text not null default '',
+  created_at timestamptz not null default now()
+);
+
+-- Helpers ------------------------------------------------------------------------------------------
+create or replace function public._helpdesk_settings(p_org text)
+returns public.helpdesk_settings language plpgsql security definer set search_path = public as $$
+declare s public.helpdesk_settings;
+begin
+  insert into public.helpdesk_settings (organization_id) values (p_org) on conflict (organization_id) do nothing;
+  select * into s from public.helpdesk_settings where organization_id = p_org;
+  return s;
+end $$;
+revoke all on function public._helpdesk_settings(text) from public, anon, authenticated;
+
+-- Technicians: owners, department heads, and anyone listed in Helpdesk settings.
+create or replace function public.helpdesk_is_agent()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((
+    select p.approved and p.is_active and (
+      p.level in ('owner','dept_head')
+      or exists (select 1 from public.helpdesk_settings s where s.organization_id = p.organization_id and p.id = any(s.technician_ids))
+    ) from public.profiles p where p.id = auth.uid()
+  ), false);
+$$;
+grant execute on function public.helpdesk_is_agent() to authenticated;
+
+create or replace function public._helpdesk_notify(p_user uuid, p_org text, p_title text, p_msg text, p_type text, p_ticket uuid)
+returns void language sql security definer set search_path = public as $$
+  insert into public.notifications (organization_id, user_id, title, message, type, link, ref_id)
+  select p_org, p_user, p_title, p_msg, p_type, 'helpdesk/ticket-' || p_ticket, p_ticket::text
+  where p_user is not null and p_user is distinct from auth.uid();
+$$;
+revoke all on function public._helpdesk_notify(uuid, text, text, text, text, uuid) from public, anon, authenticated;
+
+create or replace function public._helpdesk_log(p_ticket public.helpdesk_tickets, p_body text)
+returns void language sql security definer set search_path = public as $$
+  insert into public.helpdesk_ticket_events (organization_id, ticket_id, kind, body, author_id, author_name)
+  values (p_ticket.organization_id, p_ticket.id, 'log', p_body, auth.uid(), coalesce((select name from public.profiles where id = auth.uid()), 'System'));
+$$;
+revoke all on function public._helpdesk_log(public.helpdesk_tickets, text) from public, anon, authenticated;
+
+-- Number + SLA due time on create; closing rules and change log on update ---------------------------------
+create or replace function public.helpdesk_tickets_before()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare s public.helpdesk_settings; hrs numeric; v_num integer;
+begin
+  if tg_op = 'INSERT' then
+    s := public._helpdesk_settings(new.organization_id);
+    update public.helpdesk_settings set next_number = next_number + 1, updated_at = now() where organization_id = new.organization_id returning next_number - 1 into v_num;
+    new.number := v_num;
+    hrs := coalesce((s.sla_hours ->> new.priority)::numeric, 24);
+    new.due_at := coalesce(new.due_at, now() + make_interval(secs => hrs * 3600));
+    new.created_at := now(); new.updated_at := now();
+    if new.status = 'closed' then raise exception 'A new ticket cannot start closed.'; end if;
+    return new;
+  end if;
+  new.number := old.number; new.organization_id := old.organization_id; new.created_at := old.created_at;
+  new.requester_id := old.requester_id;
+  if new.status = 'closed' and old.status <> 'closed' then
+    if length(trim(new.resolution)) = 0 then raise exception 'Add a resolution before closing the ticket.'; end if;
+    new.closed_at := now();
+  elsif new.status <> 'closed' then
+    new.closed_at := null;
+  end if;
+  if new.assignee_id is distinct from old.assignee_id then
+    new.assignee_name := coalesce((select name from public.profiles where id = new.assignee_id), '');
+  end if;
+  -- A priority change re-plans the due time from the SLA (unless the due time was also edited).
+  if new.priority <> old.priority and new.due_at is not distinct from old.due_at then
+    s := public._helpdesk_settings(new.organization_id);
+    new.due_at := old.created_at + make_interval(secs => coalesce((s.sla_hours ->> new.priority)::numeric, 24) * 3600);
+  end if;
+  new.updated_at := now();
+  return new;
+end $$;
+drop trigger if exists helpdesk_tickets_before on public.helpdesk_tickets;
+create trigger helpdesk_tickets_before before insert or update on public.helpdesk_tickets
+  for each row execute function public.helpdesk_tickets_before();
+
+create or replace function public.helpdesk_tickets_after()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare s public.helpdesk_settings; t uuid; label text := '#' || new.number || ' ' || new.subject;
+begin
+  if tg_op = 'INSERT' then
+    perform public._helpdesk_log(new, 'Ticket created by ' || coalesce(nullif(new.requester_name, ''), 'requester'));
+    s := public._helpdesk_settings(new.organization_id);
+    for t in select p.id from public.profiles p where p.organization_id = new.organization_id and p.approved and p.is_active
+             and (p.level in ('owner','dept_head') or p.id = any(s.technician_ids)) loop
+      perform public._helpdesk_notify(t, new.organization_id, 'New helpdesk ticket', label, case when new.priority = 'critical' then 'critical' else 'info' end, new.id);
+    end loop;
+    return new;
+  end if;
+  if new.status <> old.status then
+    perform public._helpdesk_log(new, 'Status: ' || replace(old.status, '_', ' ') || ' → ' || replace(new.status, '_', ' '));
+    if new.status = 'closed' then
+      perform public._helpdesk_notify(new.requester_id, new.organization_id, 'Ticket closed', label || ' — ' || left(new.resolution, 140), 'info', new.id);
+    elsif old.status = 'closed' then
+      perform public._helpdesk_notify(new.assignee_id, new.organization_id, 'Ticket reopened', label, 'warning', new.id);
+    end if;
+  end if;
+  if new.priority <> old.priority then perform public._helpdesk_log(new, 'Priority: ' || old.priority || ' → ' || new.priority); end if;
+  if new.assignee_id is distinct from old.assignee_id then
+    perform public._helpdesk_log(new, case when new.assignee_id is null then 'Unassigned' else 'Assigned to ' || new.assignee_name end);
+    perform public._helpdesk_notify(new.assignee_id, new.organization_id, 'Ticket assigned to you', label, case when new.priority = 'critical' then 'critical' else 'info' end, new.id);
+  end if;
+  if new.category <> old.category then perform public._helpdesk_log(new, 'Category: ' || old.category || ' → ' || new.category); end if;
+  if new.department <> old.department then perform public._helpdesk_log(new, 'Department: ' || coalesce(nullif(old.department, ''), '—') || ' → ' || coalesce(nullif(new.department, ''), '—')); end if;
+  if new.location <> old.location then perform public._helpdesk_log(new, 'Location: ' || coalesce(nullif(old.location, ''), '—') || ' → ' || coalesce(nullif(new.location, ''), '—')); end if;
+  if new.due_at is distinct from old.due_at then perform public._helpdesk_log(new, 'Due time changed'); end if;
+  return new;
+end $$;
+drop trigger if exists helpdesk_tickets_after on public.helpdesk_tickets;
+create trigger helpdesk_tickets_after after insert or update on public.helpdesk_tickets
+  for each row execute function public.helpdesk_tickets_after();
+
+-- Submitting (anyone signed in) and conversation (requester replies; technicians reply / note) ---------------
+create or replace function public.helpdesk_submit(p_subject text, p_description text, p_category text, p_priority text, p_department text, p_location text, p_requester_name text default null, p_requester_email text default null)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare me public.profiles; v_id uuid; agent boolean := public.helpdesk_is_agent();
+begin
+  select * into me from public.profiles p where p.id = auth.uid();
+  if me.id is null or not me.approved or not me.is_active then raise exception 'Sign in with an approved account to raise a ticket.'; end if;
+  if coalesce(trim(p_subject), '') = '' then raise exception 'Add a short subject.'; end if;
+  insert into public.helpdesk_tickets (organization_id, subject, description, category, priority, department, location, requester_id, requester_name, requester_email)
+  values (me.organization_id, trim(p_subject), coalesce(p_description, ''), coalesce(nullif(trim(p_category), ''), 'Other'),
+          case when p_priority in ('critical','high','medium','low') then p_priority else 'medium' end,
+          coalesce(p_department, ''), coalesce(p_location, ''),
+          -- Technicians may log a ticket on someone's behalf; it stays theirs to track only if they are the requester.
+          case when agent and coalesce(trim(p_requester_name), '') <> '' then null else me.id end,
+          case when agent and coalesce(trim(p_requester_name), '') <> '' then trim(p_requester_name) else me.name end,
+          case when agent and coalesce(trim(p_requester_name), '') <> '' then coalesce(trim(p_requester_email), '') else coalesce(me.email, '') end)
+  returning helpdesk_tickets.id into v_id;
+  return v_id;
+end $$;
+grant execute on function public.helpdesk_submit(text, text, text, text, text, text, text, text) to authenticated;
+
+create or replace function public.helpdesk_post(p_ticket uuid, p_kind text, p_body text, p_reopen boolean default false)
+returns void language plpgsql security definer set search_path = public as $$
+declare t public.helpdesk_tickets; me public.profiles; agent boolean := public.helpdesk_is_agent();
+begin
+  select * into me from public.profiles p where p.id = auth.uid();
+  select * into t from public.helpdesk_tickets h where h.id = p_ticket and organization_id = me.organization_id for update;
+  if t.id is null then raise exception 'Ticket not found.'; end if;
+  if coalesce(trim(p_body), '') = '' then raise exception 'Write a message first.'; end if;
+  if not agent then
+    if t.requester_id is distinct from me.id then raise exception 'You can only reply to your own tickets.'; end if;
+    if p_kind <> 'reply' then raise exception 'Only technicians can add internal notes.'; end if;
+  elsif p_kind not in ('reply','note') then raise exception 'Unknown message type.';
+  end if;
+  insert into public.helpdesk_ticket_events (organization_id, ticket_id, kind, body, author_id, author_name)
+  values (t.organization_id, t.id, p_kind, trim(p_body), me.id, me.name);
+  if agent and p_kind = 'reply' and t.first_response_at is null then
+    update public.helpdesk_tickets set first_response_at = now() where id = t.id;
+  end if;
+  if agent and p_kind = 'reply' then
+    perform public._helpdesk_notify(t.requester_id, t.organization_id, 'Reply on your ticket', '#' || t.number || ' ' || t.subject, 'info', t.id);
+  elsif not agent then
+    perform public._helpdesk_notify(t.assignee_id, t.organization_id, 'Requester replied', '#' || t.number || ' ' || t.subject, 'info', t.id);
+    if p_reopen and t.status = 'closed' then
+      update public.helpdesk_tickets set status = 'open', resolution = '' where id = t.id;
+    elsif t.status = 'waiting' then
+      update public.helpdesk_tickets set status = 'open' where id = t.id;  -- answered: back in the queue
+    end if;
+  end if;
+end $$;
+grant execute on function public.helpdesk_post(uuid, text, text, boolean) to authenticated;
+
+-- Row level security ---------------------------------------------------------------------------------------
+alter table public.helpdesk_settings enable row level security;
+alter table public.helpdesk_tickets enable row level security;
+alter table public.helpdesk_ticket_events enable row level security;
+alter table public.helpdesk_canned_replies enable row level security;
+
+drop policy if exists helpdesk_settings_read on public.helpdesk_settings;
+create policy helpdesk_settings_read on public.helpdesk_settings for select using (organization_id = public.current_organization_id());
+drop policy if exists helpdesk_settings_write on public.helpdesk_settings;
+create policy helpdesk_settings_write on public.helpdesk_settings for all
+  using (organization_id = public.current_organization_id() and public.current_level() in ('owner','dept_head'))
+  with check (organization_id = public.current_organization_id() and public.current_level() in ('owner','dept_head'));
+
+drop policy if exists helpdesk_tickets_read on public.helpdesk_tickets;
+create policy helpdesk_tickets_read on public.helpdesk_tickets for select using (
+  organization_id = public.current_organization_id() and (public.helpdesk_is_agent() or requester_id = auth.uid())
+);
+drop policy if exists helpdesk_tickets_update on public.helpdesk_tickets;
+create policy helpdesk_tickets_update on public.helpdesk_tickets for update
+  using (organization_id = public.current_organization_id() and public.helpdesk_is_agent())
+  with check (organization_id = public.current_organization_id() and public.helpdesk_is_agent());
+drop policy if exists helpdesk_tickets_delete on public.helpdesk_tickets;
+create policy helpdesk_tickets_delete on public.helpdesk_tickets for delete
+  using (organization_id = public.current_organization_id() and public.helpdesk_is_agent());
+-- Tickets are created only through helpdesk_submit, so requester fields can be trusted.
+revoke insert on public.helpdesk_tickets from authenticated;
+
+drop policy if exists helpdesk_events_read on public.helpdesk_ticket_events;
+create policy helpdesk_events_read on public.helpdesk_ticket_events for select using (
+  organization_id = public.current_organization_id() and (
+    public.helpdesk_is_agent()
+    or (kind <> 'note' and exists (select 1 from public.helpdesk_tickets t where t.id = ticket_id and t.requester_id = auth.uid()))
+  )
+);
+revoke insert, update, delete on public.helpdesk_ticket_events from authenticated;
+
+drop policy if exists helpdesk_canned_read on public.helpdesk_canned_replies;
+create policy helpdesk_canned_read on public.helpdesk_canned_replies for select
+  using (organization_id = public.current_organization_id() and public.helpdesk_is_agent());
+drop policy if exists helpdesk_canned_write on public.helpdesk_canned_replies;
+create policy helpdesk_canned_write on public.helpdesk_canned_replies for all
+  using (organization_id = public.current_organization_id() and public.helpdesk_is_agent())
+  with check (organization_id = public.current_organization_id() and public.helpdesk_is_agent());
+
+do $$ begin
+  begin execute 'alter publication supabase_realtime add table public.helpdesk_tickets'; exception when duplicate_object then null; end;
+  begin execute 'alter publication supabase_realtime add table public.helpdesk_ticket_events'; exception when duplicate_object then null; end;
+end $$;
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v87_helpdesk.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v88_requirement_source.sql >>>
+-- Event requirements: "From where" is recorded as a department plus a location (it was one free-text field).
+-- collect_from keeps a combined "Department · Location" label so older screens keep working. Run after v87.
+alter table public.event_requirements
+  add column if not exists collect_from_department text not null default '',
+  add column if not exists collect_from_location text not null default '';
+
+-- Existing rows: the old free text was a place, so it becomes the location.
+update public.event_requirements
+   set collect_from_location = collect_from
+ where collect_from <> '' and collect_from_location = '' and collect_from_department = '';
+
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v88_requirement_source.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v89_helpdesk_spiceworks.sql >>>
+-- Help Desk, Spiceworks parity: time spent on responses/notes, ticket tasks, related inventory item,
+-- and category → technician auto-assignment rules. Run after migration_v87_helpdesk.sql.
+
+alter table public.helpdesk_ticket_events add column if not exists minutes integer not null default 0 check (minutes >= 0);
+alter table public.helpdesk_tickets
+  add column if not exists tasks jsonb not null default '[]'::jsonb,            -- [{ "id": "...", "title": "...", "done": false }]
+  add column if not exists asset_item_id text references public.inventory_items(id) on delete set null,
+  add column if not exists asset_name text not null default '';
+alter table public.helpdesk_settings
+  add column if not exists category_rules jsonb not null default '{}'::jsonb;  -- { "Printer": "<technician profile id>" }
+
+-- Auto-assign on create: a category rule picks the technician when nobody is assigned yet.
+create or replace function public.helpdesk_tickets_autoassign()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare rule text;
+begin
+  if new.assignee_id is null then
+    select category_rules ->> new.category into rule from public.helpdesk_settings where organization_id = new.organization_id;
+    if rule is not null and rule <> '' then
+      new.assignee_id := rule::uuid;
+      new.assignee_name := coalesce((select name from public.profiles where id = new.assignee_id), '');
+    end if;
+  end if;
+  return new;
+end $$;
+-- Named to run after helpdesk_tickets_before (same-kind triggers fire in name order).
+drop trigger if exists helpdesk_tickets_z_autoassign on public.helpdesk_tickets;
+create trigger helpdesk_tickets_z_autoassign before insert on public.helpdesk_tickets
+  for each row execute function public.helpdesk_tickets_autoassign();
+
+-- Change log for the new fields (the v87 log trigger covers the rest).
+create or replace function public.helpdesk_tickets_after_extra()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare done_before int; done_after int;
+begin
+  if tg_op = 'INSERT' then
+    if new.assignee_id is not null then
+      perform public._helpdesk_log(new, 'Auto-assigned to ' || new.assignee_name || ' (' || new.category || ' rule)');
+      perform public._helpdesk_notify(new.assignee_id, new.organization_id, 'Ticket assigned to you', '#' || new.number || ' ' || new.subject, case when new.priority = 'critical' then 'critical' else 'info' end, new.id);
+    end if;
+    return new;
+  end if;
+  if new.asset_item_id is distinct from old.asset_item_id then
+    perform public._helpdesk_log(new, case when new.asset_item_id is null then 'Related item removed' else 'Related item: ' || new.asset_name end);
+  end if;
+  select count(*) into done_before from jsonb_array_elements(old.tasks) t where (t ->> 'done')::boolean;
+  select count(*) into done_after from jsonb_array_elements(new.tasks) t where (t ->> 'done')::boolean;
+  if jsonb_array_length(new.tasks) <> jsonb_array_length(old.tasks) or done_after <> done_before then
+    perform public._helpdesk_log(new, 'Tasks: ' || done_after || ' of ' || jsonb_array_length(new.tasks) || ' done');
+  end if;
+  return new;
+end $$;
+drop trigger if exists helpdesk_tickets_after_extra on public.helpdesk_tickets;
+create trigger helpdesk_tickets_after_extra after insert or update on public.helpdesk_tickets
+  for each row execute function public.helpdesk_tickets_after_extra();
+
+-- Responses and notes can carry time spent (technicians only). Replaces the v87 signature.
+drop function if exists public.helpdesk_post(uuid, text, text, boolean);
+create or replace function public.helpdesk_post(p_ticket uuid, p_kind text, p_body text, p_reopen boolean default false, p_minutes integer default 0)
+returns void language plpgsql security definer set search_path = public as $$
+declare t public.helpdesk_tickets; me public.profiles; agent boolean := public.helpdesk_is_agent(); mins integer := greatest(coalesce(p_minutes, 0), 0);
+begin
+  select * into me from public.profiles p where p.id = auth.uid();
+  select * into t from public.helpdesk_tickets h where h.id = p_ticket and organization_id = me.organization_id for update;
+  if t.id is null then raise exception 'Ticket not found.'; end if;
+  if coalesce(trim(p_body), '') = '' and mins = 0 then raise exception 'Write a message first.'; end if;
+  if not agent then
+    if t.requester_id is distinct from me.id then raise exception 'You can only reply to your own tickets.'; end if;
+    if p_kind <> 'reply' then raise exception 'Only technicians can add internal notes.'; end if;
+    mins := 0;
+  elsif p_kind not in ('reply','note') then raise exception 'Unknown message type.';
+  end if;
+  insert into public.helpdesk_ticket_events (organization_id, ticket_id, kind, body, author_id, author_name, minutes)
+  values (t.organization_id, t.id, p_kind, coalesce(nullif(trim(p_body), ''), 'Time logged'), me.id, me.name, mins);
+  if agent and p_kind = 'reply' and t.first_response_at is null then
+    update public.helpdesk_tickets set first_response_at = now() where id = t.id;
+  end if;
+  if agent and p_kind = 'reply' then
+    perform public._helpdesk_notify(t.requester_id, t.organization_id, 'Reply on your ticket', '#' || t.number || ' ' || t.subject, 'info', t.id);
+  elsif not agent then
+    perform public._helpdesk_notify(t.assignee_id, t.organization_id, 'Requester replied', '#' || t.number || ' ' || t.subject, 'info', t.id);
+    if p_reopen and t.status = 'closed' then
+      update public.helpdesk_tickets set status = 'open', resolution = '' where id = t.id;
+    elsif t.status = 'waiting' then
+      update public.helpdesk_tickets set status = 'open' where id = t.id;
+    end if;
+  end if;
+end $$;
+grant execute on function public.helpdesk_post(uuid, text, text, boolean, integer) to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v89_helpdesk_spiceworks.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v90_role_hierarchy.sql >>>
+-- Role hierarchy: Super Admin → Department Head (of one of the organisation's departments)
+--                 → Sub-department Head (CCTV, WiFi, Walkie-Talkie, …) → Staff.
+-- Approving / changing a role now also records which department a Department Head leads. Run after v89.
+
+drop function if exists public.review_access_request(uuid, boolean, text, text);
+create or replace function public.review_access_request(p_user uuid, p_approve boolean, p_level text default 'staff', p_sub text default null, p_department text default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare t record; v_sub text; v_role text; v_dept text; v_dept_name text;
+begin
+  if not public.is_org_owner() then raise exception 'Only the Super Admin can approve or change access.'; end if;
+  select * into t from public.profiles where id = p_user;
+  if not found or t.organization_id is distinct from public.current_organization_id() then raise exception 'That person is not in your organization.'; end if;
+
+  if p_approve then
+    if p_level not in ('staff','sub_dept_head','dept_head') then raise exception 'Choose Staff, Sub-department Head or Department Head.'; end if;
+    v_sub := case when p_level = 'dept_head' then null else coalesce(nullif(p_sub, ''), t.requested_sub_department) end;
+    if p_level <> 'dept_head' and v_sub is null then raise exception 'Pick a sub-department for this person.'; end if;
+    -- A Department Head leads one department; others keep their current department link.
+    v_dept := coalesce(nullif(p_department, ''), t.department_id);
+    if p_level = 'dept_head' and v_dept is null then raise exception 'Pick the department this Department Head leads.'; end if;
+    if v_dept is not null then
+      select name into v_dept_name from public.departments where id = v_dept;
+      if v_dept_name is null then raise exception 'That department does not exist.'; end if;
+    end if;
+    v_role := case when (v_sub = 'walkie' or p_level = 'dept_head') and t.role = 'Client' then 'Operator' else t.role end;
+    update public.profiles
+      set approved = true, is_active = true, level = p_level, sub_department = v_sub, department_id = v_dept, role = v_role,
+          requested_sub_department = null, requested_at = null
+      where id = p_user;
+    insert into public.notifications (organization_id, user_id, title, message, type, link)
+    values (t.organization_id, p_user, 'Access approved',
+            'You are now ' || case p_level when 'dept_head' then 'Department Head of ' || coalesce(v_dept_name, 'your department')
+                                            when 'sub_dept_head' then 'Sub-department Head of ' || v_sub
+                                            else 'Staff in ' || v_sub end || '.', 'info', null);
+  else
+    if t.approved then
+      update public.profiles set requested_sub_department = null, requested_at = null where id = p_user;
+      insert into public.notifications (organization_id, user_id, title, message, type)
+      values (t.organization_id, p_user, 'Access request declined', 'The Super Admin declined your access request.', 'warning');
+    else
+      update public.profiles set is_active = false, requested_sub_department = null, requested_at = null where id = p_user;
+    end if;
+  end if;
+end $$;
+revoke all on function public.review_access_request(uuid, boolean, text, text, text) from public, anon;
+grant execute on function public.review_access_request(uuid, boolean, text, text, text) to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v90_role_hierarchy.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v91_sub_department_permissions.sql >>>
+-- Sub-department module access, set by the Super Admin (Administration → Sub-department Permissions).
+-- Only changes from the built-in defaults are stored; a missing row means "use the default". Run after v90.
+create table if not exists public.sub_department_permissions (
+  organization_id text not null references public.organizations(id) on delete cascade,
+  sub_department text not null check (sub_department in ('cctv','wifi','walkie','control','inventory','purchase','accounts','accommodation','sewadars')),
+  module text not null check (module in ('cctv','wifi','walkie','control','cctv-control-room','inventory','purchase','accommodation','sewadars','helpdesk','requests','tasks','events')),
+  allowed boolean not null,
+  updated_by text not null default '',
+  updated_at timestamptz not null default now(),
+  primary key (organization_id, sub_department, module)
+);
+
+alter table public.sub_department_permissions enable row level security;
+drop policy if exists sub_department_permissions_read on public.sub_department_permissions;
+create policy sub_department_permissions_read on public.sub_department_permissions for select
+  using (organization_id = public.current_organization_id());
+-- Super Admin and Department Heads change access.
+drop policy if exists sub_department_permissions_write on public.sub_department_permissions;
+create policy sub_department_permissions_write on public.sub_department_permissions for all
+  using (organization_id = public.current_organization_id() and public.current_level() in ('owner','dept_head'))
+  with check (organization_id = public.current_organization_id() and public.current_level() in ('owner','dept_head'));
+
+do $$ begin
+  begin execute 'alter publication supabase_realtime add table public.sub_department_permissions'; exception when duplicate_object then null; end;
+end $$;
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v91_sub_department_permissions.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v92_permission_modules.sql >>>
+-- Sub-department Permissions now covers every page, with the Sewadar area split into its six pages.
+-- Run after migration_v91_sub_department_permissions.sql.
+alter table public.sub_department_permissions drop constraint if exists sub_department_permissions_module_check;
+-- An older single "sewadars" switch becomes the six Sewadar pages.
+insert into public.sub_department_permissions (organization_id, sub_department, module, allowed, updated_by, updated_at)
+select p.organization_id, p.sub_department, 'sewadars:' || t.tab, p.allowed, p.updated_by, p.updated_at
+  from public.sub_department_permissions p
+  cross join (values ('roster'),('permanent'),('calling'),('duties'),('teams'),('attendance')) as t(tab)
+ where p.module = 'sewadars'
+on conflict (organization_id, sub_department, module) do nothing;
+delete from public.sub_department_permissions where module = 'sewadars';
+alter table public.sub_department_permissions add constraint sub_department_permissions_module_check check (module in (
+  'helpdesk','cctv','cctv-control-room','wifi','walkie','control','networking-support','issues',
+  'accommodation','sewadars:roster','sewadars:permanent','sewadars:calling','sewadars:duties','sewadars:teams','sewadars:attendance','tasks',
+  'inventory','requests','purchase','events','meetings','reports'));
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v92_permission_modules.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v93_join_existing_organization_only.sql >>>
+-- ============================================================================
+-- v93 · Sign-up can only JOIN an existing organization (no new organizations)
+-- ----------------------------------------------------------------------------
+-- Before: a sign-up with org_mode = 'create' made a brand-new organization and an
+-- approved owner. The app no longer offers that, and this closes it in the database
+-- too, so nobody can create an organization by calling the sign-up API directly.
+--
+-- Now every sign-up must carry a valid join code (department code, or the old
+-- organization code). The new person lands in that organization as an unapproved
+-- 'Client' and the Organization Head approves them, exactly as before.
+-- Safe to re-run.
+-- ============================================================================
+
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  meta_mode text; meta_code text; meta_name text;
+  found_org_id text; found_sub text;
+begin
+  meta_mode := coalesce(new.raw_user_meta_data->>'org_mode', 'join');
+  meta_code := upper(trim(coalesce(new.raw_user_meta_data->>'join_code', '')));
+  meta_name := coalesce(nullif(trim(new.raw_user_meta_data->>'name'), ''), split_part(new.email, '@', 1));
+
+  if meta_mode = 'create' then
+    raise exception 'New organizations cannot be created. Ask your department head for a join code.';
+  end if;
+
+  select organization_id, sub_department into found_org_id, found_sub
+    from public.department_codes where code = meta_code;
+  if found_org_id is null then
+    select id into found_org_id from public.organizations where join_code = meta_code;  -- old organization code still works
+    found_sub := null;
+  end if;
+  if found_org_id is null then
+    raise exception 'That department code doesn''t match any department. Check it with your department head.';
+  end if;
+
+  insert into public.profiles (id, name, email, role, is_active, organization_id, approved, level, requested_sub_department, requested_at)
+  values (new.id, meta_name, new.email, 'Client', true, found_org_id, false, 'other', found_sub, now())
+  on conflict (id) do nothing;
+
+  perform public.notify_owners(found_org_id, 'New access request',
+    meta_name || ' wants to join' || coalesce(' ' || found_sub || ' department', '') || '. Approve or reject in Users & Access.',
+    'approval', 'users', new.id::text);
+  return new;
+end $$;
+
+-- <<< END supabase/migration_v93_join_existing_organization_only.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v94_org_profile_and_delete_member.sql >>>
+-- ============================================================================
+-- v94 · Super Admin: rename the organization, set its logo, delete a user
+-- ----------------------------------------------------------------------------
+-- 1. organizations.logo_url holds the logo (a small image, stored as a data URL).
+-- 2. update_organization_profile(name, logo) — Super Admin only.
+-- 3. delete_org_member(user) — Super Admin only. Removes the person's login and
+--    profile. Records they made stay, with the person's link cleared. If some
+--    record cannot lose its link, the account is disabled and locked instead.
+-- Run after v93. Safe to re-run.
+-- ============================================================================
+
+alter table public.organizations add column if not exists logo_url text;
+
+-- Only the Super Admin changes the organization (was: any Admin).
+drop policy if exists "organizations_update" on public.organizations;
+create policy "organizations_update" on public.organizations for update
+  using (id = public.current_organization_id() and public.is_org_owner());
+
+create or replace function public.update_organization_profile(p_name text, p_logo text default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_name text := trim(coalesce(p_name, ''));
+begin
+  if not public.is_org_owner() then raise exception 'Only the Super Admin can change the organization.'; end if;
+  if length(v_name) < 2 then raise exception 'Enter an organization name.'; end if;
+  if length(v_name) > 80 then raise exception 'Keep the name under 80 characters.'; end if;
+  if p_logo is not null and p_logo <> '' and (p_logo not like 'data:image/%' or length(p_logo) > 400000) then
+    raise exception 'The logo must be an image under 300 KB.';
+  end if;
+  update public.organizations
+    set name = v_name, logo_url = nullif(p_logo, '')
+    where id = public.current_organization_id();
+end $$;
+grant execute on function public.update_organization_profile(text, text) to authenticated;
+
+create or replace function public.delete_org_member(p_user uuid)
+returns text language plpgsql security definer set search_path = public, auth as $$
+declare t record; fk record;
+begin
+  if not public.is_org_owner() then raise exception 'Only the Super Admin can delete users.'; end if;
+  if p_user = auth.uid() then raise exception 'You cannot delete your own account.'; end if;
+  select * into t from public.profiles where id = p_user;
+  if not found or t.organization_id is distinct from public.current_organization_id() then raise exception 'That person is not in your organization.'; end if;
+  if t.level = 'owner' then raise exception 'The Super Admin account cannot be deleted.'; end if;
+
+  begin
+    -- Clear links to this person in records that would otherwise block the delete.
+    for fk in
+      select n.nspname as sch, c.relname as tbl, a.attname as col
+      from pg_constraint k
+      join pg_class c on c.oid = k.conrelid
+      join pg_namespace n on n.oid = c.relnamespace
+      join pg_attribute a on a.attrelid = k.conrelid and a.attnum = k.conkey[1]
+      where k.contype = 'f' and array_length(k.conkey, 1) = 1
+        and k.confrelid in ('public.profiles'::regclass, 'auth.users'::regclass)
+        and k.confdeltype in ('a', 'r')          -- no action / restrict
+        and n.nspname = 'public' and not a.attnotnull
+    loop
+      execute format('update %I.%I set %I = null where %I = $1', fk.sch, fk.tbl, fk.col, fk.col) using p_user;
+    end loop;
+    delete from public.profiles where id = p_user;
+    delete from auth.users where id = p_user;
+    return 'deleted';
+  exception when foreign_key_violation then
+    -- Some record must keep this person: lock the account instead.
+    update public.profiles set is_active = false, approved = false, requested_sub_department = null, requested_at = null where id = p_user;
+    update auth.users set banned_until = 'infinity' where id = p_user;
+    return 'disabled';
+  end;
+end $$;
+grant execute on function public.delete_org_member(uuid) to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v94_org_profile_and_delete_member.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v95_fix_delivery_member_ambiguity.sql >>>
+-- ============================================================================
+-- v95 · Fix "column reference "member_id" is ambiguous" when assigning delivery
+-- ----------------------------------------------------------------------------
+-- request_set_delivery_assignment had a variable called member_id, the same name as
+-- manpower_tasks.member_id, so Postgres could not tell them apart. The variable is
+-- renamed to v_member. The task helper also gets #variable_conflict use_column, because
+-- its task_id variable clashes with the column in "on conflict(task_id, member_id)".
+-- Apply after migration_v94_org_profile_and_delete_member.sql.
+-- ============================================================================
+
+create or replace function public.request_set_delivery_assignment(p_id text, p_team text, p_member text)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  me record;
+  r record;
+  fulfilment record;
+  team_name text := nullif(trim(coalesce(p_team,'')), '');
+  v_member text := nullif(trim(coalesce(p_member,'')), '');
+begin
+  select * into me from public.profiles where id=auth.uid();
+  if not found or not me.approved or not me.is_active or me.level <> 'dept_head' then
+    raise exception 'Only the active IT Department Head can assign delivery.';
+  end if;
+  select * into r from public.requests where id=p_id for update;
+  if not found or r.organization_id <> me.organization_id then raise exception 'Request not found.'; end if;
+  if r.status <> 'approved' then raise exception 'Delivery can only be assigned after final approval.'; end if;
+  if (team_name is null) = (v_member is null) then raise exception 'Choose either a team or an IT Sewadar.'; end if;
+  if team_name is not null and not exists (
+    select 1 from public.manpower_teams t where t.organization_id=r.organization_id and lower(trim(t.name))=lower(team_name)
+  ) then raise exception 'Choose a valid delivery team.'; end if;
+  if v_member is not null and not exists (
+    select 1 from public.accommodation_members m
+    where m.id=v_member and m.organization_id=r.organization_id and lower(coalesce(m.department,'')) like '%it%'
+  ) then raise exception 'Choose an IT Sewadar from the roster.'; end if;
+  if exists (
+    select 1 from public.manpower_tasks t
+    join public.request_fulfilments existing_fulfilment on existing_fulfilment.id=t.request_fulfilment_id
+    where existing_fulfilment.request_id=p_id and t.status <> 'complete'
+      and (t.team is distinct from coalesce(team_name,'')
+        or t.member_id is distinct from v_member)
+  ) then raise exception 'Delivery tasks already exist with another assignee. Update them from Team tasks.'; end if;
+
+  update public.requests
+    set delivery_team=coalesce(team_name,''), delivery_member_id=v_member, updated_at=now()
+    where id=p_id;
+
+  for fulfilment in
+    select rf.id
+    from public.request_fulfilments rf
+    left join public.purchase_items pi on pi.id=rf.purchase_item_id
+    where rf.request_id=p_id and rf.status='planned'
+      and (rf.source in ('inventory','walkie') or (rf.source='purchase' and pi.qty_received >= rf.qty))
+  loop
+    perform public._request_create_delivery_task(fulfilment.id);
+  end loop;
+end $$;
+revoke all on function public.request_set_delivery_assignment(text,text,text) from public, anon;
+grant execute on function public.request_set_delivery_assignment(text,text,text) to authenticated;
+
+create or replace function public._request_create_delivery_task(p_fulfilment text)
+returns void language plpgsql security definer set search_path = public as $$
+#variable_conflict use_column
+declare f record; r record; i record; task_id text; task_team text; task_member text; task_assignee text; task_details text;
+begin
+  select * into f from public.request_fulfilments where id=p_fulfilment;
+  if not found or f.status <> 'planned' then return; end if;
+  if f.source not in ('inventory','walkie','purchase') then return; end if;
+  select * into r from public.requests where id=f.request_id;
+  if not found or r.status not in ('approved','fulfilled') then return; end if;
+  if coalesce(r.delivery_team,'')='' and r.delivery_member_id is null then return; end if;
+  if exists (select 1 from public.manpower_tasks where request_fulfilment_id=f.id) then return; end if;
+  if f.source='purchase' then
+    if not exists (select 1 from public.purchase_items pi where pi.id=f.purchase_item_id and pi.qty_received >= f.qty) then return; end if;
+  end if;
+  select * into i from public.request_items where id=f.item_id;
+  if not found then return; end if;
+
+  task_id := 'request-delivery-' || substr(md5(random()::text || clock_timestamp()::text),1,18);
+  task_team := coalesce(r.delivery_team,'');
+  task_member := r.delivery_member_id;
+  select m.name into task_assignee from public.accommodation_members m where m.id=task_member and m.organization_id=r.organization_id;
+  task_details := 'Deliver ' || f.qty || ' ' || i.unit || ' of ' || i.name || ' to ' || r.deliver_to || ' for ' || r.number || ' · requested by ' || r.requester_name;
+
+  insert into public.manpower_tasks(id,organization_id,title,details,team,assigned_to,member_id,due_date,status,request_fulfilment_id)
+  values(task_id,r.organization_id,'Deliver ' || i.name || ' · ' || r.number,task_details,task_team,coalesce(task_assignee,''),task_member,r.needed_by,'todo',f.id);
+
+  if task_member is not null then
+    insert into public.manpower_task_members(id,organization_id,task_id,member_id)
+    values('request-task-member-' || substr(md5(task_id || task_member),1,18),r.organization_id,task_id,task_member)
+    on conflict(task_id,member_id) do nothing;
+  elsif task_team <> '' then
+    insert into public.manpower_task_members(id,organization_id,task_id,member_id)
+    select 'request-task-member-' || substr(md5(task_id || m.id),1,18),r.organization_id,task_id,m.id
+    from public.accommodation_members m
+    where m.organization_id=r.organization_id
+      and (exists(select 1 from unnest(coalesce(m.team_names,'{}'::text[])) as team_names(name) where lower(trim(team_names.name))=lower(task_team))
+        or lower(trim(coalesce(m.team_name,'')))=lower(task_team))
+    on conflict(task_id,member_id) do nothing;
+  end if;
+end $$;
+revoke all on function public._request_create_delivery_task(text) from public, anon, authenticated;
+
+select pg_notify('pgrst','reload schema');
+
+-- <<< END supabase/migration_v95_fix_delivery_member_ambiguity.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v96_custom_sub_departments.sql >>>
+-- ============================================================================
+-- v96 · Custom sub-departments (Administration → Sub-departments)
+-- ----------------------------------------------------------------------------
+-- The nine built-in sub-departments stay as they are. The Super Admin can add more per
+-- organization; each one gets a key like 'sd_security', a join code, and its own column in
+-- Sub-department Permissions. They can be given to user accounts and to sewadars.
+--
+-- 1. org_sub_departments holds the custom ones.
+-- 2. is_sub_department(org, key) = built-in, or a custom one in that organization.
+-- 3. The fixed "in (...nine...)" checks are replaced by triggers that use is_sub_department.
+-- 4. create_sub_department / rename_sub_department / delete_sub_department (Super Admin and
+--    Department Heads).
+-- 5. Join codes and meeting audiences accept custom sub-departments.
+-- Apply after migration_v95_fix_delivery_member_ambiguity.sql.
+-- ============================================================================
+
+create table if not exists public.org_sub_departments (
+  organization_id text not null references public.organizations(id) on delete cascade,
+  key text not null check (key ~ '^sd_[a-z0-9_]{1,40}$'),
+  name text not null check (length(trim(name)) between 1 and 60),
+  created_by text not null default '',
+  created_at timestamptz not null default now(),
+  primary key (organization_id, key)
+);
+create unique index if not exists org_sub_departments_org_name_uidx
+  on public.org_sub_departments (organization_id, lower(trim(name)));
+
+alter table public.org_sub_departments enable row level security;
+drop policy if exists org_sub_departments_read on public.org_sub_departments;
+create policy org_sub_departments_read on public.org_sub_departments for select
+  using (organization_id = public.current_organization_id());
+-- Writes go through the functions below.
+
+do $$ begin
+  begin execute 'alter publication supabase_realtime add table public.org_sub_departments'; exception when duplicate_object then null; end;
+end $$;
+
+create or replace function public.is_sub_department(p_org text, p_key text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select p_key in ('cctv','wifi','walkie','control','inventory','purchase','accounts','accommodation','sewadars')
+    or exists (select 1 from public.org_sub_departments s where s.organization_id = p_org and s.key = p_key);
+$$;
+grant execute on function public.is_sub_department(text, text) to authenticated;
+
+-- ── Replace the fixed lists with a lookup ───────────────────────────────────
+alter table public.profiles drop constraint if exists profiles_sub_department_check;
+alter table public.profiles drop constraint if exists profiles_requested_sub_department_check;
+alter table public.department_codes drop constraint if exists department_codes_sub_department_check;
+alter table public.sub_department_permissions drop constraint if exists sub_department_permissions_sub_department_check;
+alter table public.accommodation_members drop constraint if exists accommodation_members_department_check;
+alter table public.department_updates drop constraint if exists department_updates_department_check;
+do $$ begin
+  if to_regclass('public.manpower_sewadars') is not null then
+    execute 'alter table public.manpower_sewadars drop constraint if exists manpower_sewadars_department_check';
+  end if;
+end $$;
+
+create or replace function public._check_profile_sub_department()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if new.sub_department is not null and new.sub_department is distinct from (case when tg_op = 'UPDATE' then old.sub_department end)
+     and not public.is_sub_department(new.organization_id, new.sub_department) then
+    raise exception 'Unknown sub-department: %', new.sub_department;
+  end if;
+  if new.requested_sub_department is not null and new.requested_sub_department is distinct from (case when tg_op = 'UPDATE' then old.requested_sub_department end)
+     and not public.is_sub_department(new.organization_id, new.requested_sub_department) then
+    raise exception 'Unknown sub-department: %', new.requested_sub_department;
+  end if;
+  return new;
+end $$;
+drop trigger if exists profiles_check_sub_department on public.profiles;
+create trigger profiles_check_sub_department before insert or update of sub_department, requested_sub_department on public.profiles
+  for each row execute function public._check_profile_sub_department();
+
+create or replace function public._check_row_department()
+returns trigger language plpgsql set search_path = public as $$
+-- jsonb lookup, because the column is "department" on some tables and "sub_department" on others.
+declare v text := coalesce(to_jsonb(new)->>'department', to_jsonb(new)->>'sub_department');
+begin
+  if v is null or v = '' or (tg_table_name = 'department_updates' and v = 'all') then return new; end if;
+  if not public.is_sub_department(new.organization_id, v) then raise exception 'Unknown sub-department: %', v; end if;
+  return new;
+end $$;
+drop trigger if exists accommodation_members_check_department on public.accommodation_members;
+create trigger accommodation_members_check_department before insert or update of department on public.accommodation_members
+  for each row execute function public._check_row_department();
+drop trigger if exists department_updates_check_department on public.department_updates;
+create trigger department_updates_check_department before insert or update of department on public.department_updates
+  for each row execute function public._check_row_department();
+drop trigger if exists sub_department_permissions_check on public.sub_department_permissions;
+create trigger sub_department_permissions_check before insert or update of sub_department on public.sub_department_permissions
+  for each row execute function public._check_row_department();
+drop trigger if exists department_codes_check on public.department_codes;
+create trigger department_codes_check before insert or update of sub_department on public.department_codes
+  for each row execute function public._check_row_department();
+
+-- ── Join codes: custom ones get a prefix from their key ─────────────────────
+create or replace function public.make_department_code(p_sub text)
+returns text language plpgsql security definer set search_path = public as $$
+declare prefix text; c text; tries int := 0;
+begin
+  prefix := case p_sub when 'cctv' then 'CCTV' when 'wifi' then 'WIFI' when 'walkie' then 'WALK'
+            when 'control' then 'CTRL' when 'inventory' then 'INVT' when 'purchase' then 'PURC'
+            when 'accounts' then 'ACCT' when 'accommodation' then 'ACCO' when 'sewadars' then 'MANP'
+            else coalesce(nullif(upper(substr(regexp_replace(substr(p_sub, 4), '[^a-z0-9]', '', 'g'), 1, 4)), ''), 'DEPT') end;
+  loop
+    c := prefix || '-' || upper(substr(md5(random()::text || clock_timestamp()::text || p_sub), 1, 6));
+    exit when not exists (select 1 from public.department_codes where code = c);
+    tries := tries + 1;
+    exit when tries > 20;
+  end loop;
+  return c;
+end $$;
+
+-- ── Manage custom sub-departments ───────────────────────────────────────────
+create or replace function public.create_sub_department(p_name text)
+returns text language plpgsql security definer set search_path = public as $$
+declare me record; v_name text := trim(coalesce(p_name, '')); v_base text; v_key text; n int := 1;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active or me.level not in ('owner','dept_head') then
+    raise exception 'Only the Super Admin or a Department Head can add sub-departments.';
+  end if;
+  if v_name = '' then raise exception 'Give the sub-department a name.'; end if;
+  if length(v_name) > 60 then raise exception 'Keep the name under 60 characters.'; end if;
+  if lower(v_name) in ('cctv','wifi','walkie-talkie','control rooms','inventory','purchase','accounts','accommodation','sewadars')
+     or exists (select 1 from public.org_sub_departments s where s.organization_id = me.organization_id and lower(trim(s.name)) = lower(v_name)) then
+    raise exception 'A sub-department with that name already exists.';
+  end if;
+  v_base := 'sd_' || coalesce(nullif(left(trim(both '_' from regexp_replace(lower(v_name), '[^a-z0-9]+', '_', 'g')), 30), ''), 'dept');
+  v_key := v_base;
+  while exists (select 1 from public.org_sub_departments s where s.organization_id = me.organization_id and s.key = v_key) loop
+    n := n + 1; v_key := v_base || '_' || n;
+  end loop;
+  insert into public.org_sub_departments (organization_id, key, name, created_by) values (me.organization_id, v_key, v_name, coalesce(me.name, ''));
+  insert into public.department_codes (organization_id, sub_department, code)
+    values (me.organization_id, v_key, public.make_department_code(v_key))
+    on conflict (organization_id, sub_department) do nothing;
+  return v_key;
+end $$;
+
+create or replace function public.rename_sub_department(p_key text, p_name text)
+returns void language plpgsql security definer set search_path = public as $$
+declare me record; v_name text := trim(coalesce(p_name, ''));
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active or me.level not in ('owner','dept_head') then
+    raise exception 'Only the Super Admin or a Department Head can rename sub-departments.';
+  end if;
+  if v_name = '' then raise exception 'Give the sub-department a name.'; end if;
+  if exists (select 1 from public.org_sub_departments s where s.organization_id = me.organization_id and s.key <> p_key and lower(trim(s.name)) = lower(v_name)) then
+    raise exception 'A sub-department with that name already exists.';
+  end if;
+  update public.org_sub_departments set name = v_name where organization_id = me.organization_id and key = p_key;
+  if not found then raise exception 'Sub-department not found. Built-in ones cannot be renamed.'; end if;
+end $$;
+
+create or replace function public.delete_sub_department(p_key text)
+returns void language plpgsql security definer set search_path = public as $$
+declare me record; v_people int;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active or me.level not in ('owner','dept_head') then
+    raise exception 'Only the Super Admin or a Department Head can delete sub-departments.';
+  end if;
+  if not exists (select 1 from public.org_sub_departments s where s.organization_id = me.organization_id and s.key = p_key) then
+    raise exception 'Sub-department not found. Built-in ones cannot be deleted.';
+  end if;
+  select count(*) into v_people from public.profiles p
+    where p.organization_id = me.organization_id and (p.sub_department = p_key or p.requested_sub_department = p_key);
+  if v_people > 0 then
+    raise exception '% user account(s) are in this sub-department. Move them to another one first.', v_people;
+  end if;
+  -- Sewadars in it simply lose the sub-department.
+  update public.accommodation_members set department = null where organization_id = me.organization_id and department = p_key;
+  delete from public.sub_department_permissions where organization_id = me.organization_id and sub_department = p_key;
+  delete from public.department_codes where organization_id = me.organization_id and sub_department = p_key;
+  delete from public.org_sub_departments where organization_id = me.organization_id and key = p_key;
+end $$;
+
+revoke all on function public.create_sub_department(text) from public, anon;
+revoke all on function public.rename_sub_department(text, text) from public, anon;
+revoke all on function public.delete_sub_department(text) from public, anon;
+grant execute on function public.create_sub_department(text) to authenticated;
+grant execute on function public.rename_sub_department(text, text) to authenticated;
+grant execute on function public.delete_sub_department(text) to authenticated;
+
+-- ── Meetings: custom sub-departments can be an audience (was a fixed list) ──
+create or replace function public.create_meeting(
+  p_kind text, p_title text, p_agenda text, p_mode text, p_place text, p_link text,
+  p_starts_at timestamptz, p_audience_all boolean, p_audience_depts text[], p_audience_groups text[], p_message text
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  me record; new_id uuid; depts text[]; groups text[]; v_all boolean; v_mode text; v_start timestamptz;
+  v_title text; v_msg text;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active then raise exception 'Not allowed.'; end if;
+  if p_kind = 'emergency' then
+    if me.level not in ('owner','dept_head','sub_dept_head','staff') then raise exception 'Only department members can call an emergency meetup.'; end if;
+  elsif p_kind = 'meeting' then
+    if me.level not in ('owner','dept_head','sub_dept_head') then raise exception 'Only the owner and department heads can schedule meetings.'; end if;
+  else raise exception 'Unknown meeting type.'; end if;
+  if trim(coalesce(p_title, '')) = '' then raise exception 'Give the meeting a title.'; end if;
+  v_mode := case when p_kind = 'emergency' then 'offline' else coalesce(p_mode, 'offline') end;
+  v_all := coalesce(p_audience_all, true);
+  v_start := case when p_kind = 'emergency' then now() else p_starts_at end;
+  if v_start is null then raise exception 'Pick a date and time.'; end if;
+  select coalesce(array_agg(distinct d), '{}') into depts from unnest(coalesce(p_audience_depts, '{}')) d
+    where public.is_sub_department(me.organization_id, d);
+  select coalesce(array_agg(distinct g), '{}') into groups from unnest(coalesce(p_audience_groups, '{}')) g
+    where g in ('it:staff','sewadar:all','sewadar:regular','sewadar:annual')
+      or (left(g, 13) = 'sewadar:team:' and exists (
+        select 1 from public.accommodation_members am where am.organization_id = me.organization_id
+          and lower(trim(am.team_name)) = lower(trim(substr(g, 14))) and trim(am.team_name) <> ''
+      ));
+  if not v_all and cardinality(depts) = 0 and cardinality(groups) = 0 then raise exception 'Choose Everyone or at least one audience group.'; end if;
+  if v_mode = 'online' and trim(coalesce(p_link, '')) = '' then raise exception 'Add the meeting link for an online meeting.'; end if;
+  if v_mode = 'offline' and trim(coalesce(p_place, '')) = '' then raise exception 'Add the place where people should come.'; end if;
+
+  insert into public.meetings (organization_id, kind, title, agenda, message, mode, place, link, starts_at, audience_all, audience_depts, audience_groups, status, created_by, created_by_name)
+  values (me.organization_id, p_kind, trim(p_title), trim(coalesce(p_agenda, '')), trim(coalesce(p_message, '')), v_mode,
+    case when v_mode = 'offline' then trim(coalesce(p_place, '')) else '' end,
+    case when v_mode = 'online' then trim(coalesce(p_link, '')) else '' end,
+    v_start, v_all, case when v_all then '{}' else depts end, case when v_all then '{}' else groups end,
+    case when p_kind = 'emergency' then 'live' else 'scheduled' end, me.id, me.name)
+  returning id into new_id;
+
+  v_title := case when p_kind = 'emergency' then 'EMERGENCY: ' || trim(p_title) else 'Meeting: ' || trim(p_title) end;
+  v_msg := case when p_kind = 'emergency' then 'Come to ' || trim(coalesce(p_place, '')) || ' now. Called by ' || me.name || '.'
+    else to_char(v_start at time zone 'Asia/Kolkata', 'DD Mon, HH12:MI AM') || ' · '
+      || case when v_mode = 'online' then 'Online' else 'In person at ' || trim(coalesce(p_place, '')) end || ' · by ' || me.name end;
+  if trim(coalesce(p_message, '')) <> '' then v_msg := v_msg || ' ' || trim(p_message); end if;
+  insert into public.notifications (organization_id, user_id, title, message, type, link, ref_id)
+    select me.organization_id, r, v_title, v_msg, case when p_kind = 'emergency' then 'critical' else 'meeting' end, 'meetings', new_id::text
+    from public.meeting_recipients(new_id) r;
+  return new_id;
+end $$;
+
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v96_custom_sub_departments.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v97_sub_department_rename_hide.sql >>>
+-- ============================================================================
+-- v97 · Rename and hide any sub-department, built-in ones included
+-- ----------------------------------------------------------------------------
+-- org_sub_departments can now also hold a row for a built-in key (cctv, walkie, …). That row
+-- only overrides the display name and/or hides it; the key itself never changes, so module
+-- pages and existing data keep working. Hidden sub-departments disappear from pickers and
+-- Sub-department Permissions, but people and sewadars already in them keep their label.
+-- Apply after migration_v96_custom_sub_departments.sql.
+-- ============================================================================
+
+alter table public.org_sub_departments add column if not exists hidden boolean not null default false;
+alter table public.org_sub_departments drop constraint if exists org_sub_departments_key_check;
+alter table public.org_sub_departments add constraint org_sub_departments_key_check
+  check (key ~ '^sd_[a-z0-9_]{1,40}$' or key in ('cctv','wifi','walkie','control','inventory','purchase','accounts','accommodation','sewadars'));
+
+-- Is this display name already used by another sub-department (built-in names count unless renamed)?
+create or replace function public._sub_department_name_taken(p_org text, p_key text, p_name text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from (values ('cctv','CCTV'),('wifi','WiFi'),('walkie','Walkie-Talkie'),('control','Control Rooms'),('inventory','Inventory'),
+                          ('purchase','Purchase'),('accounts','Accounts'),('accommodation','Accommodation'),('sewadars','Sewadars')) b(key, name)
+    where b.key <> coalesce(p_key, '') and lower(b.name) = lower(trim(p_name))
+      and not exists (select 1 from public.org_sub_departments s where s.organization_id = p_org and s.key = b.key)
+    union all
+    select 1 from public.org_sub_departments s
+    where s.organization_id = p_org and s.key <> coalesce(p_key, '') and lower(trim(s.name)) = lower(trim(p_name))
+  );
+$$;
+
+create or replace function public.create_sub_department(p_name text)
+returns text language plpgsql security definer set search_path = public as $$
+declare me record; v_name text := trim(coalesce(p_name, '')); v_base text; v_key text; n int := 1;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active or me.level not in ('owner','dept_head') then
+    raise exception 'Only the Super Admin or a Department Head can add sub-departments.';
+  end if;
+  if v_name = '' then raise exception 'Give the sub-department a name.'; end if;
+  if length(v_name) > 60 then raise exception 'Keep the name under 60 characters.'; end if;
+  if public._sub_department_name_taken(me.organization_id, null, v_name) then raise exception 'A sub-department with that name already exists.'; end if;
+  v_base := 'sd_' || coalesce(nullif(left(trim(both '_' from regexp_replace(lower(v_name), '[^a-z0-9]+', '_', 'g')), 30), ''), 'dept');
+  v_key := v_base;
+  while exists (select 1 from public.org_sub_departments s where s.organization_id = me.organization_id and s.key = v_key) loop
+    n := n + 1; v_key := v_base || '_' || n;
+  end loop;
+  insert into public.org_sub_departments (organization_id, key, name, created_by) values (me.organization_id, v_key, v_name, coalesce(me.name, ''));
+  insert into public.department_codes (organization_id, sub_department, code)
+    values (me.organization_id, v_key, public.make_department_code(v_key))
+    on conflict (organization_id, sub_department) do nothing;
+  return v_key;
+end $$;
+
+create or replace function public.rename_sub_department(p_key text, p_name text)
+returns void language plpgsql security definer set search_path = public as $$
+declare me record; v_name text := trim(coalesce(p_name, ''));
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active or me.level not in ('owner','dept_head') then
+    raise exception 'Only the Super Admin or a Department Head can rename sub-departments.';
+  end if;
+  if v_name = '' then raise exception 'Give the sub-department a name.'; end if;
+  if length(v_name) > 60 then raise exception 'Keep the name under 60 characters.'; end if;
+  if not public.is_sub_department(me.organization_id, p_key) then raise exception 'Sub-department not found.'; end if;
+  if public._sub_department_name_taken(me.organization_id, p_key, v_name) then raise exception 'A sub-department with that name already exists.'; end if;
+  insert into public.org_sub_departments (organization_id, key, name, created_by) values (me.organization_id, p_key, v_name, coalesce(me.name, ''))
+    on conflict (organization_id, key) do update set name = excluded.name;
+end $$;
+
+create or replace function public.set_sub_department_hidden(p_key text, p_hidden boolean)
+returns void language plpgsql security definer set search_path = public as $$
+declare me record; v_default text;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active or me.level not in ('owner','dept_head') then
+    raise exception 'Only the Super Admin or a Department Head can hide sub-departments.';
+  end if;
+  if not public.is_sub_department(me.organization_id, p_key) then raise exception 'Sub-department not found.'; end if;
+  v_default := case p_key when 'cctv' then 'CCTV' when 'wifi' then 'WiFi' when 'walkie' then 'Walkie-Talkie' when 'control' then 'Control Rooms'
+    when 'inventory' then 'Inventory' when 'purchase' then 'Purchase' when 'accounts' then 'Accounts' when 'accommodation' then 'Accommodation'
+    when 'sewadars' then 'Sewadars' end;
+  insert into public.org_sub_departments (organization_id, key, name, hidden, created_by) values (me.organization_id, p_key, coalesce(v_default, p_key), coalesce(p_hidden, false), coalesce(me.name, ''))
+    on conflict (organization_id, key) do update set hidden = excluded.hidden;
+end $$;
+
+-- Built-in ones can be renamed back or hidden, never deleted.
+create or replace function public.delete_sub_department(p_key text)
+returns void language plpgsql security definer set search_path = public as $$
+declare me record; v_people int;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active or me.level not in ('owner','dept_head') then
+    raise exception 'Only the Super Admin or a Department Head can delete sub-departments.';
+  end if;
+  if p_key !~ '^sd_' or not exists (select 1 from public.org_sub_departments s where s.organization_id = me.organization_id and s.key = p_key) then
+    raise exception 'Built-in sub-departments cannot be deleted. Hide it instead.';
+  end if;
+  select count(*) into v_people from public.profiles p
+    where p.organization_id = me.organization_id and (p.sub_department = p_key or p.requested_sub_department = p_key);
+  if v_people > 0 then
+    raise exception '% user account(s) are in this sub-department. Move them to another one first.', v_people;
+  end if;
+  update public.accommodation_members set department = null where organization_id = me.organization_id and department = p_key;
+  delete from public.sub_department_permissions where organization_id = me.organization_id and sub_department = p_key;
+  delete from public.department_codes where organization_id = me.organization_id and sub_department = p_key;
+  delete from public.org_sub_departments where organization_id = me.organization_id and key = p_key;
+end $$;
+
+-- Reset a built-in to its original name and visible again.
+create or replace function public.reset_sub_department(p_key text)
+returns void language plpgsql security definer set search_path = public as $$
+declare me record;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active or me.level not in ('owner','dept_head') then
+    raise exception 'Only the Super Admin or a Department Head can change sub-departments.';
+  end if;
+  if p_key ~ '^sd_' then raise exception 'Only built-in sub-departments can be reset.'; end if;
+  delete from public.org_sub_departments where organization_id = me.organization_id and key = p_key;
+end $$;
+
+revoke all on function public.rename_sub_department(text, text) from public, anon;
+revoke all on function public.set_sub_department_hidden(text, boolean) from public, anon;
+revoke all on function public.delete_sub_department(text) from public, anon;
+revoke all on function public.reset_sub_department(text) from public, anon;
+grant execute on function public.rename_sub_department(text, text) to authenticated;
+grant execute on function public.set_sub_department_hidden(text, boolean) to authenticated;
+grant execute on function public.delete_sub_department(text) to authenticated;
+grant execute on function public.reset_sub_department(text) to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v97_sub_department_rename_hide.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v98_request_review_by_own_department_head.sql >>>
+-- ============================================================================
+-- v98 · Only the request's own Department Head can review it
+-- ----------------------------------------------------------------------------
+-- v43 let ANY Department Head review any request (written when there was one IT Head).
+-- With several departments, each with its own head, that let unrelated heads approve.
+-- Now:
+-- 1. A trigger on requests stops a Department Head from deciding a request at the
+--    department stage, or assigning its delivery, unless they lead the request's department.
+--    (Old requests with no department keep the previous behaviour.)
+-- 2. request_submit only notifies that department's head(s), and refuses a department
+--    that has no active head, so requests can't get stuck.
+-- The Super Admin is not affected.
+-- Apply after migration_v97_sub_department_rename_hide.sql.
+-- ============================================================================
+
+create or replace function public._request_department_head_guard()
+returns trigger language plpgsql set search_path = public as $$
+declare me record; v_dept_name text;
+begin
+  if old.department_id is null then return new; end if;
+  select * into me from public.profiles where id = auth.uid();
+  if not found or me.level <> 'dept_head' then return new; end if;
+  if me.department_id is not distinct from old.department_id then return new; end if;
+  if (old.status = 'pending_it' and new.status is distinct from old.status)
+     or new.delivery_team is distinct from old.delivery_team
+     or new.delivery_member_id is distinct from old.delivery_member_id then
+    select name into v_dept_name from public.departments where id = old.department_id;
+    raise exception 'Only the Department Head of % can review this request.', coalesce(v_dept_name, 'its department');
+  end if;
+  return new;
+end $$;
+drop trigger if exists requests_department_head_guard on public.requests;
+create trigger requests_department_head_guard before update on public.requests
+  for each row execute function public._request_department_head_guard();
+
+create or replace function public.request_submit(
+  p_title text, p_purpose text, p_needed_by date, p_priority text, p_deliver_to text, p_department_id text, p_items jsonb
+) returns text language plpgsql security definer set search_path = public as $$
+declare me record; k integer; rid text; num text; pos integer := 0; it jsonb; inv text;
+begin
+  select * into me from public.profiles where id=auth.uid();
+  if not found or not me.approved or not me.is_active then raise exception 'Not allowed.'; end if;
+  if trim(coalesce(p_title,''))='' then raise exception 'Give the request a short title.'; end if;
+  if trim(coalesce(p_purpose,''))='' then raise exception 'Say why this is needed.'; end if;
+  if trim(coalesce(p_deliver_to,''))='' then raise exception 'Say where it should be delivered.'; end if;
+  if nullif(trim(coalesce(p_department_id,'')),'') is null then raise exception 'Choose a department for this request.'; end if;
+  if not exists(select 1 from public.departments d where d.id=p_department_id and d.organization_id=me.organization_id) then raise exception 'Choose a valid department from the Walkie Departments list.'; end if;
+  if jsonb_typeof(p_items) is distinct from 'array' or jsonb_array_length(p_items)=0 then raise exception 'Add at least one item.'; end if;
+  if jsonb_array_length(p_items)>60 then raise exception 'A request can have at most 60 lines.'; end if;
+  if not exists(select 1 from public.profiles h where h.organization_id=me.organization_id and h.level='dept_head' and h.department_id=p_department_id and h.approved and h.is_active) then
+    raise exception 'That department has no active Department Head to review requests. Choose another department or ask the Super Admin to assign one.';
+  end if;
+  insert into public.request_counters(organization_id,n) values(me.organization_id,1)
+    on conflict(organization_id) do update set n=public.request_counters.n+1 returning n into k;
+  num:='REQ-'||lpad(k::text,4,'0'); rid:='rq-'||substr(md5(random()::text||clock_timestamp()::text),1,16);
+  insert into public.requests(id,organization_id,number,requester_id,requester_name,sub_department,department_id,title,purpose,deliver_to,needed_by,priority,status)
+  values(rid,me.organization_id,num,me.id,me.name,me.sub_department,p_department_id,trim(p_title),trim(p_purpose),trim(p_deliver_to),p_needed_by,case when p_priority='urgent' then 'urgent' else 'normal' end,'pending_it');
+  for it in select value from jsonb_array_elements(p_items) loop
+    pos:=pos+1;
+    if trim(coalesce(it->>'name',''))='' then raise exception 'Line % has no item name.',pos; end if;
+    if coalesce((it->>'qty')::integer,0)<=0 then raise exception 'Line % needs a quantity above zero.',pos; end if;
+    if trim(coalesce(it->>'reason',''))='' then raise exception 'Line % (%) needs a reason.',pos,trim(it->>'name'); end if;
+    inv:=nullif(it->>'inventory_item_id','');
+    if inv is not null and not exists(select 1 from public.inventory_items where id=inv and organization_id=me.organization_id) then inv:=null; end if;
+    insert into public.request_items(id,organization_id,request_id,position,kind,name,unit,qty_requested,note,reason,inventory_item_id,return_required)
+    values('ri-'||substr(md5(random()::text||clock_timestamp()::text||pos::text),1,16),me.organization_id,rid,pos,case when it->>'kind'='radio' then 'radio' else 'item' end,trim(it->>'name'),coalesce(nullif(trim(it->>'unit'),''),'pcs'),(it->>'qty')::integer,trim(coalesce(it->>'note','')),trim(it->>'reason'),inv,coalesce((it->>'return_required')::boolean,false));
+  end loop;
+  perform public._req_event(rid,'submitted','Request raised by '||me.name);
+  for it in select to_jsonb(h) from public.profiles h where h.organization_id=me.organization_id and h.level='dept_head' and h.department_id=p_department_id and h.approved and h.is_active loop
+    perform public._req_notify((it->>'id')::uuid,me.organization_id,'Request to review: '||trim(p_title),num||' from '||me.name,'approval',rid);
+  end loop;
+  return rid;
+end $$;
+revoke all on function public.request_submit(text,text,date,text,text,text,jsonb) from public,anon;
+grant execute on function public.request_submit(text,text,date,text,text,text,jsonb) to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v98_request_review_by_own_department_head.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v99_department_membership.sql >>>
+-- ============================================================================
+-- v99 · Everyone belongs to a department
+-- ----------------------------------------------------------------------------
+-- Until now only Department Heads had profiles.department_id; Staff and Sub-department
+-- Heads belonged to a sub-department of the whole organization. Now every person belongs
+-- to a department (IT COMMUNICATIONS, LANGER, …) and a sub-department inside it.
+--
+-- 1. departments.it_services marks the department that runs CCTV / WiFi / Walkie / Control
+--    Rooms (set for IT COMMUNICATIONS). Other departments get the general sub-departments.
+-- 2. current_department_id() helper.
+-- 3. A person can no longer change their own department (guard_hierarchy, as for level).
+-- 4. Join codes are per department + sub-department. Signing up with a code also records the
+--    department asked for (profiles.requested_department_id).
+-- 5. review_access_request: a department is required for every level.
+-- 6. Existing Staff / Sub-department Heads without a department, and all existing join codes,
+--    go to IT COMMUNICATIONS.
+-- Apply after migration_v98_request_review_by_own_department_head.sql.
+-- ============================================================================
+
+-- ── 1. IT department flag ───────────────────────────────────────────────────
+alter table public.departments add column if not exists it_services boolean not null default false;
+
+-- The organization's IT department: the one flagged, else the first named "IT COMM…".
+create or replace function public._it_department(p_org text)
+returns text language sql stable security definer set search_path = public as $$
+  select id from public.departments
+  where organization_id = p_org and (it_services or name ilike 'IT COMM%')
+  order by it_services desc, created_at
+  limit 1;
+$$;
+
+update public.departments d set it_services = true
+where d.id = public._it_department(d.organization_id)
+  and not exists (select 1 from public.departments x where x.organization_id = d.organization_id and x.it_services);
+
+-- ── 2. Helper ───────────────────────────────────────────────────────────────
+create or replace function public.current_department_id()
+returns text language sql stable security definer set search_path = public as $$
+  select department_id from public.profiles where id = auth.uid();
+$$;
+grant execute on function public.current_department_id() to authenticated;
+
+-- ── 3. Nobody changes their own department (Admin / security-definer RPCs run as Admin) ──
+create or replace function public.guard_hierarchy() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (new.level is distinct from old.level
+      or new.sub_department is distinct from old.sub_department
+      or new.department_id is distinct from old.department_id)
+     and auth.uid() is not null and public.current_role() is distinct from 'Admin' then
+    new.level := old.level; new.sub_department := old.sub_department; new.department_id := old.department_id;
+  end if;
+  return new;
+end $$;
+
+alter table public.profiles add column if not exists requested_department_id text references public.departments(id) on delete set null;
+
+-- ── 4. Join codes per department + sub-department ───────────────────────────
+alter table public.department_codes add column if not exists department_id text references public.departments(id) on delete cascade;
+update public.department_codes c set department_id = public._it_department(c.organization_id) where c.department_id is null;
+alter table public.department_codes drop constraint if exists department_codes_organization_id_sub_department_key;
+create unique index if not exists department_codes_org_dept_sub_uidx on public.department_codes (organization_id, department_id, sub_department);
+
+-- Sub-departments a department can have: the general built-ins, the IT services for the IT
+-- department, and the organization's custom ones (custom ones become per department in v100).
+create or replace function public.department_sub_keys(p_department text)
+returns text[] language sql stable security definer set search_path = public as $$
+  select array['inventory','purchase','accounts','accommodation','sewadars']
+    || case when d.it_services then array['cctv','wifi','walkie','control'] else array[]::text[] end
+    || coalesce((select array_agg(s.key order by s.key) from public.org_sub_departments s
+                 where s.organization_id = d.organization_id and s.key like 'sd\_%'), array[]::text[])
+  from public.departments d where d.id = p_department;
+$$;
+
+create or replace function public.ensure_department_codes(p_org text)
+returns void language plpgsql security definer set search_path = public as $$
+declare d record; s text;
+begin
+  for d in select id from public.departments where organization_id = p_org loop
+    foreach s in array coalesce(public.department_sub_keys(d.id), array[]::text[]) loop
+      insert into public.department_codes (organization_id, department_id, sub_department, code)
+      values (p_org, d.id, s, public.make_department_code(s))
+      on conflict (organization_id, department_id, sub_department) do nothing;
+    end loop;
+  end loop;
+end $$;
+
+-- New department, or a department becoming the IT one → its codes.
+create or replace function public._department_codes_on_change()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  perform public.ensure_department_codes(new.organization_id);
+  return new;
+end $$;
+drop trigger if exists departments_create_codes on public.departments;
+create trigger departments_create_codes after insert or update of it_services on public.departments
+  for each row execute function public._department_codes_on_change();
+
+-- New custom sub-department → a code in every department (v97 inserted one org-wide code).
+create or replace function public._sub_department_codes_on_insert()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  delete from public.department_codes where organization_id = new.organization_id and sub_department = new.key and department_id is null;
+  perform public.ensure_department_codes(new.organization_id);
+  return new;
+end $$;
+drop trigger if exists org_sub_departments_create_codes on public.org_sub_departments;
+create trigger org_sub_departments_create_codes after insert on public.org_sub_departments
+  for each row execute function public._sub_department_codes_on_insert();
+
+-- v97 created the code itself with the old one-per-organization key; codes now come from the trigger above.
+create or replace function public.create_sub_department(p_name text)
+returns text language plpgsql security definer set search_path = public as $$
+declare me record; v_name text := trim(coalesce(p_name, '')); v_base text; v_key text; n int := 1;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active or me.level not in ('owner','dept_head') then
+    raise exception 'Only the Super Admin or a Department Head can add sub-departments.';
+  end if;
+  if v_name = '' then raise exception 'Give the sub-department a name.'; end if;
+  if length(v_name) > 60 then raise exception 'Keep the name under 60 characters.'; end if;
+  if public._sub_department_name_taken(me.organization_id, null, v_name) then raise exception 'A sub-department with that name already exists.'; end if;
+  v_base := 'sd_' || coalesce(nullif(left(trim(both '_' from regexp_replace(lower(v_name), '[^a-z0-9]+', '_', 'g')), 30), ''), 'dept');
+  v_key := v_base;
+  while exists (select 1 from public.org_sub_departments s where s.organization_id = me.organization_id and s.key = v_key) loop
+    n := n + 1; v_key := v_base || '_' || n;
+  end loop;
+  insert into public.org_sub_departments (organization_id, key, name, created_by) values (me.organization_id, v_key, v_name, coalesce(me.name, ''));
+  -- Join codes for every department come from the org_sub_departments_create_codes trigger.
+  return v_key;
+end $$;
+
+select public.ensure_department_codes(id) from public.organizations;
+
+-- Who sees which codes: owner all; Department Head their department's; Sub-department Head their own.
+drop policy if exists department_codes_select on public.department_codes;
+create policy department_codes_select on public.department_codes for select using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.current_level() = 'owner'
+       or (public.current_level() = 'dept_head' and department_id = public.current_department_id())
+       or (public.current_level() = 'sub_dept_head' and department_id = public.current_department_id()
+           and sub_department = public.current_sub_department()))
+);
+
+create or replace function public.check_department_code(p_code text)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare c text := upper(trim(coalesce(p_code, ''))); r record;
+begin
+  select d.sub_department, o.name as org_name, dep.name as dept_name into r
+  from public.department_codes d
+  join public.organizations o on o.id = d.organization_id
+  left join public.departments dep on dep.id = d.department_id
+  where d.code = c;
+  if found then
+    return jsonb_build_object('valid', true, 'sub_department', r.sub_department, 'department', r.dept_name, 'organization', r.org_name);
+  end if;
+  select o.name as org_name into r from public.organizations o where o.join_code = c;
+  if found then return jsonb_build_object('valid', true, 'sub_department', null, 'department', null, 'organization', r.org_name); end if;
+  return jsonb_build_object('valid', false);
+end $$;
+grant execute on function public.check_department_code(text) to anon, authenticated;
+
+drop function if exists public.regenerate_department_code(text);
+create or replace function public.regenerate_department_code(p_sub text, p_department_id text)
+returns text language plpgsql security definer set search_path = public as $$
+declare c text;
+begin
+  if not public.is_org_owner() then raise exception 'Only the Super Admin can change sign-up codes.'; end if;
+  c := public.make_department_code(p_sub);
+  update public.department_codes set code = c, created_at = now()
+    where organization_id = public.current_organization_id() and sub_department = p_sub and department_id = p_department_id;
+  if not found then raise exception 'Unknown sub-department.'; end if;
+  return c;
+end $$;
+revoke all on function public.regenerate_department_code(text, text) from public, anon;
+grant execute on function public.regenerate_department_code(text, text) to authenticated;
+
+-- ── Sign-up and "ask for access" record the department too ─────────────────
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  meta_mode text; meta_code text; meta_name text;
+  found_org_id text; found_sub text; found_dept text; found_dept_name text;
+begin
+  meta_mode := coalesce(new.raw_user_meta_data->>'org_mode', 'join');
+  meta_code := upper(trim(coalesce(new.raw_user_meta_data->>'join_code', '')));
+  meta_name := coalesce(nullif(trim(new.raw_user_meta_data->>'name'), ''), split_part(new.email, '@', 1));
+
+  if meta_mode = 'create' then
+    raise exception 'New organizations cannot be created. Ask your department head for a join code.';
+  end if;
+
+  select c.organization_id, c.sub_department, c.department_id, d.name into found_org_id, found_sub, found_dept, found_dept_name
+    from public.department_codes c left join public.departments d on d.id = c.department_id where c.code = meta_code;
+  if found_org_id is null then
+    select id into found_org_id from public.organizations where join_code = meta_code;  -- old organization code still works
+    found_sub := null; found_dept := null; found_dept_name := null;
+  end if;
+  if found_org_id is null then
+    raise exception 'That department code doesn''t match any department. Check it with your department head.';
+  end if;
+
+  insert into public.profiles (id, name, email, role, is_active, organization_id, approved, level, requested_sub_department, requested_department_id, requested_at)
+  values (new.id, meta_name, new.email, 'Client', true, found_org_id, false, 'other', found_sub, found_dept, now())
+  on conflict (id) do nothing;
+
+  perform public.notify_owners(found_org_id, 'New access request',
+    meta_name || ' wants to join' || coalesce(' ' || found_dept_name, '') || coalesce(' · ' || found_sub, '') || '. Approve or reject in Users & Access.',
+    'approval', 'users', new.id::text);
+  return new;
+end $$;
+
+create or replace function public.request_department_access(p_code text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare me record; d record;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active then raise exception 'Not allowed.'; end if;
+  select * into d from public.department_codes
+    where code = upper(trim(coalesce(p_code, ''))) and organization_id = me.organization_id;
+  if not found then raise exception 'That department code is not valid for your organization.'; end if;
+  update public.profiles set requested_sub_department = d.sub_department, requested_department_id = d.department_id, requested_at = now() where id = me.id;
+  perform public.notify_owners(me.organization_id, 'New access request',
+    me.name || ' asked for access to ' || d.sub_department || '.', 'approval', 'users', me.id::text);
+  return jsonb_build_object('sub_department', d.sub_department, 'department_id', d.department_id);
+end $$;
+revoke all on function public.request_department_access(text) from public, anon;
+grant execute on function public.request_department_access(text) to authenticated;
+
+-- ── 5. Approval: a department for every level ──────────────────────────────
+create or replace function public.review_access_request(p_user uuid, p_approve boolean, p_level text default 'staff', p_sub text default null, p_department text default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare t record; v_sub text; v_role text; v_dept text; v_dept_name text;
+begin
+  if not public.is_org_owner() then raise exception 'Only the Super Admin can approve or change access.'; end if;
+  select * into t from public.profiles where id = p_user;
+  if not found or t.organization_id is distinct from public.current_organization_id() then raise exception 'That person is not in your organization.'; end if;
+
+  if p_approve then
+    if p_level not in ('staff','sub_dept_head','dept_head') then raise exception 'Choose Staff, Sub-department Head or Department Head.'; end if;
+    v_sub := case when p_level = 'dept_head' then null else coalesce(nullif(p_sub, ''), t.requested_sub_department) end;
+    if p_level <> 'dept_head' and v_sub is null then raise exception 'Pick a sub-department for this person.'; end if;
+    v_dept := coalesce(nullif(p_department, ''), t.requested_department_id, t.department_id);
+    if v_dept is null then raise exception 'Pick the department this person belongs to.'; end if;
+    select name into v_dept_name from public.departments where id = v_dept and organization_id = t.organization_id;
+    if v_dept_name is null then raise exception 'That department is not in your organization.'; end if;
+    if v_sub is not null and not (v_sub = any(coalesce(public.department_sub_keys(v_dept), array[]::text[]))) then
+      raise exception '% does not have that sub-department.', v_dept_name;
+    end if;
+    -- Walkie operator rights: the Walkie sub-department, and the IT department's head.
+    v_role := case when (v_sub = 'walkie' or (p_level = 'dept_head' and exists (select 1 from public.departments where id = v_dept and it_services)))
+                    and t.role = 'Client' then 'Operator' else t.role end;
+    update public.profiles
+      set approved = true, is_active = true, level = p_level, sub_department = v_sub, department_id = v_dept, role = v_role,
+          requested_sub_department = null, requested_department_id = null, requested_at = null
+      where id = p_user;
+    insert into public.notifications (organization_id, user_id, title, message, type, link)
+    values (t.organization_id, p_user, 'Access approved',
+            'You are now ' || case p_level when 'dept_head' then 'Department Head of ' || v_dept_name
+                                            when 'sub_dept_head' then 'Sub-department Head of ' || v_sub || ' · ' || v_dept_name
+                                            else 'Staff in ' || v_sub || ' · ' || v_dept_name end || '.', 'info', null);
+  else
+    if t.approved then
+      update public.profiles set requested_sub_department = null, requested_department_id = null, requested_at = null where id = p_user;
+      insert into public.notifications (organization_id, user_id, title, message, type)
+      values (t.organization_id, p_user, 'Access request declined', 'The Super Admin declined your access request.', 'warning');
+    else
+      update public.profiles set is_active = false, requested_sub_department = null, requested_department_id = null, requested_at = null where id = p_user;
+    end if;
+  end if;
+end $$;
+revoke all on function public.review_access_request(uuid, boolean, text, text, text) from public, anon;
+grant execute on function public.review_access_request(uuid, boolean, text, text, text) to authenticated;
+
+-- ── 6. Existing people without a department → IT COMMUNICATIONS ────────────
+-- Direct update from the SQL Editor (no logged-in user), so guard_hierarchy does not interfere.
+update public.profiles p set department_id = public._it_department(p.organization_id)
+where p.department_id is null and p.level in ('staff','sub_dept_head');
+
+notify pgrst, 'reload schema';
+
+-- ── Sanity checks (expect 0 rows each) ──────────────────────────────────────
+-- Organizations with no IT department found (name it e.g. "IT COMMUNICATIONS" or set departments.it_services):
+select o.id, o.name as organization_without_it_department from public.organizations o where public._it_department(o.id) is null;
+-- Staff / Sub-department Heads still without a department:
+select id, name, level from public.profiles where level in ('staff','sub_dept_head') and department_id is null;
+
+-- <<< END supabase/migration_v99_department_membership.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v100_department_sub_departments.sql >>>
+-- ============================================================================
+-- v100 · Sub-departments belong to a department; IT services only for IT
+-- ----------------------------------------------------------------------------
+-- 1. Custom sub-departments (org_sub_departments, key 'sd_…') now belong to one department.
+--    Existing ones go to the IT department. Renaming / hiding a BUILT-IN sub-department stays
+--    organization-wide and is Super Admin only.
+-- 2. Sub-department Permissions are per department + sub-department (existing rows → IT).
+-- 3. CCTV / WiFi / Walkie / Control Rooms belong to the IT department: a Department Head of
+--    another department no longer gets IT asset rights (the Super Admin still does).
+-- Apply after migration_v99_department_membership.sql.
+-- ============================================================================
+
+-- ── 1. Custom sub-departments per department ────────────────────────────────
+alter table public.org_sub_departments add column if not exists department_id text references public.departments(id) on delete cascade;
+update public.org_sub_departments s set department_id = public._it_department(s.organization_id)
+where s.department_id is null and s.key like 'sd\_%';
+
+create or replace function public.department_sub_keys(p_department text)
+returns text[] language sql stable security definer set search_path = public as $$
+  select array['inventory','purchase','accounts','accommodation','sewadars']
+    || case when d.it_services then array['cctv','wifi','walkie','control'] else array[]::text[] end
+    || coalesce((select array_agg(s.key order by s.key) from public.org_sub_departments s
+                 where s.organization_id = d.organization_id and s.department_id = d.id and s.key like 'sd\_%'), array[]::text[])
+  from public.departments d where d.id = p_department;
+$$;
+
+-- v99 gave every department a code for every custom sub-department; keep only the owning department's.
+delete from public.department_codes c
+using public.org_sub_departments s
+where s.organization_id = c.organization_id and s.key = c.sub_department and s.key like 'sd\_%'
+  and c.department_id is distinct from s.department_id;
+
+-- Owner: any department. Department Head: only their own. Returns the department to act on.
+create or replace function public._sub_department_manager_dept(p_department text)
+returns text language plpgsql stable security definer set search_path = public as $$
+declare me record;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active or me.level not in ('owner','dept_head') then
+    raise exception 'Only the Super Admin or a Department Head can change sub-departments.';
+  end if;
+  if me.level = 'dept_head' then
+    if p_department is not null and p_department is distinct from me.department_id then
+      raise exception 'You can only change your own department''s sub-departments.';
+    end if;
+    return me.department_id;
+  end if;
+  if p_department is null or not exists (select 1 from public.departments where id = p_department and organization_id = me.organization_id) then
+    raise exception 'Choose the department.';
+  end if;
+  return p_department;
+end $$;
+
+drop function if exists public.create_sub_department(text);
+create or replace function public.create_sub_department(p_name text, p_department_id text default null)
+returns text language plpgsql security definer set search_path = public as $$
+declare me record; v_dept text; v_name text := trim(coalesce(p_name, '')); v_base text; v_key text; n int := 1;
+begin
+  v_dept := public._sub_department_manager_dept(p_department_id);
+  select * into me from public.profiles where id = auth.uid();
+  if v_name = '' then raise exception 'Give the sub-department a name.'; end if;
+  if length(v_name) > 60 then raise exception 'Keep the name under 60 characters.'; end if;
+  if public._sub_department_name_taken(me.organization_id, null, v_name) then raise exception 'A sub-department with that name already exists.'; end if;
+  v_base := 'sd_' || coalesce(nullif(left(trim(both '_' from regexp_replace(lower(v_name), '[^a-z0-9]+', '_', 'g')), 30), ''), 'dept');
+  v_key := v_base;
+  while exists (select 1 from public.org_sub_departments s where s.organization_id = me.organization_id and s.key = v_key) loop
+    n := n + 1; v_key := v_base || '_' || n;
+  end loop;
+  -- Its join code comes from the org_sub_departments_create_codes trigger (v99).
+  insert into public.org_sub_departments (organization_id, key, name, department_id, created_by)
+  values (me.organization_id, v_key, v_name, v_dept, coalesce(me.name, ''));
+  return v_key;
+end $$;
+
+-- Custom: its department's head or the Super Admin. Built-in: Super Admin only (organization-wide).
+create or replace function public._sub_department_check_edit(p_key text)
+returns public.profiles language plpgsql stable security definer set search_path = public as $$
+declare me public.profiles; r record;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active or me.level not in ('owner','dept_head') then
+    raise exception 'Only the Super Admin or a Department Head can change sub-departments.';
+  end if;
+  if p_key like 'sd\_%' then
+    select * into r from public.org_sub_departments where organization_id = me.organization_id and key = p_key;
+    if not found then raise exception 'Sub-department not found.'; end if;
+    if me.level = 'dept_head' and r.department_id is distinct from me.department_id then
+      raise exception 'You can only change your own department''s sub-departments.';
+    end if;
+  elsif me.level <> 'owner' then
+    raise exception 'Only the Super Admin can rename or hide built-in sub-departments.';
+  end if;
+  return me;
+end $$;
+
+create or replace function public.rename_sub_department(p_key text, p_name text)
+returns void language plpgsql security definer set search_path = public as $$
+declare me record; v_name text := trim(coalesce(p_name, ''));
+begin
+  me := public._sub_department_check_edit(p_key);
+  if v_name = '' then raise exception 'Give the sub-department a name.'; end if;
+  if length(v_name) > 60 then raise exception 'Keep the name under 60 characters.'; end if;
+  if not public.is_sub_department(me.organization_id, p_key) then raise exception 'Sub-department not found.'; end if;
+  if public._sub_department_name_taken(me.organization_id, p_key, v_name) then raise exception 'A sub-department with that name already exists.'; end if;
+  insert into public.org_sub_departments (organization_id, key, name, created_by) values (me.organization_id, p_key, v_name, coalesce(me.name, ''))
+    on conflict (organization_id, key) do update set name = excluded.name;
+end $$;
+
+create or replace function public.set_sub_department_hidden(p_key text, p_hidden boolean)
+returns void language plpgsql security definer set search_path = public as $$
+declare me record; v_default text;
+begin
+  me := public._sub_department_check_edit(p_key);
+  if not public.is_sub_department(me.organization_id, p_key) then raise exception 'Sub-department not found.'; end if;
+  v_default := case p_key when 'cctv' then 'CCTV' when 'wifi' then 'WiFi' when 'walkie' then 'Walkie-Talkie' when 'control' then 'Control Rooms'
+    when 'inventory' then 'Inventory' when 'purchase' then 'Purchase' when 'accounts' then 'Accounts' when 'accommodation' then 'Accommodation'
+    when 'sewadars' then 'Sewadars' end;
+  insert into public.org_sub_departments (organization_id, key, name, hidden, created_by) values (me.organization_id, p_key, coalesce(v_default, p_key), coalesce(p_hidden, false), coalesce(me.name, ''))
+    on conflict (organization_id, key) do update set hidden = excluded.hidden;
+end $$;
+
+create or replace function public.reset_sub_department(p_key text)
+returns void language plpgsql security definer set search_path = public as $$
+declare me record;
+begin
+  if p_key like 'sd\_%' then raise exception 'Only built-in sub-departments can be reset.'; end if;
+  me := public._sub_department_check_edit(p_key);
+  delete from public.org_sub_departments where organization_id = me.organization_id and key = p_key;
+end $$;
+
+create or replace function public.delete_sub_department(p_key text)
+returns void language plpgsql security definer set search_path = public as $$
+declare me record; v_people int;
+begin
+  if p_key not like 'sd\_%' then raise exception 'Built-in sub-departments cannot be deleted. Hide it instead.'; end if;
+  me := public._sub_department_check_edit(p_key);
+  select count(*) into v_people from public.profiles p
+    where p.organization_id = me.organization_id and (p.sub_department = p_key or p.requested_sub_department = p_key);
+  if v_people > 0 then
+    raise exception '% user account(s) are in this sub-department. Move them to another one first.', v_people;
+  end if;
+  update public.accommodation_members set department = null where organization_id = me.organization_id and department = p_key;
+  delete from public.sub_department_permissions where organization_id = me.organization_id and sub_department = p_key;
+  delete from public.department_codes where organization_id = me.organization_id and sub_department = p_key;
+  delete from public.org_sub_departments where organization_id = me.organization_id and key = p_key;
+end $$;
+
+revoke all on function public.create_sub_department(text, text) from public, anon;
+grant execute on function public.create_sub_department(text, text) to authenticated;
+
+-- ── 2. Permissions per department + sub-department ──────────────────────────
+alter table public.sub_department_permissions add column if not exists department_id text references public.departments(id) on delete cascade;
+update public.sub_department_permissions p set department_id = public._it_department(p.organization_id) where p.department_id is null;
+delete from public.sub_department_permissions where department_id is null;  -- organizations without an IT department
+alter table public.sub_department_permissions alter column department_id set not null;
+alter table public.sub_department_permissions drop constraint if exists sub_department_permissions_pkey;
+alter table public.sub_department_permissions add primary key (organization_id, department_id, sub_department, module);
+
+-- Super Admin: any department. Department Head: their own department only.
+drop policy if exists sub_department_permissions_write on public.sub_department_permissions;
+create policy sub_department_permissions_write on public.sub_department_permissions for all
+  using (organization_id = public.current_organization_id()
+         and (public.current_level() = 'owner' or (public.current_level() = 'dept_head' and department_id = public.current_department_id())))
+  with check (organization_id = public.current_organization_id()
+         and (public.current_level() = 'owner' or (public.current_level() = 'dept_head' and department_id = public.current_department_id())));
+
+-- ── 3. IT services belong to the IT department ──────────────────────────────
+-- Super Admin, or the Department Head of the IT department.
+create or replace function public.is_it_exec()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select p.approved and p.is_active and (
+      p.level = 'owner'
+      or (p.level = 'dept_head' and exists (select 1 from public.departments d where d.id = p.department_id and d.it_services)))
+    from public.profiles p where p.id = auth.uid()), false);
+$$;
+grant execute on function public.is_it_exec() to authenticated;
+
+create or replace function public.can_manage_cctv_assets()
+returns boolean language sql stable security definer set search_path=public as $$
+  select public.is_it_exec() or coalesce((select approved and is_active and sub_department='cctv'
+    from public.profiles where id=auth.uid()), false);
+$$;
+create or replace function public.can_manage_wifi_assets()
+returns boolean language sql stable security definer set search_path=public as $$
+  select public.is_it_exec() or coalesce((select approved and is_active and sub_department='wifi'
+    from public.profiles where id=auth.uid()), false);
+$$;
+create or replace function public.can_manage_wifi_access()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.is_it_exec() or coalesce((select approved and is_active and sub_department = 'wifi'
+    from public.profiles where id = auth.uid()), false);
+$$;
+
+drop policy if exists cctv_control_rooms_manage on public.cctv_control_rooms;
+create policy cctv_control_rooms_manage on public.cctv_control_rooms for all using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.is_it_exec() or exists (select 1 from public.profiles p where p.id = auth.uid()
+       and p.level = 'sub_dept_head' and p.sub_department in ('cctv','control')))
+) with check (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.is_it_exec() or exists (select 1 from public.profiles p where p.id = auth.uid()
+       and p.level = 'sub_dept_head' and p.sub_department in ('cctv','control')))
+);
+
+drop policy if exists cctv_control_room_duties_insert on public.cctv_control_room_duties;
+create policy cctv_control_room_duties_insert on public.cctv_control_room_duties for insert with check (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.can_manage_manpower() or public.is_it_exec()
+       or exists (select 1 from public.profiles p where p.id = auth.uid() and p.sub_department in ('cctv','control')))
+);
+drop policy if exists cctv_control_room_duties_update on public.cctv_control_room_duties;
+create policy cctv_control_room_duties_update on public.cctv_control_room_duties for update using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.can_manage_manpower() or public.is_it_exec()
+       or exists (select 1 from public.profiles p where p.id = auth.uid() and p.sub_department in ('cctv','control')))
+) with check (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.can_manage_manpower() or public.is_it_exec()
+       or exists (select 1 from public.profiles p where p.id = auth.uid() and p.sub_department in ('cctv','control')))
+);
+drop policy if exists cctv_control_room_duties_delete on public.cctv_control_room_duties;
+create policy cctv_control_room_duties_delete on public.cctv_control_room_duties for delete using (
+  organization_id = public.current_organization_id() and public.current_is_active() and public.current_approved()
+  and (public.can_manage_manpower() or public.is_it_exec()
+       or exists (select 1 from public.profiles p where p.id = auth.uid() and p.level = 'sub_dept_head' and p.sub_department in ('cctv','control')))
+);
+
+notify pgrst, 'reload schema';
+
+-- ── Sanity checks (expect 0 rows each) ──────────────────────────────────────
+select key, name from public.org_sub_departments where key like 'sd\_%' and department_id is null;
+
+-- <<< END supabase/migration_v100_department_sub_departments.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v101_department_stocks.sql >>>
+-- ============================================================================
+-- v101 · Inventory and Procurement per department
+-- ----------------------------------------------------------------------------
+-- Every department keeps its own stock, categories, locations, purchase orders, receipts and
+-- payments. The Super Admin sees all departments. Requests stay shared: a request is made TO a
+-- department (requests.department_id) and is fulfilled from that department's stock and orders.
+-- Vendors: one list; each vendor is Shared (department_id null) or belongs to one department.
+--
+-- How rows get their department, without changing the existing functions:
+--   a BEFORE INSERT trigger stamps department_id from (1) the value given, (2) the parent row
+--   (item → holdings/movements, order → its lines/receipts/payments/trackings, request → orders,
+--   fulfilments), (3) the department already chosen earlier in the same transaction, (4) the
+--   person's own department. A Super Admin (no department) must say which department.
+-- Access: one extra RESTRICTIVE policy per table (ANDed with the existing ones).
+-- Existing data goes to the IT department. Apply after migration_v100_department_sub_departments.sql.
+-- Safe to re-run (a failed earlier run of this file can simply be run again).
+-- ============================================================================
+
+-- ── 1. Columns + backfill ───────────────────────────────────────────────────
+do $$
+declare t text;
+begin
+  foreach t in array array['inventory_items','inventory_holdings','inventory_movements','inventory_categories','inventory_locations',
+                           'purchase_orders','purchase_items','purchase_receipts','purchase_payments','purchase_payment_requests',
+                           'purchase_trackings','request_fulfilments','purchase_vendors'] loop
+    execute format('alter table public.%I add column if not exists department_id text references public.departments(id) on delete restrict', t);
+    execute format('create index if not exists %I on public.%I (department_id)', t || '_department_idx', t);
+    if t <> 'purchase_vendors' then  -- vendors stay Shared unless someone assigns them
+      -- One-time fill of existing rows: switch the tables' own guard triggers off for it (e.g. purchase_items_guard
+      -- refuses any change to a placed order), then back on.
+      execute format('alter table public.%I disable trigger user', t);
+      execute format('update public.%I x set department_id = public._it_department(x.organization_id) where x.department_id is null', t);
+      execute format('alter table public.%I enable trigger user', t);
+    end if;
+  end loop;
+end $$;
+
+-- Request fulfilments belong to the request's department when it has one.
+alter table public.request_fulfilments disable trigger user;
+update public.request_fulfilments f set department_id = r.department_id
+from public.requests r where r.id = f.request_id and r.department_id is not null and f.department_id is distinct from r.department_id;
+alter table public.request_fulfilments enable trigger user;
+
+-- Not null where every row could be filled (organizations without an IT department keep nulls and get a notice).
+do $$
+declare t text; n bigint;
+begin
+  foreach t in array array['inventory_items','inventory_holdings','inventory_movements','inventory_categories','inventory_locations',
+                           'purchase_orders','purchase_items','purchase_receipts','purchase_payments','purchase_payment_requests',
+                           'purchase_trackings','request_fulfilments'] loop
+    execute format('select count(*) from public.%I where department_id is null', t) into n;
+    if n = 0 then execute format('alter table public.%I alter column department_id set not null', t);
+    else raise notice '% rows in % have no department (no IT department found); column left nullable.', n, t; end if;
+  end loop;
+end $$;
+
+-- ── 2. Unique per department instead of per organization ────────────────────
+drop index if exists public.inventory_items_org_code_uidx;
+create unique index if not exists inventory_items_dept_code_uidx on public.inventory_items (organization_id, department_id, lower(code)) where code <> '';
+drop index if exists public.inventory_categories_org_name_uidx;
+create unique index if not exists inventory_categories_dept_name_uidx on public.inventory_categories (organization_id, department_id, lower(name));
+drop index if exists public.inventory_locations_org_name_uidx;
+create unique index if not exists inventory_locations_dept_name_uidx on public.inventory_locations (organization_id, department_id, lower(name));
+
+-- ── 3. Stamp the department on insert ───────────────────────────────────────
+create or replace function public._stamp_department()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare j jsonb := to_jsonb(new); v text := j->>'department_id'; me record;
+begin
+  if v is null then
+    v := case tg_table_name
+      when 'inventory_holdings' then (select department_id from public.inventory_items where id = j->>'item_id')
+      when 'inventory_movements' then (select department_id from public.inventory_items where id = j->>'item_id')
+      when 'purchase_orders' then (select department_id from public.requests where id = j->>'request_id')
+      when 'purchase_items' then (select department_id from public.purchase_orders where id = j->>'po_id')
+      when 'purchase_receipts' then (select department_id from public.purchase_orders where id = j->>'po_id')
+      when 'purchase_payments' then (select department_id from public.purchase_orders where id = j->>'po_id')
+      when 'purchase_payment_requests' then (select department_id from public.purchase_orders where id = j->>'po_id')
+      when 'purchase_trackings' then (select department_id from public.purchase_orders where id = j->>'po_id')
+      when 'request_fulfilments' then (select department_id from public.requests where id = j->>'request_id')
+    end;
+  end if;
+  if v is null and tg_table_name <> 'purchase_vendors' then
+    v := coalesce(nullif(current_setting('app.department_id', true), ''), public.current_department_id());
+  end if;
+  if v is null and tg_table_name not in ('purchase_vendors','request_fulfilments') then
+    raise exception 'Choose the department for this record.';
+  end if;
+  if v is not null then
+    if not exists (select 1 from public.departments d where d.id = v and d.organization_id = (j->>'organization_id')) then
+      raise exception 'That department is not in your organization.';
+    end if;
+    -- Rows created later in this transaction (e.g. stock added by a receipt) belong to the same department.
+    perform set_config('app.department_id', v, true);
+  end if;
+  new := jsonb_populate_record(new, jsonb_build_object('department_id', v));
+  return new;
+end $$;
+
+do $$
+declare t text;
+begin
+  foreach t in array array['inventory_items','inventory_holdings','inventory_movements','inventory_categories','inventory_locations',
+                           'purchase_orders','purchase_items','purchase_receipts','purchase_payments','purchase_payment_requests',
+                           'purchase_trackings','request_fulfilments','purchase_vendors'] loop
+    -- "a_" so it runs before the tables' other BEFORE INSERT triggers.
+    execute format('drop trigger if exists a_stamp_department on public.%I', t);
+    execute format('create trigger a_stamp_department before insert on public.%I for each row execute function public._stamp_department()', t);
+  end loop;
+end $$;
+
+-- A request is fulfilled only from its own department's stock.
+create or replace function public._fulfilment_same_department()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.inventory_item_id is not null and new.department_id is not null
+     and exists (select 1 from public.inventory_items i where i.id = new.inventory_item_id and i.department_id is distinct from new.department_id) then
+    raise exception 'That stock item belongs to another department. Use the requested department''s stock.';
+  end if;
+  return new;
+end $$;
+drop trigger if exists fulfilment_same_department on public.request_fulfilments;
+create trigger fulfilment_same_department before insert or update of inventory_item_id on public.request_fulfilments
+  for each row execute function public._fulfilment_same_department();
+
+-- ── 4. Who sees what: an extra restrictive policy on each table ─────────────
+create or replace function public.in_my_department(p_department text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.is_org_owner() or (p_department is not null and p_department = public.current_department_id());
+$$;
+grant execute on function public.in_my_department(text) to authenticated;
+
+-- The person who raised a request may follow its order's delivery tracking.
+create or replace function public._tracking_visible_to_requester(p_po text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.purchase_orders po join public.requests r on r.id = po.request_id
+                 where po.id = p_po and r.requester_id = auth.uid())
+      or exists (select 1 from public.purchase_items pi join public.requests r on r.id = pi.request_id
+                 where pi.po_id = p_po and r.requester_id = auth.uid());
+$$;
+
+do $$
+declare t text;
+begin
+  foreach t in array array['inventory_items','inventory_holdings','inventory_movements','inventory_categories','inventory_locations',
+                           'purchase_orders','purchase_items','purchase_receipts','purchase_payments','purchase_payment_requests'] loop
+    execute format('drop policy if exists department_scope on public.%I', t);
+    execute format('create policy department_scope on public.%I as restrictive for all using (public.in_my_department(department_id)) with check (public.in_my_department(department_id))', t);
+  end loop;
+end $$;
+drop policy if exists department_scope on public.purchase_trackings;
+create policy department_scope on public.purchase_trackings as restrictive for all
+  using (public.in_my_department(department_id) or public._tracking_visible_to_requester(po_id))
+  with check (public.in_my_department(department_id));
+drop policy if exists department_scope on public.purchase_vendors;
+create policy department_scope on public.purchase_vendors as restrictive for all
+  using (department_id is null or public.in_my_department(department_id))
+  with check (department_id is null or public.in_my_department(department_id));
+-- request_fulfilments keep their request-based visibility (the requester follows delivery).
+
+-- ── 5. Functions the app calls that list stock ─────────────────────────────
+drop function if exists public.catalogue_list();
+create function public.catalogue_list()
+returns table (id text, name text, unit text, category text, department_id text)
+language sql stable security definer set search_path = public as $$
+  select i.id, i.name, i.unit, i.category, i.department_id
+  from public.inventory_items i
+  where public.current_approved() and i.organization_id = public.current_organization_id()
+  order by lower(i.name);
+$$;
+revoke all on function public.catalogue_list() from public, anon;
+grant execute on function public.catalogue_list() to authenticated;
+
+drop function if exists public.inventory_available();
+create function public.inventory_available()
+returns table (item_id text, in_stock integer, reserved integer, available integer, department_id text)
+language sql stable security definer set search_path = public as $$
+  select i.id, i.in_stock,
+         coalesce(x.res, 0)::integer,
+         greatest(i.in_stock - coalesce(x.res, 0), 0)::integer,
+         i.department_id
+  from public.inventory_items i
+  left join (
+    select f.inventory_item_id as iid,
+           sum(case when f.source = 'inventory' then f.qty else least(f.qty, coalesce(pi.qty_received, 0)) end) as res
+    from public.request_fulfilments f
+    left join public.purchase_items pi on pi.id = f.purchase_item_id
+    where f.status = 'planned' and f.inventory_item_id is not null
+    group by f.inventory_item_id
+  ) x on x.iid = i.id
+  where i.organization_id = public.current_organization_id()
+    and (public.req_is_exec() or public.req_team() in ('inventory','purchase'))
+    and public.in_my_department(i.department_id);
+$$;
+revoke all on function public.inventory_available() from public, anon;
+grant execute on function public.inventory_available() to authenticated;
+
+-- Creating an order from buy-list lines: all lines must be from one department, which the order gets.
+create or replace function public.purchase_create_po_for_parts(p_parts text[])
+returns text language plpgsql security definer set search_path = public as $$
+declare v_depts text[];
+begin
+  select array_agg(distinct f.department_id) into v_depts
+  from public.request_fulfilments f where f.id = any(p_parts) and f.organization_id = public.current_organization_id();
+  if coalesce(array_length(v_depts, 1), 0) > 1 then
+    raise exception 'Order lines from one department at a time.';
+  end if;
+  if v_depts[1] is not null then
+    if not public.in_my_department(v_depts[1]) then raise exception 'Those lines belong to another department.'; end if;
+    perform set_config('app.department_id', v_depts[1], true);
+  end if;
+  return public.purchase_create_po(p_parts);
+end $$;
+revoke all on function public.purchase_create_po_for_parts(text[]) from public, anon;
+grant execute on function public.purchase_create_po_for_parts(text[]) to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- ── Sanity checks ───────────────────────────────────────────────────────────
+select 'inventory_items' as table_name, count(*) filter (where department_id is null) as without_department from public.inventory_items
+union all select 'purchase_orders', count(*) filter (where department_id is null) from public.purchase_orders
+union all select 'request_fulfilments', count(*) filter (where department_id is null) from public.request_fulfilments;
+
+-- <<< END supabase/migration_v101_department_stocks.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v102_department_people_tasks_events.sql >>>
+-- ============================================================================
+-- v102 · Sewadars, Accommodation, Tasks and Meetings per department; Event Planning shared
+-- ----------------------------------------------------------------------------
+-- Same idea as v101 (Inventory / Procurement), for the people, task and event modules:
+-- each row belongs to the department that owns it, people see their own department's rows,
+-- the Super Admin sees everything.
+--
+-- The column is owner_department_id (several of these tables already have a department_id
+-- with another meaning: a sub-department key or a participating department). event_plans
+-- already had owner_department_id (the department that created the event).
+--
+-- New rows get it from: the value given → the parent row (task → its members/resources,
+-- sewadar → their calls/tasks/duties/attendance, event → its requirements/tasks/meetings…)
+-- → the transaction's department → the person's department → the Super Admin's
+-- "Adding to" department (profiles.working_department_id, set in the top bar).
+-- A Super Admin with no department chosen creates organisation-wide events, meetings and
+-- tasks (visible to everyone); sewadars, rooms, meals and teams always need a department.
+-- Emergency meetups stay organisation-wide. People invited to a meeting see it.
+-- EVENT PLANNING IS SHARED: every department sees and plans the same events (event_plans and
+-- their requirements, staffing, tasks, meetings, reviews). Those rows still record which
+-- department created them (owner_department_id), but nobody is restricted by it.
+-- Existing rows go to the IT department. Apply after migration_v101_department_stocks.sql.
+-- Safe to re-run.
+-- ============================================================================
+
+alter table public.profiles add column if not exists working_department_id text references public.departments(id) on delete set null;
+
+-- ── 1. Column + backfill ────────────────────────────────────────────────────
+do $$
+declare t text;
+begin
+  foreach t in array array['accommodation_members','accommodation_rooms','meal_menu','accommodation_member_tasks','accommodation_member_calls',
+                           'sewadar_event_operations','event_attendance','manpower_teams','sewa_duty_shifts',
+                           'manpower_tasks','manpower_task_members','manpower_task_resources',
+                           'event_plans','event_departments','event_requirements','event_tasks','event_meetings','event_reviews',
+                           'event_staffing_requirements','meetings'] loop
+    if to_regclass('public.' || t) is null then raise notice 'table % not found, skipped', t; continue; end if;
+    execute format('alter table public.%I add column if not exists owner_department_id text', t);
+    execute format('create index if not exists %I on public.%I (owner_department_id)', t || '_owner_dept_idx', t);
+    -- One-time fill: the tables' own guard triggers are switched off for it.
+    execute format('alter table public.%I disable trigger user', t);
+    execute format('update public.%I x set owner_department_id = public._it_department(x.organization_id) where x.owner_department_id is null', t);
+    execute format('alter table public.%I enable trigger user', t);
+  end loop;
+end $$;
+
+-- ── 2. Unique per department instead of per organization ────────────────────
+drop index if exists public.manpower_teams_org_name_uidx;
+create unique index if not exists manpower_teams_dept_name_uidx on public.manpower_teams (organization_id, owner_department_id, lower(trim(name)));
+drop index if exists public.accommodation_rooms_org_name_uidx;
+create unique index if not exists accommodation_rooms_dept_name_uidx on public.accommodation_rooms (organization_id, owner_department_id, lower(name));
+drop index if exists public.meal_menu_unique_slot_scope_idx;
+create unique index if not exists meal_menu_unique_slot_dept_idx on public.meal_menu (organization_id, owner_department_id, menu_date, meal, scope_key);
+
+-- ── 3. Stamp the owning department on insert ────────────────────────────────
+create or replace function public._stamp_owner_department()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare j jsonb := to_jsonb(new); v text := j->>'owner_department_id';
+begin
+  if v is null and tg_table_name in ('manpower_task_members','manpower_task_resources') then
+    v := (select owner_department_id from public.manpower_tasks where id = j->>'task_id');
+  end if;
+  if v is null and tg_table_name <> 'accommodation_members' and j->>'member_id' is not null then
+    v := (select owner_department_id from public.accommodation_members where id = j->>'member_id');
+  end if;
+  -- Only an event's own planning rows take the event's department; a department's sewadar, room,
+  -- task or meeting linked to a shared event stays with the department that created it.
+  if v is null and tg_table_name like 'event\_%' and tg_table_name <> 'event_attendance' and j->>'event_id' is not null then
+    v := (select owner_department_id from public.event_plans where id::text = j->>'event_id');
+  end if;
+  if v is null and j->>'meeting_id' is not null then
+    v := (select owner_department_id from public.meetings where id::text = j->>'meeting_id');
+  end if;
+  if v is null then
+    v := coalesce(nullif(current_setting('app.department_id', true), ''), public.current_department_id(),
+                  (select working_department_id from public.profiles where id = auth.uid()));
+  end if;
+  if v is null and tg_table_name in ('accommodation_members','accommodation_rooms','meal_menu','manpower_teams')
+     and auth.uid() is not null then
+    raise exception 'Choose the department first (Super Admin: "Adding to" in the top bar).';
+  end if;
+  if v is not null and not exists (select 1 from public.departments d where d.id = v and d.organization_id = (j->>'organization_id')) then
+    raise exception 'That department is not in your organization.';
+  end if;
+  new := jsonb_populate_record(new, jsonb_build_object('owner_department_id', v));
+  return new;
+end $$;
+
+do $$
+declare t text;
+begin
+  foreach t in array array['accommodation_members','accommodation_rooms','meal_menu','accommodation_member_tasks','accommodation_member_calls',
+                           'sewadar_event_operations','event_attendance','manpower_teams','sewa_duty_shifts',
+                           'manpower_tasks','manpower_task_members','manpower_task_resources',
+                           'event_plans','event_departments','event_requirements','event_tasks','event_meetings','event_reviews',
+                           'event_staffing_requirements','meetings'] loop
+    if to_regclass('public.' || t) is null then continue; end if;
+    execute format('drop trigger if exists a_stamp_owner_department on public.%I', t);
+    execute format('create trigger a_stamp_owner_department before insert on public.%I for each row execute function public._stamp_owner_department()', t);
+  end loop;
+end $$;
+
+-- ── 4. Meetings reach the meeting's department (organisation-wide ones reach everyone) ──
+create or replace function public.meeting_recipients(p_meeting uuid)
+returns setof uuid language sql stable security definer set search_path = public as $$
+  select distinct p.id from public.meetings m
+  join public.profiles p on p.organization_id = m.organization_id
+  where m.id = p_meeting and p.approved and p.is_active and p.id is distinct from m.created_by
+    and (m.kind = 'emergency' or m.owner_department_id is null or p.level = 'owner'
+      or p.department_id = m.owner_department_id
+      or exists (select 1 from public.accommodation_members am2 where am2.profile_id = p.id and am2.owner_department_id = m.owner_department_id))
+    and (m.kind = 'emergency' or m.audience_all or p.sub_department = any(m.audience_depts)
+      or ('it:staff' = any(m.audience_groups) and p.level in ('staff','sub_dept_head','dept_head'))
+      or exists (select 1 from public.accommodation_members am where am.organization_id = m.organization_id and am.profile_id = p.id
+        and ('sewadar:all' = any(m.audience_groups)
+          or ('sewadar:regular' = any(m.audience_groups) and am.member_type in ('salary_based','monthly'))
+          or ('sewadar:annual' = any(m.audience_groups) and am.member_type = 'annual')
+          or exists (select 1 from unnest(m.audience_groups) g
+            where left(g, 13) = 'sewadar:team:' and (lower(trim(am.team_name)) = lower(trim(substr(g, 14)))
+              or exists (select 1 from unnest(coalesce(am.team_names, '{}'::text[])) as member_teams(name) where lower(trim(member_teams.name)) = lower(trim(substr(g, 14))))))))
+    );
+$$;
+revoke all on function public.meeting_recipients(uuid) from public, anon, authenticated;
+
+create or replace function public._meeting_visible(p_meeting uuid, p_kind text, p_created_by uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select p_kind = 'emergency' or p_created_by = auth.uid()
+      or auth.uid() in (select public.meeting_recipients(p_meeting));
+$$;
+grant execute on function public._meeting_visible(uuid, text, uuid) to authenticated;
+
+-- ── 5. Who sees what: an extra restrictive policy on each table ─────────────
+-- Organisation-wide rows (no department) are visible to all; otherwise own department (Super Admin: all).
+do $$
+declare t text;
+begin
+  foreach t in array array['accommodation_members','accommodation_member_tasks','accommodation_member_calls',
+                           'sewadar_event_operations','event_attendance','manpower_teams','sewa_duty_shifts',
+                           'manpower_tasks','manpower_task_members','manpower_task_resources'] loop
+    if to_regclass('public.' || t) is null then continue; end if;
+    execute format('drop policy if exists department_scope on public.%I', t);
+    execute format('create policy department_scope on public.%I as restrictive for all using (owner_department_id is null or public.in_my_department(owner_department_id)) with check (owner_department_id is null or public.in_my_department(owner_department_id))', t);
+  end loop;
+end $$;
+
+-- Event Planning is shared by every department: no department restriction on the event tables
+-- (dropped here too in case an earlier version of this file was run).
+do $$
+declare t text;
+begin
+  foreach t in array array['event_plans','event_departments','event_requirements','event_tasks','event_meetings','event_reviews',
+                           'event_staffing_requirements'] loop
+    if to_regclass('public.' || t) is null then continue; end if;
+    execute format('drop policy if exists department_scope on public.%I', t);
+  end loop;
+end $$;
+
+-- Rooms and the meal menu: people without a role yet (volunteers) can still read them, as before.
+drop policy if exists department_scope on public.accommodation_rooms;
+create policy department_scope on public.accommodation_rooms as restrictive for all
+  using (owner_department_id is null or public.in_my_department(owner_department_id) or public.current_level() = 'other')
+  with check (owner_department_id is null or public.in_my_department(owner_department_id));
+drop policy if exists department_scope on public.meal_menu;
+create policy department_scope on public.meal_menu as restrictive for all
+  using (owner_department_id is null or public.in_my_department(owner_department_id) or public.current_level() = 'other')
+  with check (owner_department_id is null or public.in_my_department(owner_department_id));
+
+-- Meetings: own department, organisation-wide, emergency, or invited.
+drop policy if exists department_scope on public.meetings;
+create policy department_scope on public.meetings as restrictive for all
+  using (owner_department_id is null or public.in_my_department(owner_department_id) or public._meeting_visible(id, kind, created_by))
+  with check (owner_department_id is null or public.in_my_department(owner_department_id));
+
+notify pgrst, 'reload schema';
+
+-- ── Sanity check: rows still without a department (expect 0 unless an organization has no IT department) ──
+select 'accommodation_members' as table_name, count(*) filter (where owner_department_id is null) as without_department from public.accommodation_members
+union all select 'manpower_tasks', count(*) filter (where owner_department_id is null) from public.manpower_tasks
+union all select 'event_plans', count(*) filter (where owner_department_id is null) from public.event_plans
+union all select 'meetings', count(*) filter (where owner_department_id is null) from public.meetings;
+
+-- <<< END supabase/migration_v102_department_people_tasks_events.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v103_request_from_department.sql >>>
+-- ============================================================================
+-- v103 · Requests record the department they come FROM
+-- ----------------------------------------------------------------------------
+-- requests.department_id stays the department the request is made TO (its head approves it and
+-- it is fulfilled from that department's stock). requests.from_department_id is the requester's
+-- own department, taken from their profile when the request is created (it cannot be chosen).
+-- Existing requests get it from their requester's profile.
+-- Apply after migration_v102_department_people_tasks_events.sql. Safe to re-run.
+-- ============================================================================
+
+alter table public.requests add column if not exists from_department_id text references public.departments(id) on delete set null;
+
+alter table public.requests disable trigger user;
+update public.requests r set from_department_id = p.department_id
+from public.profiles p where p.id = r.requester_id and r.from_department_id is null and p.department_id is not null;
+alter table public.requests enable trigger user;
+
+create or replace function public._request_from_department()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  new.from_department_id := (select department_id from public.profiles where id = new.requester_id);
+  return new;
+end $$;
+drop trigger if exists request_from_department on public.requests;
+create trigger request_from_department before insert on public.requests
+  for each row execute function public._request_from_department();
+
+notify pgrst, 'reload schema';
+
+
+-- <<< END supabase/migration_v103_request_from_department.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v104_offline_order_status.sql >>>
+-- ============================================================================
+-- v104 · Progress of offline-vendor orders
+-- ----------------------------------------------------------------------------
+-- Online orders get their shipment status from the marketplace / courier tracking. Offline
+-- (local) vendors have none, so Procurement now records it by hand while the order waits:
+--   confirmed  → the vendor confirmed the order
+--   ready      → goods are ready for pickup
+--   dispatched → the vendor sent the goods
+-- Receiving the goods still happens with "Receive" on the order (unchanged).
+-- Apply after migration_v103_request_from_department.sql. Safe to re-run.
+-- ============================================================================
+
+alter table public.purchase_orders add column if not exists offline_status text;
+alter table public.purchase_orders add column if not exists offline_status_at timestamptz;
+alter table public.purchase_orders add column if not exists offline_status_by text not null default '';
+alter table public.purchase_orders drop constraint if exists purchase_orders_offline_status_check;
+alter table public.purchase_orders add constraint purchase_orders_offline_status_check
+  check (offline_status is null or offline_status in ('confirmed','ready','dispatched'));
+
+-- Purchase or the receiving (Inventory) team of the order's department; p_status null clears it.
+create or replace function public.purchase_set_offline_status(p_po text, p_status text)
+returns void language plpgsql security definer set search_path = public as $$
+declare me record; o record;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active then raise exception 'Not allowed.'; end if;
+  if not (public.can_manage_purchase() or public.can_receive_purchase()) then
+    raise exception 'Only Purchase or the receiving team can update an order''s progress.';
+  end if;
+  select * into o from public.purchase_orders where id = p_po and organization_id = me.organization_id;
+  if not found then raise exception 'Order not found.'; end if;
+  if not public.in_my_department(o.department_id) then raise exception 'That order belongs to another department.'; end if;
+  if o.status not in ('ordered','partial') then raise exception 'Progress can be updated only while the order is waiting for its goods.'; end if;
+  if p_status is not null and p_status not in ('confirmed','ready','dispatched') then raise exception 'Unknown status.'; end if;
+  update public.purchase_orders
+    set offline_status = p_status, offline_status_at = case when p_status is null then null else now() end,
+        offline_status_by = case when p_status is null then '' else coalesce(me.name, '') end
+    where id = p_po;
+end $$;
+revoke all on function public.purchase_set_offline_status(text, text) from public, anon;
+grant execute on function public.purchase_set_offline_status(text, text) to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v104_offline_order_status.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v105_helpdesk_issues_to_department.sql >>>
+-- ============================================================================
+-- v105 · Help Desk and Issues & Reports work like Requests
+-- ----------------------------------------------------------------------------
+-- A ticket or an issue report is raised TO a department (the person raising it picks it; their own
+-- department by default). Only that department's people handle it; the person who raised it can
+-- still follow it; the Super Admin sees everything. New-ticket and new-issue alerts go only to that
+-- department. Announcements / lessons (department_updates) belong to the department that posts them.
+-- Existing tickets and issues go to the IT department.
+-- Apply after migration_v104_offline_order_status.sql. Safe to re-run.
+-- ============================================================================
+
+-- ── 1. Columns + backfill ───────────────────────────────────────────────────
+alter table public.helpdesk_tickets add column if not exists to_department_id text references public.departments(id) on delete set null;
+alter table public.member_issues add column if not exists to_department_id text references public.departments(id) on delete set null;
+alter table public.department_updates add column if not exists owner_department_id text references public.departments(id) on delete set null;
+
+do $$
+declare t text; c text;
+begin
+  foreach t in array array['helpdesk_tickets:to_department_id','member_issues:to_department_id','department_updates:owner_department_id'] loop
+    c := split_part(t, ':', 2); t := split_part(t, ':', 1);
+    execute format('alter table public.%I disable trigger user', t);
+    execute format('update public.%I x set %I = public._it_department(x.organization_id) where x.%I is null', t, c, c);
+    execute format('alter table public.%I enable trigger user', t);
+  end loop;
+end $$;
+
+-- ── 2. Stamp on insert: chosen department → the person's own department → IT ─
+create or replace function public._stamp_to_department()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare j jsonb := to_jsonb(new); col text := case when tg_table_name = 'department_updates' then 'owner_department_id' else 'to_department_id' end;
+        v text := j->>col;
+begin
+  if v is null then
+    v := coalesce(nullif(current_setting('app.to_department_id', true), ''), public.current_department_id(),
+                  (select working_department_id from public.profiles where id = auth.uid()),
+                  public._it_department(j->>'organization_id'));
+  end if;
+  if v is not null and not exists (select 1 from public.departments d where d.id = v and d.organization_id = (j->>'organization_id')) then
+    raise exception 'That department is not in your organization.';
+  end if;
+  new := jsonb_populate_record(new, jsonb_build_object(col, v));
+  return new;
+end $$;
+drop trigger if exists a_stamp_to_department on public.helpdesk_tickets;
+create trigger a_stamp_to_department before insert on public.helpdesk_tickets for each row execute function public._stamp_to_department();
+drop trigger if exists a_stamp_to_department on public.member_issues;
+create trigger a_stamp_to_department before insert on public.member_issues for each row execute function public._stamp_to_department();
+drop trigger if exists a_stamp_to_department on public.department_updates;
+create trigger a_stamp_to_department before insert on public.department_updates for each row execute function public._stamp_to_department();
+
+-- Raising a ticket to a department: the existing helpdesk_submit, with the department chosen.
+create or replace function public.helpdesk_submit_to(p_to_department text, p_subject text, p_description text, p_category text,
+  p_priority text, p_department text, p_location text, p_requester_name text default null, p_requester_email text default null)
+returns uuid language plpgsql security definer set search_path = public as $$
+begin
+  if p_to_department is not null and p_to_department <> '' then
+    perform set_config('app.to_department_id', p_to_department, true);
+  end if;
+  return public.helpdesk_submit(p_subject, p_description, p_category, p_priority, p_department, p_location, p_requester_name, p_requester_email);
+end $$;
+revoke all on function public.helpdesk_submit_to(text, text, text, text, text, text, text, text, text) from public, anon;
+grant execute on function public.helpdesk_submit_to(text, text, text, text, text, text, text, text, text) to authenticated;
+
+-- ── 3. Who sees what (restrictive, ANDed with the existing policies) ─────────
+drop policy if exists department_scope on public.helpdesk_tickets;
+create policy department_scope on public.helpdesk_tickets as restrictive for all
+  using (to_department_id is null or public.in_my_department(to_department_id) or requester_id = auth.uid())
+  with check (to_department_id is null or public.in_my_department(to_department_id) or requester_id = auth.uid());
+
+create or replace function public._helpdesk_ticket_in_scope(p_ticket uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.helpdesk_tickets t where t.id = p_ticket
+    and (t.to_department_id is null or public.in_my_department(t.to_department_id) or t.requester_id = auth.uid()));
+$$;
+grant execute on function public._helpdesk_ticket_in_scope(uuid) to authenticated;
+drop policy if exists department_scope on public.helpdesk_ticket_events;
+create policy department_scope on public.helpdesk_ticket_events as restrictive for all
+  using (public._helpdesk_ticket_in_scope(ticket_id)) with check (public._helpdesk_ticket_in_scope(ticket_id));
+
+-- Replies / notes go through security-definer functions, so check the department there too.
+create or replace function public._helpdesk_event_scope_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is not null and not public._helpdesk_ticket_in_scope(new.ticket_id) then
+    raise exception 'That ticket belongs to another department.';
+  end if;
+  return new;
+end $$;
+drop trigger if exists helpdesk_event_scope_guard on public.helpdesk_ticket_events;
+create trigger helpdesk_event_scope_guard before insert on public.helpdesk_ticket_events
+  for each row execute function public._helpdesk_event_scope_guard();
+
+drop policy if exists department_scope on public.member_issues;
+create policy department_scope on public.member_issues as restrictive for all
+  using (to_department_id is null or public.in_my_department(to_department_id) or reporter_id = auth.uid())
+  with check (to_department_id is null or public.in_my_department(to_department_id) or reporter_id = auth.uid());
+
+drop policy if exists department_scope on public.department_updates;
+create policy department_scope on public.department_updates as restrictive for all
+  using (owner_department_id is null or public.in_my_department(owner_department_id))
+  with check (owner_department_id is null or public.in_my_department(owner_department_id));
+
+-- ── 4. Alerts and auto-assign stay inside the department ────────────────────
+create or replace function public.helpdesk_tickets_after()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare s public.helpdesk_settings; t uuid; label text := '#' || new.number || ' ' || new.subject;
+begin
+  if tg_op = 'INSERT' then
+    perform public._helpdesk_log(new, 'Ticket created by ' || coalesce(nullif(new.requester_name, ''), 'requester'));
+    s := public._helpdesk_settings(new.organization_id);
+    for t in select p.id from public.profiles p where p.organization_id = new.organization_id and p.approved and p.is_active
+             -- Only the handlers of the department the ticket was raised to (and the Super Admin).
+             and (p.level = 'owner' or ((p.level = 'dept_head' or p.id = any(s.technician_ids))
+                  and (new.to_department_id is null or p.department_id = new.to_department_id))) loop
+      perform public._helpdesk_notify(t, new.organization_id, 'New helpdesk ticket', label, case when new.priority = 'critical' then 'critical' else 'info' end, new.id);
+    end loop;
+    return new;
+  end if;
+  if new.status <> old.status then
+    perform public._helpdesk_log(new, 'Status: ' || replace(old.status, '_', ' ') || ' → ' || replace(new.status, '_', ' '));
+    if new.status = 'closed' then
+      perform public._helpdesk_notify(new.requester_id, new.organization_id, 'Ticket closed', label || ' — ' || left(new.resolution, 140), 'info', new.id);
+    elsif old.status = 'closed' then
+      perform public._helpdesk_notify(new.assignee_id, new.organization_id, 'Ticket reopened', label, 'warning', new.id);
+    end if;
+  end if;
+  if new.priority <> old.priority then perform public._helpdesk_log(new, 'Priority: ' || old.priority || ' → ' || new.priority); end if;
+  if new.assignee_id is distinct from old.assignee_id then
+    perform public._helpdesk_log(new, case when new.assignee_id is null then 'Unassigned' else 'Assigned to ' || new.assignee_name end);
+    perform public._helpdesk_notify(new.assignee_id, new.organization_id, 'Ticket assigned to you', label, case when new.priority = 'critical' then 'critical' else 'info' end, new.id);
+  end if;
+  if new.category <> old.category then perform public._helpdesk_log(new, 'Category: ' || old.category || ' → ' || new.category); end if;
+  if new.department <> old.department then perform public._helpdesk_log(new, 'Department: ' || coalesce(nullif(old.department, ''), '—') || ' → ' || coalesce(nullif(new.department, ''), '—')); end if;
+  if new.location <> old.location then perform public._helpdesk_log(new, 'Location: ' || coalesce(nullif(old.location, ''), '—') || ' → ' || coalesce(nullif(new.location, ''), '—')); end if;
+  if new.due_at is distinct from old.due_at then perform public._helpdesk_log(new, 'Due time changed'); end if;
+  return new;
+end $$;
+
+
+-- A category rule's technician is used only if they belong to the ticket's department.
+create or replace function public.helpdesk_tickets_autoassign()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare rule text;
+begin
+  if new.assignee_id is null then
+    select category_rules ->> new.category into rule from public.helpdesk_settings where organization_id = new.organization_id;
+    if rule is not null and rule <> '' and exists (
+      select 1 from public.profiles p where p.id = rule::uuid
+        and (new.to_department_id is null or p.department_id = new.to_department_id or p.level = 'owner')) then
+      new.assignee_id := rule::uuid;
+      new.assignee_name := coalesce((select name from public.profiles where id = new.assignee_id), '');
+    end if;
+  end if;
+  return new;
+end $$;
+
+create or replace function public.member_issue_notify()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare msg_title text;
+begin
+  msg_title := case
+    when new.kind = 'feedback' then 'Feedback received'
+    when new.kind = 'site_event' then 'Site/event issue reported'
+    when new.kind = 'material' then 'Material issue reported'
+    else 'Issue reported'
+  end;
+  insert into public.notifications (organization_id, user_id, title, message, type, link, ref_id)
+  select new.organization_id, p.id, msg_title,
+    new.reporter_name || ': ' || new.title || case when new.material <> '' then ' · ' || new.material else '' end,
+    'warning', 'issues', new.id::text
+  from public.profiles p
+  where p.organization_id = new.organization_id and p.approved and p.is_active and p.id <> new.reporter_id
+    and (p.level = 'owner'
+         or ((new.to_department_id is null or p.department_id = new.to_department_id)
+             and (p.level = 'dept_head' or (p.level = 'sub_dept_head' and p.sub_department = new.sub_department))));
+  return new;
+end $$;
+
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v105_helpdesk_issues_to_department.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v106_staffing_per_department.sql >>>
+-- ============================================================================
+-- v106 · Event staffing per department
+-- ----------------------------------------------------------------------------
+-- Events are shared by every department, but each department sets the sewadar headcount for its
+-- OWN sub-departments. So a staffing number is unique per event + date + sub-department +
+-- department (it was per event + date + sub-department, which made departments overwrite each
+-- other's numbers). owner_department_id was added in v102; rows without one belong to IT.
+-- Apply after migration_v105_helpdesk_issues_to_department.sql. Safe to re-run.
+-- ============================================================================
+
+alter table public.event_staffing_requirements add column if not exists owner_department_id text;
+alter table public.event_staffing_requirements disable trigger user;
+update public.event_staffing_requirements x set owner_department_id = public._it_department(x.organization_id)
+where x.owner_department_id is null;
+alter table public.event_staffing_requirements enable trigger user;
+
+alter table public.event_staffing_requirements drop constraint if exists event_staffing_requirements_event_id_requirement_date_category_key;
+create unique index if not exists event_staffing_requirements_dept_uidx
+  on public.event_staffing_requirements (event_id, requirement_date, category, coalesce(owner_department_id, ''));
+
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v106_staffing_per_department.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v107_requests_without_department.sql >>>
+-- ============================================================================
+-- v107 · Old requests without a department belong to IT
+-- ----------------------------------------------------------------------------
+-- Requests raised before departments existed have no department_id, and the v98 guard let ANY
+-- Department Head decide those. They now belong to the IT department (like all other old data),
+-- and the guard treats a missing department as IT.
+-- Apply after migration_v106_staffing_per_department.sql. Safe to re-run.
+-- ============================================================================
+
+alter table public.requests disable trigger user;
+update public.requests r set department_id = public._it_department(r.organization_id) where r.department_id is null;
+alter table public.requests enable trigger user;
+
+create or replace function public._request_department_head_guard()
+returns trigger language plpgsql set search_path = public as $$
+declare me record; v_dept text := coalesce(old.department_id, public._it_department(old.organization_id)); v_dept_name text;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or me.level <> 'dept_head' then return new; end if;
+  if me.department_id is not distinct from v_dept then return new; end if;
+  if (old.status = 'pending_it' and new.status is distinct from old.status)
+     or new.delivery_team is distinct from old.delivery_team
+     or new.delivery_member_id is distinct from old.delivery_member_id then
+    select name into v_dept_name from public.departments where id = v_dept;
+    raise exception 'Only the Department Head of % can review this request.', coalesce(v_dept_name, 'its department');
+  end if;
+  return new;
+end $$;
+
+notify pgrst, 'reload schema';
+
+-- Expect 0:
+select count(*) as requests_without_department from public.requests where department_id is null;
+
+-- <<< END supabase/migration_v107_requests_without_department.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v108_request_department_for_approvals.sql >>>
+-- ============================================================================
+-- v108 · Super Admin approvals and arrangements create records in the request's department
+-- ----------------------------------------------------------------------------
+-- Approving (Department Head or Super Admin) and arranging a request can create a new catalogue
+-- item for something to be purchased. v101 gives every stock record a department, but the Super
+-- Admin has none, so approving failed with "Choose the department for this record". Both now set
+-- the request's department first, so everything they create belongs to that department.
+-- Also: only the requested department's head (or the Super Admin) may arrange a request.
+-- Apply after migration_v107_requests_without_department.sql. Safe to re-run.
+-- ============================================================================
+
+create or replace function public._request_commit_review_plan(p_id text)
+returns numeric language plpgsql security definer set search_path = public as $$
+declare
+  r record; ri record; l jsonb; part jsonb; q integer; planned integer; src text; inv text;
+  avail integer; inv_row record; total numeric := 0; purchase_needed boolean := false;
+  has_radio boolean := false; has_item boolean := false; any_approved boolean := false;
+begin
+  select * into r from public.requests where id = p_id for update;
+  if not found then raise exception 'Request not found.'; end if;
+  -- New catalogue items, stock plans and purchase lines belong to the department the request was made to
+  -- (also when the Super Admin approves, who has no department of their own).
+  perform set_config('app.department_id', coalesce(r.department_id, public._it_department(r.organization_id)), true);
+  if exists (select 1 from public.request_items where request_id = p_id and qty_approved < qty_requested and trim(coalesce(cut_reason,'')) = '') then
+    raise exception 'A reason is required for every reduced quantity.';
+  end if;
+  if exists (select 1 from public.request_items where request_id = p_id and qty_approved > 0 and approved_budget is null) then
+    raise exception 'Enter a total budget for every approved item.';
+  end if;
+  if coalesce((select sum(qty_approved) from public.request_items where request_id = p_id), 0) = 0 then
+    raise exception 'Approve at least one item, or reject the request.';
+  end if;
+  total := total + coalesce(r.review_misc_budget, 0);
+
+  delete from public.request_fulfilments where request_id = p_id and status = 'planned';
+  for ri in select * from public.request_items where request_id = p_id order by position for update loop
+    total := total + coalesce(ri.approved_budget, 0);
+    if coalesce(ri.qty_approved, 0) = 0 then
+      if jsonb_array_length(coalesce(ri.review_plan, '[]'::jsonb)) <> 0 then raise exception 'A zero-approved line cannot have an arrangement.'; end if;
+      continue;
+    end if;
+    any_approved := true;
+    if jsonb_typeof(ri.review_plan) is distinct from 'array' then raise exception 'Set the stock and purchase split for "%".', ri.name; end if;
+    planned := 0;
+    for part in select value from jsonb_array_elements(ri.review_plan) loop
+      src := part->>'source'; q := (part->>'qty')::integer; inv := nullif(part->>'inventory_item_id','');
+      if q is null or q <= 0 then raise exception 'Arrangement quantities must be positive whole numbers.'; end if;
+      if ri.kind = 'radio' then
+        if src <> 'walkie' then raise exception 'Walkie-talkie requests must be allocated through the Walkie pool.'; end if;
+        inv := null;
+      elsif src not in ('inventory','purchase') then raise exception 'Choose stock or purchase for "%".', ri.name;
+      elsif src = 'inventory' then
+        inv := coalesce(inv, ri.inventory_item_id, (select id from public.inventory_items where organization_id = r.organization_id and regexp_replace(lower(trim(name)), '[^a-z0-9]', '', 'g') = regexp_replace(lower(trim(ri.name)), '[^a-z0-9]', '', 'g') order by id limit 1));
+        if inv is null then raise exception 'No matching inventory item was found for "%".', ri.name; end if;
+        select * into inv_row from public.inventory_items where id = inv and organization_id = r.organization_id for update;
+        if not found or regexp_replace(lower(trim(inv_row.name)), '[^a-z0-9]', '', 'g') <> regexp_replace(lower(trim(ri.name)), '[^a-z0-9]', '', 'g') then raise exception 'The matching inventory item for "%" is unavailable.', ri.name; end if;
+        select available into avail from public.inventory_available() where item_id = inv;
+        if q > coalesce(avail,0) then raise exception 'Only % of "%" are currently available.', coalesce(avail,0), ri.name; end if;
+      else
+        inv := coalesce(inv, ri.inventory_item_id, (select id from public.inventory_items where organization_id = r.organization_id and regexp_replace(lower(trim(name)), '[^a-z0-9]', '', 'g') = regexp_replace(lower(trim(ri.name)), '[^a-z0-9]', '', 'g') order by id limit 1));
+        if inv is null then
+          inv := 'it-' || substr(md5(random()::text || clock_timestamp()::text),1,16);
+          insert into public.inventory_items (id, organization_id, name, unit) values (inv, r.organization_id, trim(ri.name), coalesce(nullif(trim(ri.unit),''),'pcs'));
+        end if;
+        purchase_needed := true;
+      end if;
+      insert into public.request_fulfilments (id, organization_id, request_id, item_id, source, qty, inventory_item_id)
+      values ('rf-' || substr(md5(random()::text || clock_timestamp()::text || planned::text),1,16), r.organization_id, r.id, ri.id, src, q, inv);
+      planned := planned + q;
+      if src = 'walkie' then has_radio := true; elsif ri.kind = 'item' then has_item := true; end if;
+    end loop;
+    if planned <> ri.qty_approved then raise exception 'The arrangement for "%" must add up to %.', ri.name, ri.qty_approved; end if;
+    if ri.kind = 'item' then
+      update public.request_items set inventory_item_id = coalesce(inventory_item_id, (select inventory_item_id from public.request_fulfilments where item_id = ri.id and inventory_item_id is not null limit 1)) where id = ri.id;
+    end if;
+  end loop;
+  if not any_approved then raise exception 'Approve at least one item, or reject the request.'; end if;
+
+  update public.requests set status = 'approved', updated_at = now() where id = p_id;
+  perform public._req_event(p_id, 'approved', 'Approved with a total budget of ₹' || to_char(total, 'FM999,999,990.00') || ' and the saved stock/purchase plan.');
+  perform public._req_notify(r.requester_id, r.organization_id, 'Request approved', r.number || ' was approved with a total budget of ₹' || to_char(total, 'FM999,999,990.00') || '.', 'info', p_id);
+  if has_item then perform public._req_notify_group(p_id, 'inventory', 'Approved items to issue: ' || r.title, r.number || ' · stock is reserved and purchase quantities are in Procurement.', 'approval'); end if;
+  if has_radio then perform public._req_notify_group(p_id, 'walkie', 'Walkie-talkies approved: ' || r.title, r.number || ' · allocate from the Walkie pool.', 'approval'); end if;
+  if purchase_needed then perform public._req_notify_group(p_id, 'purchase', 'Items to order: ' || r.title, r.number || ' · the approved purchase quantities are ready.', 'approval'); end if;
+  return total;
+end $$;
+
+create or replace function public.request_plan_line(p_item text, p_plan jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  me record; ri record; r record; part jsonb; src text; q integer; inv text; done_qty integer; planned_qty integer := 0;
+  avail integer; it record; line_inv text;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active then raise exception 'Not allowed.'; end if;
+  select * into ri from public.request_items where id = p_item;
+  if not found then raise exception 'Line not found.'; end if;
+  select * into r from public.requests where id = ri.request_id for update;
+  if r.organization_id <> me.organization_id then raise exception 'Request not found.'; end if;
+  if r.status <> 'approved' then raise exception 'Only an approved request can be arranged.'; end if;
+  if me.level not in ('owner','dept_head') then
+    raise exception 'Only the Department Admin can decide how this request is arranged.';
+  end if;
+  -- Only the head of the department the request was made to (or the Super Admin) arranges it, and anything
+  -- it creates belongs to that department.
+  if me.level = 'dept_head' and me.department_id is distinct from coalesce(r.department_id, public._it_department(r.organization_id)) then
+    raise exception 'Only the Department Head of the requested department can arrange this request.';
+  end if;
+  perform set_config('app.department_id', coalesce(r.department_id, public._it_department(r.organization_id)), true);
+  if coalesce(ri.qty_approved, 0) = 0 then raise exception 'This line was not approved.'; end if;
+  if jsonb_typeof(p_plan) is distinct from 'array' or jsonb_array_length(p_plan) = 0 then raise exception 'Add at least one part.'; end if;
+
+  -- Once part of the line is on a purchase order it can no longer be re-split (that would leave the order orphaned).
+  if exists (select 1 from public.request_fulfilments where item_id = p_item and status = 'planned' and purchase_item_id is not null) then
+    raise exception 'Part of "%" is already on a purchase order, so the arrangement can no longer be changed.', ri.name;
+  end if;
+  select coalesce(sum(qty), 0) into done_qty from public.request_fulfilments where item_id = p_item and status = 'done';
+  delete from public.request_fulfilments where item_id = p_item and status = 'planned';
+  line_inv := ri.inventory_item_id;
+
+  for part in select * from jsonb_array_elements(p_plan) loop
+    src := part->>'source'; q := (part->>'qty')::integer; inv := nullif(part->>'inventory_item_id', '');
+    if q is null or q <= 0 then raise exception 'Every part needs a quantity above zero.'; end if;
+    if src not in ('inventory','purchase','walkie') then raise exception 'Unknown source.'; end if;
+    if ri.kind = 'radio' and src = 'inventory' then raise exception 'Radios come from the Walkie pool or are purchased.'; end if;
+    if ri.kind = 'item' and src = 'walkie' then raise exception 'Only radio lines can be allocated from the Walkie pool.'; end if;
+
+    if ri.kind = 'item' and inv is null then
+      if src = 'inventory' then raise exception 'Choose which inventory item to take "%" from.', ri.name; end if;
+      -- Buying something the catalogue does not know yet: reuse the same name, or add it (stock 0).
+      inv := coalesce(line_inv, (select i.id from public.inventory_items i where i.organization_id = r.organization_id and lower(trim(i.name)) = lower(trim(ri.name)) limit 1));
+      if inv is null then
+        inv := 'it-' || substr(md5(random()::text || clock_timestamp()::text), 1, 16);
+        insert into public.inventory_items (id, organization_id, name, unit) values (inv, r.organization_id, trim(ri.name), coalesce(nullif(trim(ri.unit), ''), 'pcs'));
+        perform public._req_event(r.id, 'catalogue', '"' || trim(ri.name) || '" was added to the item catalogue');
+      end if;
+    end if;
+    line_inv := coalesce(line_inv, inv);
+
+    if inv is not null then
+      select * into it from public.inventory_items where id = inv and organization_id = r.organization_id;
+      if not found then raise exception 'That inventory item does not exist.'; end if;
+      if ri.kind = 'item' and regexp_replace(lower(trim(it.name)), '[^a-z0-9]', '', 'g') <> regexp_replace(lower(trim(ri.name)), '[^a-z0-9]', '', 'g') then
+        raise exception 'Choose a catalogue item that matches the requested product "%".', ri.name;
+      end if;
+    end if;
+    if src = 'inventory' then
+      select a.available into avail from public.inventory_available() a where a.item_id = inv;
+      if q > coalesce(avail, 0) then raise exception 'Only % of "%" can still be promised from stock.', coalesce(avail, 0), it.name; end if;
+    end if;
+    insert into public.request_fulfilments (id, organization_id, request_id, item_id, source, qty, inventory_item_id)
+    values ('rf-' || substr(md5(random()::text || clock_timestamp()::text), 1, 16), r.organization_id, r.id, p_item, src, q, inv);
+    planned_qty := planned_qty + q;
+  end loop;
+
+  if done_qty + planned_qty <> ri.qty_approved then
+    raise exception 'The parts add up to %, but % was approved.', done_qty + planned_qty, ri.qty_approved;
+  end if;
+  if line_inv is not null and ri.inventory_item_id is null then update public.request_items set inventory_item_id = line_inv where id = p_item; end if;
+
+  perform public._req_event(r.id, 'planned', 'Arranged "' || ri.name || '": ' ||
+    (select string_agg(x.s || ' ' || x.q, ' + ') from (
+       select (p->>'source') as s, (p->>'qty') as q from jsonb_array_elements(p_plan) p) x));
+  if exists (select 1 from jsonb_array_elements(p_plan) p where p->>'source' = 'purchase') then
+    perform public._req_notify_group(r.id, 'purchase', 'Items to order: ' || r.title, r.number || ' · raise a purchase order', 'approval');
+  end if;
+end $$;
+revoke all on function public.request_plan_line(text, jsonb) from public, anon;
+grant execute on function public.request_plan_line(text, jsonb) to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v108_request_department_for_approvals.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v109_order_only_by_approving_department.sql >>>
+-- ============================================================================
+-- v109 · Only the department that approved a request can order for it
+-- ----------------------------------------------------------------------------
+-- A request is approved by the department it was made to (or by the Super Admin after escalation).
+-- Purchase orders for it — from "Create purchase order" on the request or from the buy list — can
+-- now be created only by that department's people (its head / Purchase team) or the Super Admin.
+-- Checked on every order and order line that carries a request, whichever function creates it.
+-- Apply after migration_v108_request_department_for_approvals.sql. Safe to re-run.
+-- ============================================================================
+
+create or replace function public._order_by_approving_department()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_dept text; v_name text;
+begin
+  if auth.uid() is null or new.request_id is null then return new; end if;
+  select coalesce(r.department_id, public._it_department(r.organization_id)) into v_dept
+    from public.requests r where r.id = new.request_id;
+  if v_dept is not null and not public.in_my_department(v_dept) then
+    select name into v_name from public.departments where id = v_dept;
+    raise exception 'Only % (the department that approved this request) can order it.', coalesce(v_name, 'the requested department');
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists order_by_approving_department on public.purchase_orders;
+create trigger order_by_approving_department before insert on public.purchase_orders
+  for each row execute function public._order_by_approving_department();
+drop trigger if exists order_by_approving_department on public.purchase_items;
+create trigger order_by_approving_department before insert on public.purchase_items
+  for each row execute function public._order_by_approving_department();
+
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v109_order_only_by_approving_department.sql >>>
+
+
+-- <<< BEGIN supabase/migration_v110_request_purchase_department_fix.sql >>>
+-- ============================================================================
+-- v110 · Keep purchase arrangements in the request department
+-- ----------------------------------------------------------------------------
+-- A purchase line may reference a catalogue item for receipt matching, but it is
+-- not stock being issued. Resolve that catalogue item only inside the request's
+-- department, creating a local catalogue entry if needed. The department guard
+-- applies only to stock fulfilments.
+-- Apply after migration_v109_order_only_by_approving_department.sql.
+-- Safe to re-run.
+-- ============================================================================
+
+create or replace function public._fulfilment_same_department()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.source = 'inventory'
+     and new.inventory_item_id is not null
+     and new.department_id is not null
+     and exists (
+       select 1 from public.inventory_items i
+       where i.id = new.inventory_item_id
+         and i.department_id is distinct from new.department_id
+     ) then
+    raise exception 'That stock item belongs to another department. Use the requested department''s stock.';
+  end if;
+  return new;
+end $$;
+
+create or replace function public._request_commit_review_plan(p_id text)
+returns numeric language plpgsql security definer set search_path = public as $$
+declare
+  r record; ri record; part jsonb; q integer; planned integer; src text; inv text;
+  avail integer; inv_row record; total numeric := 0; purchase_needed boolean := false;
+  has_radio boolean := false; has_item boolean := false; any_approved boolean := false;
+  request_department text;
+begin
+  select * into r from public.requests where id = p_id for update;
+  if not found then raise exception 'Request not found.'; end if;
+  request_department := coalesce(r.department_id, public._it_department(r.organization_id));
+  perform set_config('app.department_id', request_department, true);
+
+  if exists (select 1 from public.request_items where request_id = p_id and qty_approved < qty_requested and trim(coalesce(cut_reason,'')) = '') then
+    raise exception 'A reason is required for every reduced quantity.';
+  end if;
+  if exists (select 1 from public.request_items where request_id = p_id and qty_approved > 0 and approved_budget is null) then
+    raise exception 'Enter a total budget for every approved item.';
+  end if;
+  if coalesce((select sum(qty_approved) from public.request_items where request_id = p_id), 0) = 0 then
+    raise exception 'Approve at least one item, or reject the request.';
+  end if;
+  total := total + coalesce(r.review_misc_budget, 0);
+
+  delete from public.request_fulfilments where request_id = p_id and status = 'planned';
+  for ri in select * from public.request_items where request_id = p_id order by position for update loop
+    total := total + coalesce(ri.approved_budget, 0);
+    if coalesce(ri.qty_approved, 0) = 0 then
+      if jsonb_array_length(coalesce(ri.review_plan, '[]'::jsonb)) <> 0 then raise exception 'A zero-approved line cannot have an arrangement.'; end if;
+      continue;
+    end if;
+    any_approved := true;
+    if jsonb_typeof(ri.review_plan) is distinct from 'array' then raise exception 'Set the stock and purchase split for "%".', ri.name; end if;
+    planned := 0;
+    for part in select value from jsonb_array_elements(ri.review_plan) loop
+      src := part->>'source'; q := (part->>'qty')::integer; inv := nullif(part->>'inventory_item_id','');
+      if q is null or q <= 0 then raise exception 'Arrangement quantities must be positive whole numbers.'; end if;
+      if ri.kind = 'radio' then
+        if src <> 'walkie' then raise exception 'Walkie-talkie requests must be allocated through the Walkie pool.'; end if;
+        inv := null;
+      elsif src not in ('inventory','purchase') then
+        raise exception 'Choose stock or purchase for "%".', ri.name;
+      elsif src = 'inventory' then
+        inv := coalesce(inv, ri.inventory_item_id, (select i.id from public.inventory_items i
+          where i.organization_id = r.organization_id and i.department_id = request_department
+            and regexp_replace(lower(trim(i.name)), '[^a-z0-9]', '', 'g') = regexp_replace(lower(trim(ri.name)), '[^a-z0-9]', '', 'g')
+          order by i.id limit 1));
+        if inv is null then raise exception 'No matching inventory item was found for "%".', ri.name; end if;
+        select * into inv_row from public.inventory_items where id = inv and organization_id = r.organization_id and department_id = request_department for update;
+        if not found or regexp_replace(lower(trim(inv_row.name)), '[^a-z0-9]', '', 'g') <> regexp_replace(lower(trim(ri.name)), '[^a-z0-9]', '', 'g') then
+          raise exception 'The matching inventory item for "%" is unavailable in the requested department.', ri.name;
+        end if;
+        select available into avail from public.inventory_available() where item_id = inv;
+        if q > coalesce(avail,0) then raise exception 'Only % of "%" are currently available.', coalesce(avail,0), ri.name; end if;
+      else
+        -- Purchase references are for catalogue/receipt matching, not stock issue.
+        select i.id into inv from public.inventory_items i
+          where i.id = inv and i.organization_id = r.organization_id and i.department_id = request_department
+            and regexp_replace(lower(trim(i.name)), '[^a-z0-9]', '', 'g') = regexp_replace(lower(trim(ri.name)), '[^a-z0-9]', '', 'g');
+        if inv is null then
+          select i.id into inv from public.inventory_items i
+            where i.organization_id = r.organization_id and i.department_id = request_department
+              and regexp_replace(lower(trim(i.name)), '[^a-z0-9]', '', 'g') = regexp_replace(lower(trim(ri.name)), '[^a-z0-9]', '', 'g')
+            order by i.id limit 1;
+        end if;
+        if inv is null then
+          inv := 'it-' || substr(md5(random()::text || clock_timestamp()::text),1,16);
+          insert into public.inventory_items (id, organization_id, name, unit)
+          values (inv, r.organization_id, trim(ri.name), coalesce(nullif(trim(ri.unit),''),'pcs'));
+        end if;
+        purchase_needed := true;
+      end if;
+
+      insert into public.request_fulfilments (id, organization_id, request_id, item_id, source, qty, inventory_item_id)
+      values ('rf-' || substr(md5(random()::text || clock_timestamp()::text || planned::text),1,16), r.organization_id, r.id, ri.id, src, q, inv);
+      planned := planned + q;
+      if src = 'walkie' then has_radio := true; elsif src = 'inventory' and ri.kind = 'item' then has_item := true; end if;
+    end loop;
+    if planned <> ri.qty_approved then raise exception 'The arrangement for "%" must add up to %.', ri.name, ri.qty_approved; end if;
+    if ri.kind = 'item' then
+      update public.request_items set inventory_item_id = (
+        select f.inventory_item_id from public.request_fulfilments f
+        join public.inventory_items i on i.id = f.inventory_item_id
+        where f.item_id = ri.id and f.inventory_item_id is not null and i.department_id = request_department
+        order by case when f.source = 'inventory' then 0 else 1 end limit 1
+      ) where id = ri.id and exists (
+        select 1 from public.request_fulfilments f join public.inventory_items i on i.id = f.inventory_item_id
+        where f.item_id = ri.id and f.inventory_item_id is not null and i.department_id = request_department
+      );
+    end if;
+  end loop;
+  if not any_approved then raise exception 'Approve at least one item, or reject the request.'; end if;
+
+  update public.requests set status = 'approved', updated_at = now() where id = p_id;
+  perform public._req_event(p_id, 'approved', 'Approved with a total budget of ₹' || to_char(total, 'FM999,999,990.00') || ' and the saved stock/purchase plan.');
+  perform public._req_notify(r.requester_id, r.organization_id, 'Request approved', r.number || ' was approved with a total budget of ₹' || to_char(total, 'FM999,999,990.00') || '.', 'info', p_id);
+  if has_item then perform public._req_notify_group(p_id, 'inventory', 'Approved items to issue: ' || r.title, r.number || ' · stock is reserved and purchase quantities are in Procurement.', 'approval'); end if;
+  if has_radio then perform public._req_notify_group(p_id, 'walkie', 'Walkie-talkies approved: ' || r.title, r.number || ' · allocate from the Walkie pool.', 'approval'); end if;
+  if purchase_needed then perform public._req_notify_group(p_id, 'purchase', 'Items to order: ' || r.title, r.number || ' · the approved purchase quantities are ready.', 'approval'); end if;
+  return total;
+end $$;
+
+create or replace function public.request_plan_line(p_item text, p_plan jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  me record; ri record; r record; part jsonb; src text; q integer; inv text; done_qty integer; planned_qty integer := 0;
+  avail integer; it record; line_inv text; request_department text;
+begin
+  select * into me from public.profiles where id = auth.uid();
+  if not found or not me.approved or not me.is_active then raise exception 'Not allowed.'; end if;
+  select * into ri from public.request_items where id = p_item;
+  if not found then raise exception 'Line not found.'; end if;
+  select * into r from public.requests where id = ri.request_id for update;
+  if r.organization_id <> me.organization_id then raise exception 'Request not found.'; end if;
+  if r.status <> 'approved' then raise exception 'Only an approved request can be arranged.'; end if;
+  if me.level not in ('owner','dept_head') then raise exception 'Only the Department Admin can decide how this request is arranged.'; end if;
+  if me.level = 'dept_head' and me.department_id is distinct from coalesce(r.department_id, public._it_department(r.organization_id)) then
+    raise exception 'Only the Department Head of the requested department can arrange this request.';
+  end if;
+  request_department := coalesce(r.department_id, public._it_department(r.organization_id));
+  perform set_config('app.department_id', request_department, true);
+  if coalesce(ri.qty_approved, 0) = 0 then raise exception 'This line was not approved.'; end if;
+  if jsonb_typeof(p_plan) is distinct from 'array' or jsonb_array_length(p_plan) = 0 then raise exception 'Add at least one part.'; end if;
+  if exists (select 1 from public.request_fulfilments where item_id = p_item and status = 'planned' and purchase_item_id is not null) then
+    raise exception 'Part of "%" is already on a purchase order, so the arrangement can no longer be changed.', ri.name;
+  end if;
+  select coalesce(sum(qty), 0) into done_qty from public.request_fulfilments where item_id = p_item and status = 'done';
+  delete from public.request_fulfilments where item_id = p_item and status = 'planned';
+  -- Recompute the line's catalogue link from this plan so stale cross-department IDs are repaired.
+  line_inv := null;
+
+  for part in select * from jsonb_array_elements(p_plan) loop
+    src := part->>'source'; q := (part->>'qty')::integer; inv := nullif(part->>'inventory_item_id', '');
+    if q is null or q <= 0 then raise exception 'Every part needs a quantity above zero.'; end if;
+    if src not in ('inventory','purchase','walkie') then raise exception 'Unknown source.'; end if;
+    if ri.kind = 'radio' and src = 'inventory' then raise exception 'Radios come from the Walkie pool or are purchased.'; end if;
+    if ri.kind = 'item' and src = 'walkie' then raise exception 'Only radio lines can be allocated from the Walkie pool.'; end if;
+
+    if ri.kind = 'item' and src = 'inventory' then
+      if inv is null then raise exception 'Choose which inventory item to take "%" from.', ri.name; end if;
+      select * into it from public.inventory_items i where i.id = inv and i.organization_id = r.organization_id and i.department_id = request_department;
+      if not found or regexp_replace(lower(trim(it.name)), '[^a-z0-9]', '', 'g') <> regexp_replace(lower(trim(ri.name)), '[^a-z0-9]', '', 'g') then
+        raise exception 'Choose a matching stock item from the requested department.';
+      end if;
+    elsif ri.kind = 'item' and src = 'purchase' then
+      -- Preserve a supplied catalogue link only if it is local and matches; otherwise reuse/create a local item.
+      select i.id into inv from public.inventory_items i
+        where i.id = inv and i.organization_id = r.organization_id and i.department_id = request_department
+          and regexp_replace(lower(trim(i.name)), '[^a-z0-9]', '', 'g') = regexp_replace(lower(trim(ri.name)), '[^a-z0-9]', '', 'g');
+      if inv is null then
+        select i.id into inv from public.inventory_items i
+          where i.organization_id = r.organization_id and i.department_id = request_department
+            and regexp_replace(lower(trim(i.name)), '[^a-z0-9]', '', 'g') = regexp_replace(lower(trim(ri.name)), '[^a-z0-9]', '', 'g')
+          order by i.id limit 1;
+      end if;
+      if inv is null then
+        inv := 'it-' || substr(md5(random()::text || clock_timestamp()::text), 1, 16);
+        insert into public.inventory_items (id, organization_id, name, unit)
+        values (inv, r.organization_id, trim(ri.name), coalesce(nullif(trim(ri.unit), ''), 'pcs'));
+        perform public._req_event(r.id, 'catalogue', '"' || trim(ri.name) || '" was added to the item catalogue');
+      end if;
+    elsif ri.kind = 'radio' then
+      inv := null;
+    end if;
+
+    if src = 'inventory' then
+      select a.available into avail from public.inventory_available() a where a.item_id = inv;
+      if q > coalesce(avail, 0) then raise exception 'Only % of "%" can still be promised from stock.', coalesce(avail, 0), it.name; end if;
+    end if;
+    insert into public.request_fulfilments (id, organization_id, request_id, item_id, source, qty, inventory_item_id)
+    values ('rf-' || substr(md5(random()::text || clock_timestamp()::text), 1, 16), r.organization_id, r.id, p_item, src, q, inv);
+    planned_qty := planned_qty + q;
+    if ri.kind = 'item' and src in ('inventory','purchase') then line_inv := coalesce(line_inv, inv); end if;
+  end loop;
+
+  if done_qty + planned_qty <> ri.qty_approved then raise exception 'The parts add up to %, but % was approved.', done_qty + planned_qty, ri.qty_approved; end if;
+  if line_inv is not null and ri.inventory_item_id is distinct from line_inv then update public.request_items set inventory_item_id = line_inv where id = p_item; end if;
+  perform public._req_event(r.id, 'planned', 'Arranged "' || ri.name || '": ' ||
+    (select string_agg(x.s || ' ' || x.q, ' + ') from (select (p->>'source') as s, (p->>'qty') as q from jsonb_array_elements(p_plan) p) x));
+  if exists (select 1 from jsonb_array_elements(p_plan) p where p->>'source' = 'purchase') then
+    perform public._req_notify_group(r.id, 'purchase', 'Items to order: ' || r.title, r.number || ' · raise a purchase order', 'approval');
+  end if;
+end $$;
+
+revoke all on function public._request_commit_review_plan(text) from public, anon, authenticated;
+grant execute on function public._request_commit_review_plan(text) to authenticated;
+revoke all on function public.request_plan_line(text, jsonb) from public, anon;
+grant execute on function public.request_plan_line(text, jsonb) to authenticated;
+notify pgrst, 'reload schema';
+
+-- <<< END supabase/migration_v110_request_purchase_department_fix.sql >>>

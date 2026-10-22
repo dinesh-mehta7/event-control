@@ -27,7 +27,7 @@ For a fresh database, run **one file**:
 2. Open `supabase/setup.sql`, copy the whole file into the editor, and click **Run**.
 
 `setup.sql` contains the base schema, auth hardening, and the current migrations in
-the required order. This is the easiest path for a new project.
+the required order through migration v110. This is the easiest path for a new project.
 
 ### Existing Supabase project
 
@@ -137,6 +137,12 @@ The migration inventory is:
    | `migration_v81_accounts_vendor_payment_docs.sql` | Accounts-only vendor payments and optional bill/payment proof attachments |
    | `migration_v82_event_radio_collection_unit.sql` | Required source unit for event Walkie-Talkie requests |
    | `migration_v83_manpower_task_assignment_access.sql` | Aligns task, Sewadar assignment, and resource permissions with the Sewadar and Accommodation workspaces |
+   | `migration_v84_task_team_links.sql`–`migration_v89_helpdesk_spiceworks.sql` | Task team links and resource reservations, duties and shifts, Help Desk, event collection source fields, and Help Desk asset/task/technician features |
+   | `migration_v90_role_hierarchy.sql`–`migration_v97_sub_department_rename_hide.sql` | Department-aware role hierarchy and access, permission modules, organization join hardening, organization profile/member management, custom sub-departments, and rename/hide controls |
+   | `migration_v98_request_review_by_own_department_head.sql`–`migration_v100_department_sub_departments.sql` | Department-specific request review, membership, and sub-department configuration |
+   | `migration_v101_department_stocks.sql`–`migration_v104_offline_order_status.sql` | Department-scoped inventory/procurement and people/tasks/events, request origin department, and offline order progress |
+   | `migration_v105_helpdesk_issues_to_department.sql`–`migration_v109_order_only_by_approving_department.sql` | Department-scoped Help Desk/reports and staffing, request department repairs, and department-scoped approvals and ordering |
+   | `migration_v110_request_purchase_department_fix.sql` | Keeps purchase catalogue references in the request department and applies the stock department guard only to stock fulfilments |
 
 `migration_v16` needs v11–v15 first (it reads inventory, purchase, notifications and the history table).
 
