@@ -8,15 +8,16 @@ import { Select } from '../../../components/Select';
 
 export const ReceivingView: React.FC = () => {
   const { orders, vendorName } = usePurchase();
+  // Done: everything on the order is at the store. Partly received orders stay in On the way.
   const received = orders
-    .filter(o => o.items.some(item => item.qtyReceived > 0))
+    .filter(o => o.status === 'received')
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   const rows = useLedger<Receipt>('receipts', 300);
   return (
     <div className="space-y-5">
-      <Section title={`Received orders (${received.length})`}>
+      <Section title={`Done · fully at the store (${received.length})`}>
         {received.length === 0 ? (
-          <Empty>No orders have been received yet.</Empty>
+          <Empty>No order has fully arrived yet.</Empty>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-xs">
@@ -60,8 +61,8 @@ export const ReceivingView: React.FC = () => {
           </div>
         )}
       </Section>
-      <Section title="Goods received log">
-        <ReceiptList rows={rows} empty="Nothing has been received yet." />
+      <Section title="Arrivals log">
+        <ReceiptList rows={rows} empty="Nothing has arrived yet." />
       </Section>
     </div>
   );
@@ -75,6 +76,10 @@ export const ReceiveModal: React.FC<{ id: string; onClose: () => void }> = ({ id
   const [qty, setQty] = useState<Record<string, string>>(() =>
     Object.fromEntries(open.map(i => [i.id, String(i.qtyOrdered - i.qtyReceived)])),
   );
+  // Damaged / wrong pieces are not received: they stay open on the order (vendor replaces them,
+  // or Purchase closes the rest) and are written into the arrival note.
+  const [rejected, setRejected] = useState<Record<string, string>>({});
+  const [rejectReason, setRejectReason] = useState('');
   const [givenBy, setGivenBy] = useState('');
   const [receivedBy, setReceivedBy] = useState(userName);
   const [location, setLocation] = useState('');
@@ -88,23 +93,31 @@ export const ReceiveModal: React.FC<{ id: string; onClose: () => void }> = ({ id
     left: i.qtyOrdered - i.qtyReceived,
     linked: !!i.inventoryItemId,
   }));
-  const bad = lines.find(l => l.qty > l.left);
+  const rejectedOf = (id: string) => parseInt(rejected[id] || '0', 10) || 0;
+  const bad = lines.find(l => l.qty + rejectedOf(l.itemId) > l.left);
   const any = lines.some(l => l.qty > 0);
-  const can = any && !bad && receivedBy.trim() !== '';
+  const anyRejected = open.some(i => rejectedOf(i.id) > 0);
+  const can = any && !bad && receivedBy.trim() !== '' && (!anyRejected || rejectReason.trim() !== '');
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!can) return;
     setBusy(true);
+    const rejectedNote = anyRejected
+      ? `Rejected: ${open
+          .filter(i => rejectedOf(i.id) > 0)
+          .map(i => `${rejectedOf(i.id)} × ${i.name}`)
+          .join(', ')} (${rejectReason.trim()})`
+      : '';
     const ok = await receive(
       o.id,
       lines.map(l => ({ itemId: l.itemId, qty: l.qty })),
-      { location, givenBy, receivedBy, challan, note },
+      { location, givenBy, receivedBy, challan, note: [note.trim(), rejectedNote].filter(Boolean).join(' · ') },
     );
     setBusy(false);
     if (ok) onClose();
   };
   return (
-    <Modal title={`Receive goods · ${o.number}`} dark={D} onClose={onClose} xl>
+    <Modal title={`Arrived at the store · ${o.number}`} dark={D} onClose={onClose} xl>
       <form onSubmit={submit} className="space-y-4">
         {open.length === 0 ? (
           <p className="text-sm text-mute">Everything on this order has been received.</p>
@@ -116,7 +129,8 @@ export const ReceiveModal: React.FC<{ id: string; onClose: () => void }> = ({ id
                   <th className="pl-3 py-2.5 font-semibold">Item</th>
                   <th className="px-3 py-2.5 font-semibold text-right">Ordered</th>
                   <th className="px-3 py-2.5 font-semibold text-right">Already in</th>
-                  <th className="px-3 py-2.5 pr-3 font-semibold text-right w-28">Receive now</th>
+                  <th className="px-3 py-2.5 font-semibold text-right w-28">Good, arrived now</th>
+                  <th className="px-3 py-2.5 pr-3 font-semibold text-right w-28">Damaged / wrong</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line/70">
@@ -132,12 +146,22 @@ export const ReceiveModal: React.FC<{ id: string; onClose: () => void }> = ({ id
                       {i.qtyOrdered} <span className="text-xs text-faint">{i.unit}</span>
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-mute">{i.qtyReceived}</td>
-                    <td className="px-3 py-2 pr-3">
+                    <td className="px-3 py-2">
                       <input
-                        aria-label={`Receive now: ${i.name}`}
+                        aria-label={`Good, arrived now: ${i.name}`}
                         inputMode="numeric"
                         value={qty[i.id] ?? ''}
                         onChange={e => setQty(p => ({ ...p, [i.id]: e.target.value.replace(/\D/g, '') }))}
+                        className={cx(inputCls(D), 'text-right !py-1.5')}
+                      />
+                    </td>
+                    <td className="px-3 py-2 pr-3">
+                      <input
+                        aria-label={`Damaged or wrong: ${i.name}`}
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={rejected[i.id] ?? ''}
+                        onChange={e => setRejected(p => ({ ...p, [i.id]: e.target.value.replace(/\D/g, '') }))}
                         className={cx(inputCls(D), 'text-right !py-1.5')}
                       />
                     </td>
@@ -149,8 +173,26 @@ export const ReceiveModal: React.FC<{ id: string; onClose: () => void }> = ({ id
         )}
         {bad && (
           <p role="alert" className="text-xs text-rose-400">
-            More than is left to receive on one of the lines.
+            Good and damaged together are more than is still due on one of the lines.
           </p>
+        )}
+        {anyRejected && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+            <label className={labelCls(D)} htmlFor="rc-rej">
+              What was wrong? *
+            </label>
+            <input
+              id="rc-rej"
+              value={rejectReason}
+              onChange={e => setRejectReason(e.target.value)}
+              placeholder="e.g. broken screen, wrong model"
+              className={inputCls(D)}
+            />
+            <p className="mt-1.5 text-[11.5px] text-amber-200">
+              Damaged pieces are not added to stock. They stay due on the order: the vendor replaces them, or use “Close
+              the rest” on the order if they will not.
+            </p>
+          </div>
         )}
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
@@ -196,7 +238,7 @@ export const ReceiveModal: React.FC<{ id: string; onClose: () => void }> = ({ id
             Cancel
           </button>
           <button type="submit" disabled={!can || busy} className={good}>
-            {busy ? 'Saving…' : 'Record received'}
+            {busy ? 'Saving…' : 'Record arrival'}
           </button>
         </div>
       </form>

@@ -19,7 +19,7 @@ import { useRequests } from './RequestsContext';
 import { DeliveryAssignmentPanel, FulfilmentPanel, ItReviewPanel, OwnerReviewPanel } from './panels';
 import { ItemsTable, StatusBadge, Stepper, Timeline, UrgentBadge } from './parts';
 import { exportRequestsXlsx } from './exportXlsx';
-import { fmtDate, isOverdue } from './types';
+import { fmtDate, isOverdue, requestStage } from './types';
 import type { NewLine } from './types';
 
 const Info: React.FC<{ label: string; icon: LucideIcon; children: React.ReactNode }> = ({
@@ -172,7 +172,7 @@ export const RequestDetail: React.FC<{
             {isOverdue(r) && (
               <span className="text-xs font-medium text-red-300 bg-red-500/15 rounded-full px-2 py-0.5">Overdue</span>
             )}
-            <StatusBadge status={r.status} closed={!!r.confirmedAt} />
+            <StatusBadge status={r.status} closed={!!r.confirmedAt} stage={requestStage(r, orders)} />
           </div>
         </div>
         <Stepper r={r} orders={orders} />

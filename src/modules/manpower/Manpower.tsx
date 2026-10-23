@@ -33,6 +33,7 @@ import { DEPT_LABEL } from '../accommodation/types';
 import { useSubDepartmentOptions } from '../../hooks/useSubDepartments';
 import { Modal, ConfirmModal, btnGhost, btnPrimary, cx, inputCls } from '../accommodation/ui';
 import { useInventory } from '../inventory';
+import { useRequests } from '../requests/RequestsContext';
 import { useManpower } from './ManpowerContext';
 import type { SewadarInput } from './ManpowerContext';
 import { DEVICE_LABEL, OUTCOME_LABEL } from './types';
@@ -105,6 +106,28 @@ const ARRIVAL_PERIOD_HOUR: Record<Exclude<ArrivalTimeOfDay, ''>, number> = {
   night: 21,
 };
 
+// Task register order: each task followed by its checklist steps (numbered titles sort 1, 2, … 10).
+// A step whose parent is filtered out still shows, marked as a step of that task.
+const orderTaskRows = (tasks: any[]): { t: any; step: boolean; parent: any | null }[] => {
+  const byId = new Map(tasks.map(t => [t.id, t]));
+  const steps = new Map<string, any[]>();
+  tasks.forEach(t => {
+    if (t.parent_task_id && byId.has(t.parent_task_id))
+      steps.set(t.parent_task_id, [...(steps.get(t.parent_task_id) || []), t]);
+  });
+  steps.forEach(list =>
+    list.sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { numeric: true })),
+  );
+  return tasks.flatMap(t =>
+    t.parent_task_id && byId.has(t.parent_task_id)
+      ? []
+      : [
+          { t, step: !!t.parent_task_id, parent: null },
+          ...(steps.get(t.id) || []).map(s => ({ t: s, step: true, parent: t })),
+        ],
+  );
+};
+
 const isArrivalOverdue = (s: Sewadar, now: Date) => {
   if (s.arrival !== 'pending' || !s.expectedArrival || !s.expectedArrivalPeriod) return false;
   const [year, month, day] = s.expectedArrival.split('-').map(Number);
@@ -122,6 +145,8 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
 }) => {
   const m = useManpower();
   const inventory = useInventory();
+  // Request delivery tasks link back to their request.
+  const requestsData = useRequests();
   const auth: any = useWalkie();
   const myDepartmentName: string =
     (auth.departments || []).find((d: any) => d.id === auth.currentUser?.departmentId)?.name || '';
@@ -2226,28 +2251,24 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
             </div>
             <div className="max-h-[34rem] overflow-auto">
               {visibleTasks.length > 0 && (
-                <table className="w-full min-w-[1120px] border-collapse text-left text-xs">
+                <table className="w-full min-w-[920px] border-collapse text-left text-xs">
                   <thead className="sticky top-0 z-10 bg-raised text-[10.5px] font-semibold uppercase tracking-wide text-mute">
                     <tr>
-                      {[
-                        'Task',
-                        'Event / sub-department',
-                        'Team',
-                        'Assigned to',
-                        'Due date',
-                        'Priority',
-                        'Status',
-                        'Resources',
-                        'Actions',
-                      ].map(heading => (
+                      {['Task', 'Event · team', 'Assigned to', 'Due', 'Status'].map(heading => (
                         <th key={heading} scope="col" className="whitespace-nowrap border-b border-line px-3 py-2.5">
                           {heading}
                         </th>
                       ))}
+                      <th
+                        scope="col"
+                        className="sticky right-0 whitespace-nowrap border-b border-line bg-raised px-3 py-2.5 text-right"
+                      >
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line">
-                    {visibleTasks.map(t => {
+                    {orderTaskRows(visibleTasks).map(({ t, step, parent }) => {
                       const taskResources = resourcesForTask(t.id);
                       const taskTeam = teamGroups.find(
                         team => normalizeName(team.name) === normalizeName(t.team || ''),
@@ -2260,85 +2281,112 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                       const assignees = (t.sewadar_names || []).filter(Boolean);
                       const resourceSummary = taskResources.length
                         ? taskResources.some(resource => !resource.received_at)
-                          ? 'Awaiting receipt'
+                          ? 'awaiting receipt'
                           : taskResources.some(
                                 resource => resource.returned_good_qty + resource.returned_damaged_qty < resource.qty,
                               )
-                            ? 'Return pending'
-                            : 'Issued'
-                        : 'None';
+                            ? 'return pending'
+                            : 'issued'
+                        : '';
+                      // A checklist step under its parent repeats nothing the parent row already shows.
+                      const sameAsParent =
+                        !!parent && parent.event_id === t.event_id && (parent.team || '') === (t.team || '');
+                      const request = t.request_fulfilment_id
+                        ? requestsData.requests.find(r => r.parts.some(p => p.id === t.request_fulfilment_id))
+                        : undefined;
                       return (
-                        <tr key={t.id} className="align-top transition-colors hover:bg-raised/40">
-                          <td className="max-w-64 px-3 py-3">
-                            <div className="font-semibold text-ink">{t.title}</div>
-                            {t.parent_task_id && (
+                        <tr
+                          key={t.id}
+                          className={cx('align-top transition-colors hover:bg-raised/40', step && 'bg-raised/15')}
+                        >
+                          <td className={cx('max-w-[22rem] px-3', step ? 'py-2 pl-8' : 'py-3')}>
+                            <div className={cx('flex gap-1.5', step ? 'text-ink-soft' : 'font-semibold text-ink')}>
+                              {step && <span className="text-faint">↳</span>}
+                              <span className="min-w-0 break-words">{t.title}</span>
+                            </div>
+                            {step && !parent && t.parent_task_id && (
                               <div className="mt-0.5 text-[10.5px] text-blue-300">
-                                Checklist step ·{' '}
-                                {scopedTasks.find(parent => parent.id === t.parent_task_id)?.title || 'Parent task'}
+                                Step of{' '}
+                                {scopedTasks.find(item => item.id === t.parent_task_id)?.title || 'another task'}
                               </div>
                             )}
-                            {t.details && (
+                            {t.details && !step && (
                               <div className="mt-1 line-clamp-2 text-[10.5px] leading-4 text-mute" title={t.details}>
                                 {t.details}
                               </div>
                             )}
-                          </td>
-                          <td className="max-w-48 px-3 py-3">
-                            <div className="font-medium text-ink-soft">{eventName}</div>
-                            <div className="mt-0.5 text-[10.5px] text-mute">
-                              {DEPT_LABEL[t.department_id] || t.department_id || 'No sub-department'}
-                            </div>
-                          </td>
-                          <td className="max-w-40 px-3 py-3">
-                            <div className="text-ink-soft">{t.team || 'Unassigned'}</div>
-                            {taskTeam?.lead && (
-                              <div className="mt-0.5 text-[10.5px] text-mute">Lead: {taskTeam.lead}</div>
+                            {request && (
+                              <a
+                                href={`#/requests/${request.id}`}
+                                className="mt-1 inline-flex items-center gap-1 rounded-md bg-blue-500/10 px-1.5 py-0.5 text-[10.5px] font-medium text-blue-300 hover:underline"
+                              >
+                                Request delivery · {request.number}
+                              </a>
                             )}
                           </td>
-                          <td className="max-w-48 px-3 py-3">
-                            <div className="text-ink-soft">
-                              {assignees.length ? assignees.join(', ') : t.assigned_to || 'Unassigned'}
-                            </div>
-                            {assignees.length > 0 && t.assigned_to && (
-                              <div className="mt-0.5 text-[10.5px] text-mute">Owner: {t.assigned_to}</div>
+                          <td className={cx('max-w-56 px-3', step ? 'py-2' : 'py-3')}>
+                            {!sameAsParent && (
+                              <>
+                                <div className="font-medium text-ink-soft">
+                                  {eventName}
+                                  <span className="font-normal text-mute">
+                                    {' '}
+                                    · {DEPT_LABEL[t.department_id] || t.department_id || 'No sub-department'}
+                                  </span>
+                                </div>
+                                <div className="mt-0.5 text-[10.5px] text-mute">
+                                  {t.team || 'No team'}
+                                  {taskTeam?.lead ? ` · lead ${taskTeam.lead}` : ''}
+                                </div>
+                              </>
                             )}
                           </td>
-                          <td className="whitespace-nowrap px-3 py-3">
-                            <span className={overdue ? 'font-semibold text-rose-300' : 'text-ink-soft'}>
+                          <td className={cx('max-w-48 px-3 text-ink-soft', step ? 'py-2' : 'py-3')}>
+                            {assignees.length ? (
+                              assignees.join(', ')
+                            ) : t.assigned_to ? (
+                              t.assigned_to
+                            ) : t.team ? (
+                              <span className="text-mute">Whole team</span>
+                            ) : (
+                              <span className="text-amber-300">Not assigned</span>
+                            )}
+                          </td>
+                          <td className={cx('whitespace-nowrap px-3', step ? 'py-2' : 'py-3')}>
+                            <div className={overdue ? 'font-semibold text-rose-300' : 'text-ink-soft'}>
                               {displayTaskDate(t.due_date)}
-                            </span>
-                            {overdue && <span className="mt-1 block text-[10.5px] text-rose-300">Overdue</span>}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-3">
-                            <span
-                              className={cx(
-                                'inline-flex rounded-full px-2 py-1 text-[10.5px] font-semibold',
-                                t.priority_level === 'immediately'
-                                  ? 'bg-rose-500/10 text-rose-300'
+                              {overdue && <span className="ml-1 text-[10.5px] font-normal">· overdue</span>}
+                            </div>
+                            {!step && (
+                              <span
+                                title={
+                                  t.priority_level === 'till_time' && t.priority_until
+                                    ? `Due by ${new Date(t.priority_until).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`
+                                    : undefined
+                                }
+                                className={cx(
+                                  'mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                                  t.priority_level === 'immediately'
+                                    ? 'bg-rose-500/10 text-rose-300'
+                                    : t.priority_level === 'till_time'
+                                      ? 'bg-amber-500/10 text-amber-300'
+                                      : 'bg-blue-500/10 text-blue-300',
+                                )}
+                              >
+                                {t.priority_level === 'immediately'
+                                  ? 'Immediate'
                                   : t.priority_level === 'till_time'
-                                    ? 'bg-amber-500/10 text-amber-300'
-                                    : 'bg-blue-500/10 text-blue-300',
-                              )}
-                            >
-                              {t.priority_level === 'immediately'
-                                ? 'Immediate'
-                                : t.priority_level === 'till_time'
-                                  ? 'Due by time'
-                                  : 'As time allows'}
-                            </span>
-                            {t.priority_level === 'till_time' && t.priority_until && (
-                              <div className="mt-1 text-[10.5px] text-mute">
-                                {new Date(t.priority_until).toLocaleString('en-IN', {
-                                  dateStyle: 'medium',
-                                  timeStyle: 'short',
-                                })}
-                              </div>
+                                    ? t.priority_until
+                                      ? `By ${new Date(t.priority_until).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`
+                                      : 'Due by time'
+                                    : 'When free'}
+                              </span>
                             )}
                           </td>
-                          <td className="whitespace-nowrap px-3 py-3">
+                          <td className={cx('px-3', step ? 'py-2' : 'py-3')}>
                             <span
                               className={cx(
-                                'inline-flex rounded-full px-2 py-1 text-[10.5px] font-semibold capitalize',
+                                'inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-semibold',
                                 t.status === 'complete'
                                   ? 'bg-emerald-500/10 text-emerald-300'
                                   : t.status === 'in_progress'
@@ -2346,18 +2394,23 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                                     : 'bg-amber-500/10 text-amber-300',
                               )}
                             >
-                              {busyTaskIds.has(t.id) ? 'Saving…' : t.status.replace('_', ' ')}
+                              {busyTaskIds.has(t.id)
+                                ? 'Saving…'
+                                : t.status === 'in_progress'
+                                  ? 'In progress'
+                                  : t.status === 'complete'
+                                    ? 'Complete'
+                                    : 'To do'}
                             </span>
-                          </td>
-                          <td className="max-w-56 px-3 py-3">
-                            <div className="text-ink-soft">
-                              {taskResources.length} item{taskResources.length === 1 ? '' : 's'}
-                            </div>
-                            <div className="mt-0.5 text-[10.5px] text-mute">{resourceSummary}</div>
+                            {taskResources.length > 0 && (
+                              <div className="mt-1 text-[10.5px] text-mute">
+                                {taskResources.length} item{taskResources.length === 1 ? '' : 's'} · {resourceSummary}
+                              </div>
+                            )}
                             {resourceLeftover(t.id).length > 0 && (
                               <div
                                 className={cx(
-                                  'mt-1 text-[10.5px] font-medium',
+                                  'mt-0.5 text-[10.5px] font-medium',
                                   t.status === 'complete' ? 'text-amber-300' : 'text-mute',
                                 )}
                                 title={resourceLeftover(t.id).join(' · ')}
@@ -2366,19 +2419,8 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                               </div>
                             )}
                           </td>
-                          <td className="px-3 py-3">
-                            <div className="flex items-center gap-1.5">
-                              {t.source === 'manpower' && canHandleTaskResources(t) && (
-                                <button
-                                  type="button"
-                                  onClick={() => void openTaskResources(t)}
-                                  className={cx(btnGhost(D), 'px-2 py-1 text-[10.5px] text-blue-300')}
-                                  title="Manage task resources"
-                                >
-                                  <Package className="h-3 w-3" />
-                                  <span>Resources</span>
-                                </button>
-                              )}
+                          <td className={cx('sticky right-0 bg-surface px-3 text-right', step ? 'py-2' : 'py-3')}>
+                            <div className="flex items-center justify-end gap-1">
                               {t.status === 'todo' && (
                                 <button
                                   type="button"
@@ -2399,6 +2441,17 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                                 >
                                   <CircleCheck className="h-3 w-3" />
                                   <span>Complete</span>
+                                </button>
+                              )}
+                              {t.source === 'manpower' && canHandleTaskResources(t) && (
+                                <button
+                                  type="button"
+                                  onClick={() => void openTaskResources(t)}
+                                  className={cx(btnGhost(D), 'px-2 py-1 text-blue-300')}
+                                  aria-label={`Resources for ${t.title}`}
+                                  title="Manage task resources"
+                                >
+                                  <Package className="h-3 w-3" />
                                 </button>
                               )}
                               {canManage && t.source === 'manpower' && (

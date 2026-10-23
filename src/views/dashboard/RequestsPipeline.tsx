@@ -16,7 +16,7 @@ const STAGES: { key: ReqStatus | 'closed'; label: string; cls: string }[] = [
   { key: 'pending_it', label: 'With IT Dept Head', cls: 'bg-chart-1/45' },
   { key: 'pending_owner', label: 'With Super Admin', cls: 'bg-chart-1/60' },
   { key: 'approved', label: 'Being arranged', cls: 'bg-chart-1/80' },
-  { key: 'fulfilled', label: 'Delivered', cls: 'bg-chart-1' },
+  { key: 'fulfilled', label: 'Handed over', cls: 'bg-chart-1' },
   { key: 'closed', label: 'Rejected / cancelled', cls: 'bg-faint/40' },
 ];
 const WAITING: ReqStatus[] = ['pending_sub', 'pending_it', 'pending_owner'];
@@ -208,7 +208,7 @@ export const RequestsPipelineDialog: React.FC<{ onClose: () => void }> = ({ onCl
         <StatTile label="Raised" value={p.total} />
         <StatTile label="Waiting for a decision" value={p.waiting} />
         <StatTile label="Being arranged" value={p.arranging} />
-        <StatTile label="Delivered" value={p.delivered} />
+        <StatTile label="Handed over" value={p.delivered} />
         <StatTile
           label="Avg. days to deliver"
           value={p.avgDays !== null ? p.avgDays.toFixed(1) : '—'}

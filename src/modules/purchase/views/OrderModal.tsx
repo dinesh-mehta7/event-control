@@ -52,12 +52,13 @@ export const OrderModal: React.FC<{
     fetchReceipts,
     fetchPayments,
     registerTracking,
+    closeRemaining,
   } = usePurchase();
   const { requests } = useRequests();
   const o = orders.find(x => x.id === id);
   const [rc, setRc] = useState<Receipt[] | null>(null);
   const [pm, setPm] = useState<Payment[] | null>(null);
-  const [ask, setAsk] = useState<'cancel' | 'delete' | 'reject' | null>(null);
+  const [ask, setAsk] = useState<'cancel' | 'delete' | 'reject' | 'close' | null>(null);
   const [trackingLine, setTrackingLine] = useState('');
   const [marketplaceOrderNumber, setMarketplaceOrderNumber] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
@@ -593,10 +594,15 @@ export const OrderModal: React.FC<{
             I have placed the order
           </button>
         )}
+        {canManage && o.status === 'partial' && (
+          <button className={cx(btnGhost(D), 'text-amber-300')} onClick={() => setAsk('close')}>
+            Close the rest
+          </button>
+        )}
         {canReceive && INCOMING.includes(o.status) && (
           <button className={good} onClick={() => onReceive(o.id)}>
             <Truck className="w-4 h-4" />
-            Receive goods
+            Arrived at store
           </button>
         )}
         {canManage && PAYABLE.includes(o.status) && due - asked > 0.009 && (
@@ -629,6 +635,25 @@ export const OrderModal: React.FC<{
           confirm="Reject order"
           onSubmit={n =>
             act('rejected', 'Order rejected.', n).then(ok => {
+              if (ok) onClose();
+              return ok;
+            })
+          }
+          onClose={() => setAsk(null)}
+        />
+      )}
+      {ask === 'close' && (
+        <ReasonModal
+          title="Close the rest of this order?"
+          body={`Keeps what arrived (${o.items
+            .filter(i => i.qtyReceived < i.qtyOrdered)
+            .map(i => `${i.qtyReceived} of ${i.qtyOrdered} ${i.name}`)
+            .join(
+              ', ',
+            )}). The rest will not come: the order total and the approved quantities on the requests are reduced, and the requesters are told.`}
+          confirm="Close the rest"
+          onSubmit={reason =>
+            closeRemaining(o.id, reason).then(ok => {
               if (ok) onClose();
               return ok;
             })

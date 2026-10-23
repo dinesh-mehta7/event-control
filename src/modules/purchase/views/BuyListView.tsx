@@ -1,14 +1,21 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { btnGhost, cx } from '../../accommodation/ui';
+import { ArrowRight } from 'lucide-react';
+import { cx } from '../../accommodation/ui';
 import { useRequests } from '../../requests/RequestsContext';
 import { unlinkedPurchaseParts } from '../../requests/types';
+import type { Req, ReqItem, ReqPart } from '../../requests/types';
 import { usePurchase } from '../PurchaseContext';
-import { D, Empty, StatusChip, day, money, panel } from './shared';
+import type { PO } from '../types';
+import { Empty, StatusChip, day, money, panel, primary } from './shared';
+
+type Line = { request: Req; part: ReqPart; item: ReqItem };
 
 // ---- the buy list: everything approved that the store team said must be bought -------------------------
+// One row per draft order (approval creates it), so Purchase sees what each order still needs before placing.
 export const BuyListView: React.FC<{ editOrder: (id: string) => void }> = ({ editOrder }) => {
   const { requests } = useRequests();
-  const { orders, createOrder, canManage, vendorName, inMyDepartment } = usePurchase();
+  const { orders, createOrder, canManage, vendorName, inMyDepartment, showDepartments, departmentFilter } =
+    usePurchase();
   // Each department buys for the requests made to it (the Super Admin sees every department's).
   const myRequests = useMemo(() => requests.filter(r => inMyDepartment(r.departmentId)), [requests, inMyDepartment]);
   const lines = useMemo(
@@ -20,6 +27,8 @@ export const BuyListView: React.FC<{ editOrder: (id: string) => void }> = ({ edi
       ) as { part: any; req: any; item: any }[],
     [myRequests],
   );
+  // Approval creates the draft order in the database (migration_v111). This stays as a fallback for
+  // lines approved before that, or if the automatic draft could not be created.
   const seenParts = useRef(new Set<string>());
   const createOrderRef = useRef(createOrder);
   createOrderRef.current = createOrder;
@@ -40,133 +49,155 @@ export const BuyListView: React.FC<{ editOrder: (id: string) => void }> = ({ edi
       for (let index = 0; index < requestBatches.length; index++) await createOrderRef.current(requestBatches[index]);
     })();
   }, [lines, canManage]);
-  const approvedRequests = useMemo(
-    () =>
-      myRequests.filter(request => {
-        if (
-          request.status !== 'approved' ||
-          !request.parts.some(part => part.source === 'purchase' && part.status === 'planned')
-        )
-          return false;
-        const tickets = orders.filter(order =>
-          order.items.some(item => item.requestId === request.id || item.requestNumber === request.number),
-        );
-        return (
-          tickets.some(order => ['draft', 'pending', 'rejected'].includes(order.status)) ||
-          (!tickets.length && unlinkedPurchaseParts(request).length > 0)
-        );
-      }),
-    [myRequests, orders],
-  );
+
+  // Group the approved purchase lines by their draft order; lines without one yet are "preparing".
+  const groups = useMemo(() => {
+    const byOrder = new Map<string, { order?: PO; lines: Line[] }>();
+    myRequests
+      .filter(r => r.status === 'approved')
+      .forEach(request =>
+        request.parts
+          .filter(part => part.source === 'purchase' && part.status === 'planned')
+          .forEach(part => {
+            const item = request.items.find(row => row.id === part.itemId);
+            if (!item) return;
+            const order = part.purchaseItemId
+              ? orders.find(o => o.items.some(line => line.id === part.purchaseItemId))
+              : undefined;
+            if (order && !['draft', 'pending', 'rejected'].includes(order.status)) return; // already placed
+            const key = order ? order.id : `new:${request.id}`;
+            const group = byOrder.get(key) || { order, lines: [] };
+            group.lines.push({ request, part, item });
+            byOrder.set(key, group);
+          }),
+      );
+    return Array.from(byOrder.values()).sort((a, b) =>
+      (minNeeded(a.lines) || '9999').localeCompare(minNeeded(b.lines) || '9999'),
+    );
+  }, [myRequests, orders]);
+  const showDept = showDepartments && departmentFilter === 'all';
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
+      <p className="text-xs text-mute">
+        Approved purchases arrive here as draft orders, with the last vendor and rate of each item filled in. Check them
+        and place the order.
+      </p>
       <section className={cx(panel, 'overflow-x-auto')}>
-        {approvedRequests.length ? (
-          <table className="w-full min-w-[1050px] table-fixed border-x border-line text-[10.5px] xl:min-w-0 xl:text-[11.5px]">
-            <colgroup>
-              <col className="w-[9%]" />
-              <col className="w-[9%]" />
-              <col className="w-[10%]" />
-              <col className="w-[9%]" />
-              <col className="w-[7%]" />
-              <col className="w-[8%]" />
-              <col className="w-[7%]" />
-              <col className="w-[8%]" />
-              <col className="w-[8%]" />
-              <col className="w-[8%]" />
-              <col className="w-[7%]" />
-              <col className="w-[10%]" />
-            </colgroup>
-            <thead className="bg-raised/40 text-left text-[10px] uppercase tracking-wide text-mute xl:text-[10px]">
+        {groups.length ? (
+          <table className="w-full min-w-[860px] text-xs">
+            <thead className="bg-raised/40 text-left text-[10.5px] uppercase tracking-wide text-mute">
               <tr>
                 {[
-                  'Request',
-                  'Requester',
-                  'Department',
-                  'Item',
-                  'Qty to order',
+                  'Order',
+                  'For',
+                  ...(showDept ? ['Department'] : []),
+                  'Items',
                   'Needed by',
-                  'PO ticket',
-                  'Vendor',
-                  'Expected',
                   'Budget',
-                  'Status',
+                  'Vendor & rates',
                   '',
                 ].map((heading, index) => (
-                  <th key={index} className="border-r border-line px-1.5 py-1.5 font-bold last:border-r-0">
+                  <th key={index} className="px-3 py-2.5 font-semibold">
                     {heading}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-line/70">
-              {approvedRequests.flatMap(request =>
-                request.parts
-                  .filter(part => part.source === 'purchase' && part.status === 'planned')
-                  .map(part => {
-                    const item = request.items.find(row => row.id === part.itemId);
-                    const order = orders.find(candidate =>
-                      candidate.items.some(line => line.id === part.purchaseItemId && !!part.purchaseItemId),
-                    );
-                    const canOpen = order && ['draft', 'pending', 'rejected'].includes(order.status);
-                    return (
-                      <tr key={part.id} className="hover:bg-raised/30">
-                        <td className="border-r border-line/70 px-1.5 py-1.5 align-top">
-                          <span className="font-mono font-bold text-blue-300">{request.number}</span>
-                          <div className="mt-0.5 break-words text-mute">{request.title}</div>
-                        </td>
-                        <td className="border-r border-line/70 px-1.5 py-1.5 align-top break-words">
-                          {request.requesterName}
-                        </td>
-                        <td className="border-r border-line/70 px-1.5 py-1.5 align-top break-words">
-                          {request.departmentName || '—'}
-                        </td>
-                        <td className="border-r border-line/70 px-1.5 py-1.5 align-top break-words font-medium text-ink">
-                          {item?.name || 'Request item'}
-                        </td>
-                        <td className="border-r border-line/70 px-1.5 py-1.5 align-top tabular-nums">
-                          {part.qty} {item?.unit || ''}
-                        </td>
-                        <td className="border-r border-line/70 px-1.5 py-1.5 align-top">
-                          {request.neededBy ? day(request.neededBy) : '—'}
-                        </td>
-                        <td className="border-r border-line/70 px-1.5 py-1.5 align-top break-words font-mono text-blue-300">
-                          {order?.number || (part.purchaseItemId ? '—' : 'Preparing…')}
-                        </td>
-                        <td className="border-r border-line/70 px-1.5 py-1.5 align-top break-words">
-                          {order ? vendorName(order.vendorId) : '—'}
-                        </td>
-                        <td className="border-r border-line/70 px-1.5 py-1.5 align-top">
-                          {order?.expectedDate ? day(order.expectedDate) : '—'}
-                        </td>
-                        <td className="border-r border-line/70 px-1.5 py-1.5 align-top tabular-nums break-words">
-                          {item?.budgetAmount != null ? money(item.budgetAmount) : '—'}
-                        </td>
-                        <td className="border-r border-line/70 px-1.5 py-1.5 align-top">
-                          {order ? <StatusChip s={order.status} /> : <span className="text-mute">Approved</span>}
-                        </td>
-                        <td className="px-1 py-1.5 text-center align-top">
-                          {canOpen && (
-                            <button
-                              type="button"
-                              className={`${btnGhost(D)} !px-1.5 !py-0.5 text-[10px]`}
-                              onClick={() => editOrder(order.id)}
-                            >
-                              Open
-                            </button>
+              {groups.map(({ order, lines: rows }) => {
+                const requestsOf = Array.from(new Map(rows.map(x => [x.request.id, x.request])).values());
+                const budget = rows.reduce((sum, x) => sum + (x.item.budgetAmount || 0), 0);
+                const hasBudget = rows.some(x => x.item.budgetAmount != null);
+                const missingRates = order ? order.items.filter(i => i.rate <= 0).length : rows.length;
+                const suggested = !!order && /suggested from/i.test(order.notes);
+                const needed = minNeeded(rows);
+                const ready = !!order?.vendorId && missingRates === 0;
+                return (
+                  <tr key={order?.id || rows[0].request.id} className="align-top hover:bg-raised/30">
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {order ? (
+                        <>
+                          <span className="font-mono font-bold text-blue-300">{order.number}</span>
+                          {order.status !== 'draft' && (
+                            <span className="ml-1.5">
+                              <StatusChip s={order.status} />
+                            </span>
                           )}
-                        </td>
-                      </tr>
-                    );
-                  }),
-              )}
+                        </>
+                      ) : (
+                        <span className="text-mute">Preparing…</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3">
+                      {requestsOf.map(r => (
+                        <div key={r.id} className="min-w-0">
+                          <span className="font-mono font-semibold text-ink-soft">{r.number}</span>
+                          <span className="ml-1.5 text-ink">{r.title}</span>
+                          <div className="text-[10.5px] text-mute">{r.requesterName}</div>
+                        </div>
+                      ))}
+                    </td>
+                    {showDept && <td className="px-3 py-3 text-ink-soft">{requestsOf[0]?.departmentName || '—'}</td>}
+                    <td className="px-3 py-3">
+                      {rows.map(x => (
+                        <div key={x.part.id} className="whitespace-nowrap">
+                          <span className="font-medium text-ink">{x.item.name}</span>
+                          <span className="text-mute">
+                            {' '}
+                            · {x.part.qty} {x.item.unit}
+                          </span>
+                        </div>
+                      ))}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">{needed ? day(needed) : '—'}</td>
+                    <td className="px-3 py-3 whitespace-nowrap tabular-nums">{hasBudget ? money(budget) : '—'}</td>
+                    <td className="px-3 py-3">
+                      {order?.vendorId ? (
+                        <span className="text-ink">{vendorName(order.vendorId)}</span>
+                      ) : (
+                        <span className="text-amber-300">Choose vendor</span>
+                      )}
+                      <div
+                        className={cx(
+                          'text-[10.5px]',
+                          missingRates ? 'text-amber-300' : suggested ? 'text-sky-300' : 'text-mute',
+                        )}
+                      >
+                        {missingRates
+                          ? `${missingRates} rate${missingRates === 1 ? '' : 's'} missing`
+                          : suggested
+                            ? 'Suggested from last order'
+                            : 'Rates set'}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {order && (
+                        <button
+                          type="button"
+                          className={cx(primary, '!px-3 !py-1.5 text-xs')}
+                          onClick={() => editOrder(order.id)}
+                        >
+                          {ready ? 'Review & place' : 'Complete'}
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ) : (
-          <Empty>No approved requests waiting to be ordered.</Empty>
+          <Empty>Nothing to order. Approved purchases appear here as draft orders.</Empty>
         )}
       </section>
     </div>
   );
 };
+
+const minNeeded = (rows: Line[]) =>
+  rows
+    .map(x => x.request.neededBy)
+    .filter(Boolean)
+    .sort()[0] || '';

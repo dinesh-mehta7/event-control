@@ -1,11 +1,18 @@
 import React from 'react';
 import { Check } from 'lucide-react';
 import { Pill } from '../../components/ui';
-import { STATUS_LABEL, STATUS_TONE, fmtDateTime, lineStatus } from './types';
+import { STATUS_LABEL, STATUS_TONE, fmtDateTime, lineStatus, purchaseAtStore } from './types';
 import type { OrderInfo, Req, ReqStatus } from './types';
 
-export const StatusBadge: React.FC<{ status: ReqStatus; closed?: boolean }> = ({ status, closed }) => (
-  <Pill c={STATUS_TONE[status]}>{status === 'fulfilled' && closed ? 'Closed' : STATUS_LABEL[status]}</Pill>
+// `stage` (from requestStage) names where an approved request is: Ordering, Ordered, At store…
+export const StatusBadge: React.FC<{ status: ReqStatus; closed?: boolean; stage?: string | null }> = ({
+  status,
+  closed,
+  stage,
+}) => (
+  <Pill c={STATUS_TONE[status]}>
+    {status === 'fulfilled' && closed ? 'Closed' : (status === 'approved' && stage) || STATUS_LABEL[status]}
+  </Pill>
 );
 export const UrgentBadge: React.FC = () => <Pill c="bg-red-500/15 text-red-300">Urgent</Pill>;
 
@@ -35,6 +42,10 @@ export const Stepper: React.FC<{
         part.purchaseItemId && ['ordered', 'partial', 'received'].includes(orders[part.purchaseItemId]?.poStatus || ''),
     );
   const approved = ['pending_owner', 'approved', 'fulfilled'].includes(r.status);
+  // Every purchased part is either handed over or fully at the store.
+  const atStore =
+    hasPurchase &&
+    purchaseParts.every(part => part.status === 'done' || purchaseAtStore(r as Req, part, orders) >= part.qty);
   const steps: { label: string; state: 'done' | 'current' | 'idle' }[] = [
     { label: 'Requested', state: !dead && r.status !== 'pending_sub' ? 'done' : 'idle' },
     { label: 'Department Head', state: r.status === 'pending_it' ? 'current' : approved ? 'done' : 'idle' },
@@ -55,16 +66,30 @@ export const Stepper: React.FC<{
       ? [
           {
             label: 'Ordered',
-            state: ordered ? ('done' as const) : r.status === 'approved' ? ('current' as const) : ('idle' as const),
+            state:
+              ordered || r.status === 'fulfilled'
+                ? ('done' as const)
+                : r.status === 'approved'
+                  ? ('current' as const)
+                  : ('idle' as const),
+          },
+          {
+            label: 'At store',
+            state:
+              atStore || r.status === 'fulfilled'
+                ? ('done' as const)
+                : r.status === 'approved' && ordered
+                  ? ('current' as const)
+                  : ('idle' as const),
           },
         ]
       : []),
     {
-      label: 'Delivered',
+      label: 'Handed over',
       state:
-        r.status === 'fulfilled' ? 'done' : r.status === 'approved' && (!hasPurchase || ordered) ? 'current' : 'idle',
+        r.status === 'fulfilled' ? 'done' : r.status === 'approved' && (!hasPurchase || atStore) ? 'current' : 'idle',
     },
-    { label: 'Received', state: r.confirmedAt ? 'done' : r.status === 'fulfilled' ? 'current' : 'idle' },
+    { label: 'Closed', state: r.confirmedAt ? 'done' : r.status === 'fulfilled' ? 'current' : 'idle' },
   ];
   return (
     <ol

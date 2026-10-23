@@ -144,7 +144,7 @@ export const STATUS_LABEL: Record<ReqStatus, string> = {
   pending_it: 'With Department Head',
   pending_owner: 'With Super Admin',
   approved: 'Approved',
-  fulfilled: 'Delivered',
+  fulfilled: 'Handed over',
   rejected: 'Rejected',
   cancelled: 'Cancelled',
 };
@@ -168,6 +168,34 @@ export const linePlannedQty = (r: Req, item: ReqItem): number =>
   r.parts.filter(p => p.itemId === item.id).reduce((total, part) => total + part.qty, 0);
 export const lineRemainingToAllocate = (r: Req, item: ReqItem): number =>
   Math.max(0, (item.approved ?? 0) - linePlannedQty(r, item));
+// How much of a purchased part is at the store and not handed over yet. A part that was split by a
+// partial hand-over shares its order line with the done part, so subtract what that line already gave.
+export const purchaseAtStore = (r: Req, part: ReqPart, orders: Record<string, OrderInfo>): number => {
+  if (part.source !== 'purchase' || part.status !== 'planned' || !part.purchaseItemId) return 0;
+  const received = orders[part.purchaseItemId]?.received || 0;
+  const handed = r.parts
+    .filter(p => p.purchaseItemId === part.purchaseItemId && p.status === 'done')
+    .reduce((sum, p) => sum + p.qty, 0);
+  return Math.max(0, Math.min(part.qty, received - handed));
+};
+
+// Where an approved request is between approval and hand-over, for its status badge.
+export const requestStage = (r: Req, orders: Record<string, OrderInfo>): string | null => {
+  if (r.status !== 'approved') return null;
+  const planned = r.parts.filter(p => p.status === 'planned');
+  if (r.parts.some(p => p.status === 'done') && planned.length) return 'Partly handed over';
+  if (planned.some(p => (p.source === 'purchase' ? purchaseAtStore(r, p, orders) > 0 : true))) return 'At store';
+  const buying = planned.filter(p => p.source === 'purchase');
+  if (!buying.length) return null;
+  if (
+    buying.every(
+      p => p.purchaseItemId && ['ordered', 'partial', 'received'].includes(orders[p.purchaseItemId]?.poStatus || ''),
+    )
+  )
+    return 'Ordered';
+  return 'Ordering';
+};
+
 export const unlinkedPurchaseParts = (r: Req): ReqPart[] =>
   r.status === 'approved'
     ? r.parts.filter(part => part.source === 'purchase' && part.status === 'planned' && !part.purchaseItemId)

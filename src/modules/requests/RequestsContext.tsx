@@ -218,6 +218,9 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return;
     }
     load();
+    // Remind / close handed-over requests nobody confirmed (also runs from pg_cron when enabled).
+    // Fails quietly until migration_v111 is applied; live updates reload the list if anything closed.
+    void Promise.resolve(supabase.rpc('request_auto_close')).catch(() => {});
     const ch = supabase.channel(`requests-${uid}`);
     [
       'requests',

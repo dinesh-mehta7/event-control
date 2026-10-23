@@ -597,7 +597,7 @@ export const ReportsView: React.FC = () => {
                 warn={(reqByStatus.pending_owner || 0) > 0}
               />
               <Stat label="Being arranged" value={reqByStatus.approved || 0} />
-              <Stat label="Delivered" value={reqByStatus.fulfilled || 0} />
+              <Stat label="Handed over" value={reqByStatus.fulfilled || 0} />
             </div>
             <Card title="By status">
               <ul className="divide-y divide-line">

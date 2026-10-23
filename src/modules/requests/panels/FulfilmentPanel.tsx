@@ -5,7 +5,8 @@ import { useInventory } from '../../inventory';
 import { usePurchase } from '../../purchase';
 import { useRequests } from '../RequestsContext';
 import type { Availability } from '../RequestsContext';
-import { SOURCE_LABEL, fmtDate, lineDone, lineStatus } from '../types';
+import { SOURCE_LABEL, fmtDate, lineDone, lineStatus, purchaseAtStore } from '../types';
+import { TASK_STATUS, useDeliveryTasks } from './useDeliveryTasks';
 import type { PartSource, PlanPart, Req, ReqItem, ReqPart } from '../types';
 import { Err } from './shared';
 import { Select } from '../../../components/Select';
@@ -234,7 +235,9 @@ const HandOver: React.FC<{ r: Req; item: ReqItem; part: ReqPart }> = ({ r, item,
   const { deliver, orders } = useRequests();
   const radio = item.kind === 'radio';
   const order = part.purchaseItemId ? orders[part.purchaseItemId] : undefined;
-  const arrived = part.source !== 'purchase' ? true : order ? order.received >= part.qty : false;
+  // Purchased parts can be handed over as they arrive: what is at the store minus what was already handed over.
+  const atStore = part.source !== 'purchase' ? part.qty : purchaseAtStore(r, part, orders);
+  const arrived = atStore > 0;
   const [loc, setLoc] = useState('');
   const [place, setPlace] = useState(r.deliverTo);
   const [who, setWho] = useState(r.requesterName);
@@ -267,7 +270,8 @@ const HandOver: React.FC<{ r: Req; item: ReqItem; part: ReqPart }> = ({ r, item,
   if (!arrived)
     return (
       <div className="text-xs text-mute">
-        Ordered{order ? ` · ${order.received} of ${order.ordered} arrived` : ''}. You can hand it over once it arrives.
+        Ordered{order ? ` · ${order.received} of ${order.ordered} at the store` : ''}. You can hand it over as soon as
+        some of it arrives.
         {order?.trackingStatus && (
           <span className="ml-1 text-blue-300">
             {order.marketplace === 'amazon' ? 'Amazon' : order.marketplace === 'flipkart' ? 'Flipkart' : 'Courier'}:{' '}
@@ -312,8 +316,14 @@ const HandOver: React.FC<{ r: Req; item: ReqItem; part: ReqPart }> = ({ r, item,
       </Field>
       <button className={btnPrimary + ' col-span-4 sm:col-span-3'} disabled={busy} onClick={go}>
         <PackageCheck size={14} />
-        {radio ? 'Confirm' : 'Issue'}
+        {atStore < part.qty ? `Hand over ${atStore}` : 'Hand over'}
       </button>
+      {atStore < part.qty && (
+        <p className="col-span-12 text-xs text-amber-300">
+          {atStore} of {part.qty} {item.unit} are at the store. Hand these over now; the other {part.qty - atStore} stay
+          on this request until they arrive.
+        </p>
+      )}
       <div className="col-span-12">
         <Err msg={err} />
       </div>
@@ -398,6 +408,7 @@ export const FulfilmentPanel: React.FC<{ r: Req }> = ({ r }) => {
     me,
   } = useRequests();
   const purchase = usePurchase();
+  const tasks = useDeliveryTasks(r);
   const [expanded, setExpanded] = useState(() => !['approved', 'fulfilled'].includes(r.status));
   const [avail, setAvail] = useState<Record<string, Availability>>({});
   const [ready, setReady] = useState(false);
@@ -455,10 +466,11 @@ export const FulfilmentPanel: React.FC<{ r: Req }> = ({ r }) => {
       tone="text-emerald-300"
       action={
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* Approval puts purchases on a draft order by itself; this is only the fallback if that did not happen. */}
           {needsPO && canOrderFor(r) && (
             <button className={btnPrimary} disabled={busy} onClick={mkPO}>
               <ShoppingCart size={14} />
-              {busy ? 'Creating…' : 'Create purchase order'}
+              {busy ? 'Creating…' : 'Create draft order'}
             </button>
           )}
           <button
@@ -480,7 +492,7 @@ export const FulfilmentPanel: React.FC<{ r: Req }> = ({ r }) => {
       {!expanded && (
         <p className="-mt-1 text-xs text-mute">
           {lines.length} approved item{lines.length === 1 ? '' : 's'} <span className="mx-1 text-faint">·</span>{' '}
-          {pendingParts} pending <span className="mx-1 text-faint">·</span> {deliveredParts} delivered
+          {pendingParts} pending <span className="mx-1 text-faint">·</span> {deliveredParts} handed over
         </p>
       )}
       <Err msg={err} />
@@ -530,7 +542,7 @@ export const FulfilmentPanel: React.FC<{ r: Req }> = ({ r }) => {
                             <Pill
                               c={p.status === 'done' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-raised text-ink-soft'}
                             >
-                              {p.status === 'done' ? 'Delivered' : SOURCE_LABEL[p.source]}
+                              {p.status === 'done' ? 'Handed over' : SOURCE_LABEL[p.source]}
                             </Pill>
                             <span className="text-ink tabular-nums">
                               {p.qty} {i.unit}
@@ -549,6 +561,21 @@ export const FulfilmentPanel: React.FC<{ r: Req }> = ({ r }) => {
                                   : `₹${orders[p.purchaseItemId].rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
                               </span>
                             )}
+                            {tasks[p.id] && (
+                              <a
+                                href="#/tasks"
+                                className="text-xs text-mute hover:text-ink"
+                                title="Delivery task on Team tasks"
+                              >
+                                Task:{' '}
+                                <span
+                                  className={`rounded-full px-1.5 py-0.5 font-medium ${(TASK_STATUS[tasks[p.id].status] || ['', 'bg-raised text-mute'])[1]}`}
+                                >
+                                  {(TASK_STATUS[tasks[p.id].status] || [tasks[p.id].status])[0]}
+                                </span>{' '}
+                                {tasks[p.id].assignedTo || tasks[p.id].team}
+                              </a>
+                            )}
                             {p.status === 'done' && (
                               <span className="text-xs text-mute">
                                 to {p.receivedBy || p.location}
@@ -560,9 +587,13 @@ export const FulfilmentPanel: React.FC<{ r: Req }> = ({ r }) => {
                           {p.status === 'planned' && !mine && (
                             <div className="text-xs text-mute">
                               {p.source === 'purchase'
-                                ? p.purchaseItemId
-                                  ? 'Ordered, waiting for delivery.'
-                                  : 'Waiting for Purchase to create an order.'
+                                ? !p.purchaseItemId
+                                  ? 'Waiting for the draft order.'
+                                  : purchaseAtStore(r, p, orders) > 0
+                                    ? `${purchaseAtStore(r, p, orders)} at the store, waiting to be handed over.`
+                                    : ['ordered', 'partial'].includes(orders[p.purchaseItemId]?.poStatus || '')
+                                      ? 'Ordered, on the way.'
+                                      : 'On a draft order. Purchase will place it.'
                                 : 'Being arranged by the Department Admin.'}
                             </div>
                           )}
@@ -586,20 +617,27 @@ export const FulfilmentPanel: React.FC<{ r: Req }> = ({ r }) => {
               (r.confirmedAt ? (
                 <div className="flex items-center gap-2 text-sm text-emerald-300">
                   <Check size={16} />
-                  Receipt confirmed{r.confirmedBy ? ` by ${r.confirmedBy}` : ''} on {fmtDate(r.confirmedAt)}.
+                  Closed
+                  {r.confirmedBy
+                    ? ` · ${r.confirmedBy === 'Closed automatically' ? 'automatically' : `confirmed by ${r.confirmedBy}`}`
+                    : ''}{' '}
+                  on {fmtDate(r.confirmedAt)}.
                 </div>
               ) : canConfirm(r) ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 print:hidden">
                   <span className="text-sm text-emerald-200">
-                    Everything approved has been delivered. Did you receive it all?
+                    Everything approved has been handed over. Did you receive it all? It closes by itself 3 days after
+                    the hand-over.
                   </span>
                   <button className={btnPrimary} disabled={confirmBusy} onClick={confirm}>
                     <Check size={14} />
-                    {confirmBusy ? 'Saving…' : 'Confirm receipt'}
+                    {confirmBusy ? 'Saving…' : 'Confirm and close'}
                   </button>
                 </div>
               ) : (
-                <p className="text-xs text-mute">Delivered. Waiting for {r.requesterName} to confirm receipt.</p>
+                <p className="text-xs text-mute">
+                  Handed over. Waiting for {r.requesterName} to confirm; it closes by itself 3 days after the hand-over.
+                </p>
               ))}
             <Err msg={confirmError} />
           </div>

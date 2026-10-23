@@ -11,7 +11,7 @@ import { NewRequest } from './NewRequest';
 import { RequestDetail } from './RequestDetail';
 import { StatusBadge, UrgentBadge, approvedBySuperAdmin } from './parts';
 import { exportRequestsXlsx } from './exportXlsx';
-import { fmtDate, isOverdue } from './types';
+import { fmtDate, isOverdue, requestStage } from './types';
 import type { NewLine, Req } from './types';
 
 const go = (path: string) => {
@@ -19,6 +19,7 @@ const go = (path: string) => {
 };
 
 const Row: React.FC<{ r: Req }> = ({ r }) => {
+  const { orders } = useRequests();
   const totalBudget = r.items.filter(i => (i.approved ?? i.requested) > 0).every(i => i.budgetAmount !== null)
     ? r.items.reduce((sum, i) => sum + (i.budgetAmount || 0), 0) + r.miscBudget
     : null;
@@ -77,7 +78,7 @@ const Row: React.FC<{ r: Req }> = ({ r }) => {
       </td>
       <td className="whitespace-nowrap px-3 py-2.5 align-middle">
         <div className="flex items-center gap-1.5">
-          <StatusBadge status={r.status} closed={!!r.confirmedAt} />
+          <StatusBadge status={r.status} closed={!!r.confirmedAt} stage={requestStage(r, orders)} />
           {r.priority === 'urgent' && <UrgentBadge />}
           {isOverdue(r) && (
             <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10.5px] font-medium text-red-300">
@@ -126,7 +127,7 @@ const FILTERS = [
   ['all', 'All'],
   ['open', 'Waiting for approval'],
   ['approved', 'Being arranged'],
-  ['fulfilled', 'Delivered'],
+  ['fulfilled', 'Handed over'],
   ['rejected', 'Declined'],
   ['cancelled', 'Cancelled'],
 ] as const;
@@ -282,7 +283,7 @@ const Overview: React.FC<{ onOpen: (filter: string) => void }> = ({ onOpen }) =>
           tone="text-blue-300"
           onClick={() => onOpen('approved')}
         />
-        <Stat label="Delivered" n={n('fulfilled')} tone="text-emerald-300" onClick={() => onOpen('fulfilled')} />
+        <Stat label="Handed over" n={n('fulfilled')} tone="text-emerald-300" onClick={() => onOpen('fulfilled')} />
       </div>
 
       {overviewRows.length > 0 && (
@@ -377,7 +378,6 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
       setDownloadingCurrent(false);
     }
   };
-
 
   const exportControl = () =>
     canExport || me.isExec ? (

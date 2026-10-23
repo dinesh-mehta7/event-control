@@ -1,12 +1,13 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, ClipboardList, Search, ShoppingCart, Truck, Wallet } from 'lucide-react';
+import { CheckCircle2, PackageCheck, Search, ShoppingCart, Truck, Wallet } from 'lucide-react';
 import { cx } from '../accommodation/ui';
 import { usePurchase } from './PurchaseContext';
 import { PAYABLE, poDue, poTotal } from './types';
 import type { POStatus } from './types';
 import { money, panel } from './views/shared';
 import { BuyListView } from './views/BuyListView';
-import { OrderedView, WaitingView } from './views/OrderedView';
+import { OnTheWayView } from './views/OrderedView';
+import { AtStoreView } from './views/AtStoreView';
 import { VendorsView } from './views/VendorsView';
 import { ReceiveModal, ReceivingView } from './views/ReceivingView';
 import { PaymentsView } from './views/PaymentsView';
@@ -16,7 +17,8 @@ import { AskPayModal } from './views/PaymentModals';
 import { DepartmentSelect } from '../../components/DepartmentSelect';
 import { Swap } from '../../components/Swap';
 
-export type DeskView = 'buy' | 'tracking' | 'orders' | 'receiving' | 'vendors' | 'payments';
+// 'orders' is the old name of 'tracking' (On the way), kept so saved links still open.
+export type DeskView = 'buy' | 'tracking' | 'store' | 'orders' | 'receiving' | 'vendors' | 'payments';
 
 const Stat: React.FC<{ label: string; value: React.ReactNode; dot?: string; onClick?: () => void }> = ({
   label,
@@ -60,8 +62,8 @@ export const PurchaseDesk: React.FC<{ view: DeskView }> = ({ view }) => {
       )}
       <Swap k={view} indexOf={k => PURCHASE_TABS.findIndex(t => t.id === k)}>
         {view === 'buy' && <BuyListView editOrder={setViewing} />}
-        {view === 'tracking' && <WaitingView open={setViewing} />}
-        {view === 'orders' && <OrderedView open={setViewing} />}
+        {view === 'tracking' && <OnTheWayView open={setViewing} receive={setReceiving} />}
+        {view === 'store' && <AtStoreView />}
         {view === 'vendors' && <VendorsView />}
         {view === 'receiving' && <ReceivingView />}
         {view === 'payments' && <PaymentsView open={setViewing} onAsk={setAsking} />}
@@ -83,26 +85,29 @@ export const PurchaseDesk: React.FC<{ view: DeskView }> = ({ view }) => {
   );
 };
 
+// One pipeline: draft orders → placed and on the way → at the store, ready to hand over → done.
 const PURCHASE_TABS: { id: DeskView; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'buy', label: 'To Order', icon: ShoppingCart },
-  { id: 'orders', label: 'Ordered', icon: Check },
-  { id: 'tracking', label: 'Waiting', icon: ClipboardList },
-  { id: 'receiving', label: 'Received', icon: Truck },
+  { id: 'tracking', label: 'On the way', icon: Truck },
+  { id: 'store', label: 'At store', icon: PackageCheck },
+  { id: 'receiving', label: 'Done', icon: CheckCircle2 },
   { id: 'payments', label: 'Payments', icon: Wallet },
   { id: 'vendors', label: 'Vendors', icon: Search },
 ];
+const tabFromHash = (fallback: DeskView): DeskView => {
+  const part = location.hash.split('/')[2] as DeskView;
+  if (part === 'orders') return 'tracking';
+  return PURCHASE_TABS.some(x => x.id === part) ? part : fallback === 'orders' ? 'tracking' : fallback;
+};
 
 // Standalone Procurement workspace for approved request lines.
-export const PurchaseApp: React.FC<{ initialTab?: DeskView }> = ({ initialTab = 'orders' }) => {
+export const PurchaseApp: React.FC<{ initialTab?: DeskView }> = ({ initialTab = 'tracking' }) => {
   const { orders, showDepartments, departmentFilter, setDepartmentFilter } = usePurchase();
   const navRef = useRef<HTMLElement>(null);
   const tabRefs = useRef<Partial<Record<DeskView, HTMLButtonElement | null>>>({});
   const [indicator, setIndicator] = useState({ left: 0, width: 0 });
   const [indicatorReady, setIndicatorReady] = useState(false);
-  const [tab, setTab] = useState<DeskView>(() => {
-    const part = location.hash.split('/')[2] as DeskView;
-    return PURCHASE_TABS.some(x => x.id === part) ? part : initialTab;
-  });
+  const [tab, setTab] = useState<DeskView>(() => tabFromHash(initialTab));
   const payable = orders.filter(o => PAYABLE.includes(o.status));
   const totals = [
     ['Committed', payable.reduce((sum, o) => sum + poTotal(o), 0)],
@@ -110,10 +115,7 @@ export const PurchaseApp: React.FC<{ initialTab?: DeskView }> = ({ initialTab = 
     ['Still due', payable.reduce((sum, o) => sum + poDue(o), 0)],
   ] as const;
   useEffect(() => {
-    const sync = () => {
-      const part = location.hash.split('/')[2] as DeskView;
-      setTab(PURCHASE_TABS.some(x => x.id === part) ? part : initialTab);
-    };
+    const sync = () => setTab(tabFromHash(initialTab));
     addEventListener('hashchange', sync);
     return () => removeEventListener('hashchange', sync);
   }, [initialTab]);

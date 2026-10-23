@@ -112,6 +112,8 @@ interface Ctx {
   setStatus: (id: string, status: POStatus, doneMsg: string, note?: string) => Promise<boolean>;
   deleteOrder: (id: string) => Promise<boolean>;
   receive: (poId: string, lines: { itemId: string; qty: number }[], meta: ReceiveMeta) => Promise<boolean>;
+  // Partly received order the vendor will not complete: close it with what arrived.
+  closeRemaining: (poId: string, reason: string) => Promise<boolean>;
   registerTracking: (input: {
     poId: string;
     purchaseItemId: string;
@@ -563,6 +565,29 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return true;
   };
 
+  const closeRemaining: Ctx['closeRemaining'] = async (poId, reason) => {
+    if (!canManage) return deny();
+    const po = ordersRef.current.find(o => o.id === poId);
+    const { error } = await supabase.rpc('purchase_close_remaining', { p_po: poId, p_reason: reason.trim() });
+    if (error) {
+      toast(
+        /purchase_close_remaining|schema cache/i.test(error.message || '')
+          ? 'Run supabase/migration_v111_order_to_handover_flow.sql in the Supabase SQL Editor, then reload.'
+          : friendlyError(error),
+        'error',
+      );
+      return false;
+    }
+    await load();
+    log(
+      'Purchase Closed',
+      `${user.name} closed the rest of ${po?.number || poId}: ${reason.trim() || 'not supplied'}`,
+      'warning',
+    );
+    toast('Order closed with what arrived. The requests were updated.');
+    return true;
+  };
+
   const registerTracking: Ctx['registerTracking'] = async input => {
     if (!canManage) return deny();
     const { data, error } = await supabase.functions.invoke('aftership-register-tracking', {
@@ -705,6 +730,7 @@ export const PurchaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setStatus,
     deleteOrder,
     receive,
+    closeRemaining,
     registerTracking,
     askPayment,
     payNow,

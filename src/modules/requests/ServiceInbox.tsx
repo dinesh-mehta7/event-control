@@ -6,6 +6,7 @@ import { DEPTS } from '../../views/orgData';
 import { RequestDetail } from './RequestDetail';
 import { useRequests } from './RequestsContext';
 import { StatusBadge, UrgentBadge } from './parts';
+import { requestStage } from './types';
 import type { LineKind, Req } from './types';
 
 type Filter = 'all' | 'approval' | 'active' | 'complete';
@@ -121,6 +122,7 @@ export const ServiceInbox: React.FC<{ kind: LineKind; title: string }> = ({ kind
 };
 
 const InboxRow: React.FC<{ request: Req; kind: LineKind; onOpen: () => void }> = ({ request: r, kind, onOpen }) => {
+  const { orders } = useRequests();
   const lines = r.items.filter(i => i.kind === kind);
   const date = r.neededBy
     ? new Date(`${r.neededBy}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
@@ -144,7 +146,7 @@ const InboxRow: React.FC<{ request: Req; kind: LineKind; onOpen: () => void }> =
       </td>
       <td className="px-3 py-2 text-ink-soft">{lines.map(i => `${i.requested} ${i.unit} ${i.name}`).join(', ')}</td>
       <td className="px-3 py-2">
-        <StatusBadge status={r.status} closed={!!r.confirmedAt} />
+        <StatusBadge status={r.status} closed={!!r.confirmedAt} stage={requestStage(r, orders)} />
       </td>
       <td className="px-3 py-2 text-ink-soft">{date}</td>
       <td className="px-3 py-2 text-right">
