@@ -3,6 +3,7 @@ import { Check, PackageCheck, Radio, RefreshCw, RotateCcw, Send, X } from 'lucid
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabaseClient';
 import { useRequests } from '../../requests';
+import { Select } from '../../../components/Select';
 
 const statusLabels = {
   pending_approval: 'Waiting for approval',
@@ -370,7 +371,7 @@ export default function EventRadioRequests() {
         <label className="text-xs text-mute" htmlFor="event-radio-event">
           Event
         </label>
-        <select
+        <Select
           id="event-radio-event"
           className={`${input} max-w-md`}
           value={eventId}
@@ -382,7 +383,7 @@ export default function EventRadioRequests() {
               {e.name} · {new Date(e.starts_at).toLocaleDateString('en-IN')}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       <div className={`${panel} space-y-3`}>
         <div className="flex flex-wrap items-center justify-between gap-2">

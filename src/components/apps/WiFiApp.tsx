@@ -7,6 +7,7 @@ import { useWalkie } from '../../modules/walkie';
 import { Tabs } from '../ui';
 import { Swap } from '../Swap';
 import { WiFiAccessRegister } from './WiFiAccessRegister';
+import { Select } from '../Select';
 
 const EMPTY: WiFiAPInput = {
   apCode: '',
@@ -289,7 +290,7 @@ export const WiFiApp: React.FC = () => {
               </label>
               <label className="text-xs text-mute">
                 Status
-                <select
+                <Select
                   value={form.status}
                   onChange={e => set('status', e.target.value as WiFiAPInput['status'])}
                   className="mt-1 w-full rounded-md border border-line bg-field px-3 py-2 text-sm text-ink"
@@ -297,7 +298,7 @@ export const WiFiApp: React.FC = () => {
                   <option value="online">Online</option>
                   <option value="offline">Offline</option>
                   <option value="high_latency">High latency</option>
-                </select>
+                </Select>
               </label>
             </div>
             <div className="flex justify-end gap-2">

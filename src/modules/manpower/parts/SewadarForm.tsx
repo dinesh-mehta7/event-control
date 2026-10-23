@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronLeft, Download, Search, Trash2 } from 'lucide-react';
-import { DEPT_OPTIONS } from '../../accommodation/types';
+import { useSubDepartmentOptions } from '../../../hooks/useSubDepartments';
 import { Modal, ConfirmModal, btnGhost, btnPrimary, cx, inputCls } from '../../accommodation/ui';
 import { useManpower } from '../ManpowerContext';
 import type { SewadarInput } from '../ManpowerContext';
@@ -8,6 +8,7 @@ import { DEVICES, OUTCOME_LABEL } from '../types';
 import type { Arrival, ArrivalTimeOfDay, DeviceType, Sewadar, SewadarMemberType } from '../types';
 import { digitsOnly, phoneInputProps } from '../../../lib/phone';
 import { D, emptySewadar, panel } from './shared';
+import { Select } from '../../../components/Select';
 
 const clock = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }) : '';
@@ -167,6 +168,8 @@ export const SewadarForm: React.FC<{
       (!ownLeaderTeams.length || ownLeaderTeams.some(own => own.id === team.id)),
   );
   const set = <K extends keyof SewadarInput>(k: K, v: SewadarInput[K]) => setF(p => ({ ...p, [k]: v }));
+  // Only the sub-departments of this department (plus the one already saved).
+  const subOptions = useSubDepartmentOptions(undefined, f.department);
   const field = (
     k: Exclude<keyof SewadarInput, 'memberType' | 'deviceType' | 'skills'>,
     label: string,
@@ -240,14 +243,14 @@ export const SewadarForm: React.FC<{
             {f.memberType === 'salary_based' ? (
               <div className={cx(inputCls(D), 'mt-1 flex items-center')}>Permanent</div>
             ) : (
-              <select
+              <Select
                 value={f.memberType}
                 onChange={e => set('memberType', e.target.value as SewadarMemberType)}
                 className={cx(inputCls(D), 'mt-1')}
               >
                 <option value="monthly">Regular</option>
                 <option value="annual">Annual</option>
-              </select>
+              </Select>
             )}
           </label>
           {field('serialNo', 'Sr. No.')}
@@ -271,25 +274,25 @@ export const SewadarForm: React.FC<{
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="text-xs text-mute">
             Sub-department
-            <select
+            <Select
               value={f.department}
               onChange={e => set('department', e.target.value)}
               className={cx(inputCls(D), 'mt-1')}
             >
               <option value="">Not assigned</option>
-              {DEPT_OPTIONS.map(([k, l]) => (
+              {subOptions.map(([k, l]) => (
                 <option key={k} value={k}>
                   {l}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           {showArrivalSchedule && f.memberType !== 'salary_based' && (
             <>
               {field('expectedArrival', 'Expected arrival date', 'date')}
               <label className="text-xs text-mute">
                 Expected arrival time
-                <select
+                <Select
                   value={f.expectedArrivalPeriod}
                   onChange={e => set('expectedArrivalPeriod', e.target.value as ArrivalTimeOfDay)}
                   className={cx(inputCls(D), 'mt-1')}
@@ -299,7 +302,7 @@ export const SewadarForm: React.FC<{
                   <option value="noon">Noon</option>
                   <option value="evening">Evening</option>
                   <option value="night">Night</option>
-                </select>
+                </Select>
               </label>
             </>
           )}
@@ -385,7 +388,7 @@ export const SewadarForm: React.FC<{
           </fieldset>
           <label className="text-xs text-mute">
             Issued device
-            <select
+            <Select
               value={f.deviceType}
               onChange={e => set('deviceType', e.target.value as DeviceType)}
               className={cx(inputCls(D), 'mt-1')}
@@ -395,7 +398,7 @@ export const SewadarForm: React.FC<{
                   {d.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           {field('deviceRef', 'Device ID / serial')}
         </div>
@@ -456,7 +459,7 @@ export const SewadarForm: React.FC<{
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           <label className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface/50 px-3 py-2 text-xs">
             <span className="text-mute">Arrival</span>
-            <select
+            <Select
               value={initial.arrival}
               onChange={e => onSetArrival?.(e.target.value as Arrival)}
               className="max-w-[150px] rounded border border-line bg-field px-2 py-1 text-xs text-ink"
@@ -464,7 +467,7 @@ export const SewadarForm: React.FC<{
               <option value="pending">Expected</option>
               <option value="arrived">Arrived</option>
               <option value="not_coming">Not coming</option>
-            </select>
+            </Select>
           </label>
           <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface/50 px-3 py-2 text-xs">
             <span className="text-mute">Arrived at</span>

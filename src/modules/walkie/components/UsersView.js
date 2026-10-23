@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Search, ShieldCheck, Shield, User, Lock, Unlock, UserCheck, UserX, Clock } from 'lucide-react';
+import { Select } from '../../../components/Select';
 
 const ROLES = ['Admin', 'Operator', 'Client'];
 
@@ -209,7 +210,7 @@ export default function UsersView({ embedded = false }) {
                     </div>
                   </td>
                   <td className="px-5 py-3">
-                    <select
+                    <Select
                       value={p.role}
                       disabled={p.id === currentUser.id}
                       onChange={e => updateUserRole(p.id, e.target.value)}
@@ -220,11 +221,11 @@ export default function UsersView({ embedded = false }) {
                           {r}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </td>
                   <td className="px-5 py-3">
                     <div className="flex flex-col gap-1.5 min-w-[9.5rem]">
-                      <select
+                      <Select
                         aria-label={`Access level for ${p.name}`}
                         value={p.level || 'other'}
                         onChange={e => updateUserHierarchy(p.id, e.target.value, p.subDepartment, p.departmentId)}
@@ -235,9 +236,9 @@ export default function UsersView({ embedded = false }) {
                             {label}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                       {(p.level === 'sub_dept_head' || p.level === 'staff') && (
-                        <select
+                        <Select
                           aria-label={`Department for ${p.name}`}
                           value={p.subDepartment || ''}
                           onChange={e => updateUserHierarchy(p.id, p.level, e.target.value)}
@@ -249,10 +250,10 @@ export default function UsersView({ embedded = false }) {
                               {label}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       )}
                       {p.level === 'dept_head' && (
-                        <select
+                        <Select
                           aria-label={`Owned department for ${p.name}`}
                           value={p.departmentId || ''}
                           onChange={e => updateUserHierarchy(p.id, p.level, p.subDepartment, e.target.value)}
@@ -264,7 +265,7 @@ export default function UsersView({ embedded = false }) {
                               {d.name}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       )}
                     </div>
                   </td>

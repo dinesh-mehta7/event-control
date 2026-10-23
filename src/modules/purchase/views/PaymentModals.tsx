@@ -5,6 +5,7 @@ import { PAY_MODES, poDue, poTotal } from '../types';
 import { supabase } from '../../walkie/lib/supabaseClient';
 import { useWalkie } from '../../walkie';
 import { D, good, money, primary } from './shared';
+import { Select } from '../../../components/Select';
 
 // ---- record payment ----------------------------------------------------------
 
@@ -230,13 +231,13 @@ export const PayNowModal: React.FC<{ id: string; onClose: () => void }> = ({ id,
             <label className={labelCls(D)} htmlFor="pn-m">
               Paid via
             </label>
-            <select id="pn-m" value={mode} onChange={e => setMode(e.target.value)} className={inputCls(D)}>
+            <Select id="pn-m" value={mode} onChange={e => setMode(e.target.value)} className={inputCls(D)}>
               {PAY_MODES.map(([k, l]) => (
                 <option key={k} value={k}>
                   {l}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div>
             <label className={labelCls(D)} htmlFor="pn-r">

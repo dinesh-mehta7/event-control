@@ -19,6 +19,7 @@ import { supabase } from '../../modules/walkie/lib/supabaseClient';
 import { useAccommodation } from '../../modules/accommodation';
 import { digitsOnly, phoneInputProps } from '../../lib/phone';
 import { localDate } from '../../lib/format';
+import { Select } from '../Select';
 
 type ShiftKey = string;
 type Room = { id: string; name: string; location: string; pc_count: number; accommodation_room_id?: string | null };
@@ -394,7 +395,7 @@ export const CCTVControlRoomApp: React.FC = () => {
           </label>
           <label className="text-xs text-mute">
             Accommodation room
-            <select
+            <Select
               value={accommodationRoomId}
               onChange={e => setAccommodationRoomId(e.target.value)}
               className={`${field} mt-1`}
@@ -408,7 +409,7 @@ export const CCTVControlRoomApp: React.FC = () => {
                     {room.block ? ` · ${room.block}` : ''}
                   </option>
                 ))}
-            </select>
+            </Select>
           </label>
           <button disabled={busy} className={primary}>
             {busy ? 'Saving…' : 'Save room'}
@@ -716,7 +717,7 @@ export const CCTVControlRoomApp: React.FC = () => {
               ) : (
                 <label className="min-w-0 text-xs text-mute">
                   Sewadar
-                  <select
+                  <Select
                     required
                     value={memberId}
                     onChange={e => setMemberId(e.target.value)}
@@ -732,7 +733,7 @@ export const CCTVControlRoomApp: React.FC = () => {
                           {person.phone ? ` · ${person.phone}` : ''}
                         </option>
                       ))}
-                  </select>
+                  </Select>
                 </label>
               )}
               <button className={`${primary} h-10 whitespace-nowrap`} disabled={busy}>
@@ -815,7 +816,7 @@ export const CCTVControlRoomApp: React.FC = () => {
                       </td>
                       <td className="px-3 py-2.5">
                         {canOperate ? (
-                          <select
+                          <Select
                             aria-label={`Attendance for ${duty.member_name}`}
                             value={duty.attendance_status}
                             onChange={e => void markAttendance(duty, e.target.value as Duty['attendance_status'])}
@@ -824,7 +825,7 @@ export const CCTVControlRoomApp: React.FC = () => {
                             <option value="scheduled">Not marked</option>
                             <option value="arrived">Arrived</option>
                             <option value="absent">Not arrived</option>
-                          </select>
+                          </Select>
                         ) : duty.attendance_status === 'arrived' ? (
                           'Arrived'
                         ) : duty.attendance_status === 'absent' ? (

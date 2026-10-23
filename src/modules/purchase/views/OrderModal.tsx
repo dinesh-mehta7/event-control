@@ -22,6 +22,7 @@ import {
 } from './shared';
 import { PayReqRow } from './PaymentsView';
 import { ReasonModal } from './PaymentModals';
+import { Select } from '../../../components/Select';
 
 const Info: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div>
@@ -441,7 +442,7 @@ export const OrderModal: React.FC<{
                 <div className={cx(inputCls(D), 'flex items-center font-medium')} aria-label="Online vendor">
                   {trackingVendor?.name || 'PO vendor not set'}
                 </div>
-                <select
+                <Select
                   aria-label="Purchase item"
                   className={inputCls(D)}
                   value={trackingLine}
@@ -453,7 +454,7 @@ export const OrderModal: React.FC<{
                       {item.name} · {item.qtyOrdered} {item.unit}
                     </option>
                   ))}
-                </select>
+                </Select>
                 <input
                   aria-label="Marketplace order ID"
                   className={inputCls(D)}

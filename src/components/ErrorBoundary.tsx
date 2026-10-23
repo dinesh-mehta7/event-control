@@ -6,6 +6,7 @@ import React from 'react';
 interface Props {
   children: React.ReactNode;
   page?: boolean;
+  resetKey?: string; // clears a caught error when it changes (e.g. switching tabs) without remounting the page
 }
 interface State {
   error: Error | null;
@@ -16,6 +17,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   static getDerivedStateFromError(error: Error): State {
     return { error };
+  }
+
+  componentDidUpdate(prev: Props) {
+    if (this.state.error && prev.resetKey !== this.props.resetKey) this.setState({ error: null });
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {

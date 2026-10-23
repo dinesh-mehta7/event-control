@@ -7,6 +7,7 @@ import type { SewadarInput } from '../ManpowerContext';
 import { DEVICES } from '../types';
 import type { ArrivalTimeOfDay, SewadarMemberType } from '../types';
 import { D, emptySewadar } from './shared';
+import { Select } from '../../../components/Select';
 
 const readDelimitedRows = (source: string) => {
   const firstLine = source.split(/\r?\n/, 1)[0] || '';
@@ -271,7 +272,7 @@ export const ImportModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <label className="flex items-center gap-2 text-xs text-mute">
           If the sheet has no member type
-          <select
+          <Select
             value={defaultType}
             onChange={e => setDefaultType(e.target.value as SewadarMemberType)}
             className="h-8 rounded-md border border-line bg-field px-2 text-xs text-ink"
@@ -279,7 +280,7 @@ export const ImportModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             <option value="monthly">Regular</option>
             <option value="annual">Annual</option>
             <option value="salary_based">Permanent</option>
-          </select>
+          </Select>
         </label>
         <label className="flex flex-wrap items-center gap-2 text-xs text-mute">
           Upload CSV

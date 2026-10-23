@@ -6,6 +6,7 @@ import { useManpower } from '../../modules/manpower/ManpowerContext';
 import { BUILT_IN_DEPTS, DEPTS, IT_SERVICE_SUBS, itDepartmentOf } from '../../views/orgData';
 import { useApp as useWalkie } from '../../modules/walkie/context/AppContext';
 import { btnGhost, btnPrimary, inputCls } from '../ui';
+import { Select } from '../Select';
 
 // Administration → Sub-departments. Each department adds its own sub-departments (its "services"); the
 // Super Admin can add to any department, a Department Head to their own. Built-in ones are shared by every
@@ -241,14 +242,14 @@ export const SubDepartmentsView: React.FC = () => {
           {isOwner && (
             <label className="min-w-0 sm:w-56">
               <span className="mb-1 block text-xs font-medium text-mute">Department</span>
-              <select className={inputCls} value={addDept} onChange={e => setAddDept(e.target.value)}>
+              <Select className={inputCls} value={addDept} onChange={e => setAddDept(e.target.value)}>
                 <option value="">Choose department…</option>
                 {departments.map(d => (
                   <option key={d.id} value={d.id}>
                     {d.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           )}
           <label className="min-w-0 flex-1">

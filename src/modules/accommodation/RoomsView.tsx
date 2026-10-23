@@ -28,6 +28,7 @@ import { RoomForm } from './rooms/RoomForm';
 import { RoomAssignmentModal } from './rooms/RoomAssignmentModal';
 import { RoomRequirementsModal } from './rooms/RoomRequirementsModal';
 import { MemberForm } from './rooms/MemberForm';
+import { Select } from '../../components/Select';
 
 type Mode = 'rooms' | 'members';
 
@@ -690,7 +691,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                                 <span className="min-w-0 flex-1 truncate text-ink-soft">
                                   {task.title} · {task.assigned_to || 'Unassigned'}
                                 </span>
-                                <select
+                                <Select
                                   aria-label={`Status for ${task.title}`}
                                   disabled={!canManageTasks && task.assigned_to !== auth.currentUser?.name}
                                   className="rounded border border-line bg-field px-1.5 py-1 text-[10.5px] text-ink disabled:opacity-60"
@@ -700,7 +701,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                                   <option value="todo">To do</option>
                                   <option value="in_progress">In progress</option>
                                   <option value="complete">Ready</option>
-                                </select>
+                                </Select>
                               </div>
                             ))}
                         </div>
@@ -794,7 +795,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                 className={cx(inputCls(dark), 'pl-9')}
               />
             </div>
-            <select
+            <Select
               aria-label="Filter by member type"
               value={typeFilter}
               onChange={e => setTypeFilter(e.target.value)}
@@ -806,8 +807,8 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
               </option>
               <option value="monthly">Monthly ({members.filter(m => m.memberType === 'monthly').length})</option>
               <option value="annual">Annual ({members.filter(m => m.memberType === 'annual').length})</option>
-            </select>
-            <select
+            </Select>
+            <Select
               aria-label="Filter by room"
               value={roomFilter}
               onChange={e => setRoomFilter(e.target.value)}
@@ -820,7 +821,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                   {r.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <section className="border-b border-line p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -847,7 +848,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                 placeholder="Task to do"
                 className={cx(inputCls(dark), 'md:col-span-2')}
               />
-              <select
+              <Select
                 value={taskMember}
                 onChange={e => setTaskMember(e.target.value)}
                 className={inputCls(dark)}
@@ -861,7 +862,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                       {memberMeta(m) ? ` · ${memberMeta(m)}` : ''}
                     </option>
                   ))}
-              </select>
+              </Select>
               <button disabled={taskBusy} className={btnPrimary}>
                 <Plus className="w-4 h-4" />
                 {taskBusy ? 'Saving…' : 'Add task'}
@@ -961,7 +962,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                       <td className="px-4 py-2.5">
                         {canManageRooms ? (
                           <>
-                            <select
+                            <Select
                               aria-label={`Arrival for ${m.name}`}
                               value={m.arrivalStatus}
                               onChange={e =>
@@ -975,7 +976,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                               <option value="pending">Expected</option>
                               <option value="arrived">Arrived</option>
                               <option value="not_coming">Not coming</option>
-                            </select>
+                            </Select>
                             <div className={cx('text-xs mt-1', muted)}>
                               {[m.teamName, m.teamLead && `Lead: ${m.teamLead}`].filter(Boolean).join(' · ') ||
                                 'No team'}
@@ -1001,7 +1002,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                       </td>
                       <td className="px-4 py-2.5">
                         {canAdminAssignRoomMembers ? (
-                          <select
+                          <Select
                             aria-label={`Room for ${m.name}`}
                             value={m.roomId || ''}
                             onChange={e => updateMember(m.id, { roomId: e.target.value || null })}
@@ -1017,7 +1018,7 @@ export const RoomsView: React.FC<{ embedded?: boolean }> = ({ embedded = false }
                                 </option>
                               );
                             })}
-                          </select>
+                          </Select>
                         ) : room ? (
                           <span className="font-medium">{room.name}</span>
                         ) : (

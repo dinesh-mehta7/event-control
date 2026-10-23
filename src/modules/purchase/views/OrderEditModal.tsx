@@ -4,6 +4,7 @@ import { useRequests } from '../../requests/RequestsContext';
 import { usePurchase } from '../PurchaseContext';
 import type { VendorMode } from '../types';
 import { D, money, primary } from './shared';
+import { Select } from '../../../components/Select';
 
 // ---- vendor + rates (the lines themselves come from the tickets) ------------------------------------------
 export const OrderEditModal: React.FC<{ id: string; onClose: () => void }> = ({ id, onClose }) => {
@@ -70,7 +71,7 @@ export const OrderEditModal: React.FC<{ id: string; onClose: () => void }> = ({ 
             <label className={labelCls(D)} htmlFor="oe-mode">
               Vendor type
             </label>
-            <select
+            <Select
               id="oe-mode"
               value={vendorMode}
               onChange={e => {
@@ -82,13 +83,13 @@ export const OrderEditModal: React.FC<{ id: string; onClose: () => void }> = ({ 
             >
               <option value="online">Online marketplace</option>
               <option value="offline">Offline / local vendor</option>
-            </select>
+            </Select>
           </div>
           <div>
             <label className={labelCls(D)} htmlFor="oe-v">
               Choose vendor
             </label>
-            <select id="oe-v" value={vendorId} onChange={e => setVendorId(e.target.value)} className={inputCls(D)}>
+            <Select id="oe-v" value={vendorId} onChange={e => setVendorId(e.target.value)} className={inputCls(D)}>
               <option value="">Choose {vendorMode === 'online' ? 'an online marketplace' : 'a local'} vendor…</option>
               {vendors
                 .filter(v => v.vendorMode === vendorMode)
@@ -97,7 +98,7 @@ export const OrderEditModal: React.FC<{ id: string; onClose: () => void }> = ({ 
                     {v.name}
                   </option>
                 ))}
-            </select>
+            </Select>
           </div>
           <div>
             <label className={labelCls(D)} htmlFor="oe-d">

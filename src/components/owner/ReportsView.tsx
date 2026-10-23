@@ -27,6 +27,7 @@ import {
   wifiUsageError,
 } from './reports/reportData';
 import { ReportTable } from './reports/ReportTable';
+import { Select } from '../Select';
 
 // Reports from the live data only (inventory, purchase, requests, manpower, accommodation). Each tab exports what it shows.
 export const ReportsView: React.FC = () => {
@@ -758,7 +759,7 @@ export const ReportsView: React.FC = () => {
                   </p>
                   <label className="text-xs text-mute">
                     Event
-                    <select
+                    <Select
                       aria-label="Wi-Fi report event"
                       value={wifiReportEventId}
                       onChange={e => {
@@ -775,7 +776,7 @@ export const ReportsView: React.FC = () => {
                           {event.name}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                 </div>
                 {wifiError && (

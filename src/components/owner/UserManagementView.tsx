@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import { Search } from 'lucide-react';
 import { useAccess } from '../../context/AccessContext';
-import { DEPTS } from '../../views/orgData';
+import { useSubDepartmentOptions } from '../../hooks/useSubDepartments';
 import { Empty, Tabs, PageIntro, inputCls, th } from '../ui';
 import { Swap } from '../Swap';
 import { AccessRequestsList } from './ApprovalsView';
 import { AuditLogsView } from './AuditLogsView';
-import type { SubDepartmentId } from '../../types';
 import { useApp as useWalkie } from '../../modules/walkie/context/AppContext';
 import { Codes } from './users/Codes';
 import { OrganizationSettings } from './users/OrganizationSettings';
 import { MemberRow } from './users/MemberRow';
+import { Select } from '../Select';
 
 const USER_TABS = ['members', 'requests', 'codes', 'organization', 'audit'];
 
@@ -21,6 +21,8 @@ export const UserManagementView: React.FC<{ initialTab?: string }> = ({ initialT
   const [q, setQ] = useState('');
   const [dept, setDept] = useState('all');
   const [departmentId, setDepartmentId] = useState('all');
+  // Sub-departments follow the chosen department (IT → CCTV, WiFi, Walkie-Talkie …).
+  const subOptions = useSubDepartmentOptions(departmentId);
   const needle = q.trim().toLowerCase();
   const rows = members.filter(
     m =>
@@ -66,11 +68,14 @@ export const UserManagementView: React.FC<{ initialTab?: string }> = ({ initialT
                   onChange={e => setQ(e.target.value)}
                 />
               </div>
-              <select
+              <Select
                 className={inputCls + ' !w-auto'}
                 aria-label="Department"
                 value={departmentId}
-                onChange={e => setDepartmentId(e.target.value)}
+                onChange={e => {
+                  setDepartmentId(e.target.value);
+                  setDept('all');
+                }}
               >
                 <option value="all">All departments</option>
                 {departments.map(d => (
@@ -78,20 +83,20 @@ export const UserManagementView: React.FC<{ initialTab?: string }> = ({ initialT
                     {d.name}
                   </option>
                 ))}
-              </select>
-              <select
+              </Select>
+              <Select
                 className={inputCls + ' !w-auto'}
                 aria-label="Sub-department"
                 value={dept}
                 onChange={e => setDept(e.target.value)}
               >
                 <option value="all">All sub-departments</option>
-                {(Object.keys(DEPTS) as SubDepartmentId[]).map(k => (
+                {subOptions.map(([k, label]) => (
                   <option key={k} value={k}>
-                    {DEPTS[k]}
+                    {label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

@@ -35,6 +35,7 @@ import { useWalkie, Walkie, ToastContainer } from '../modules/walkie';
 import { Swap } from '../components/Swap';
 import { RoyalEmbers } from '../components/RoyalEmbers';
 import { ProfileMenu } from '../components/ProfileMenu';
+import { HoverSelect } from '../components/HoverSelect';
 import { OtherDept } from '../views/Pages';
 import { CCTVControlRoomApp } from '../components/apps/CCTVControlRoomApp';
 import { InventoryApp } from '../modules/inventory';
@@ -148,6 +149,9 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
           ? 'cctv-control-room'
           : '';
   const headerScopeModule = scopeModule || 'event-reports';
+  // The whole page slides only when the sidebar page changes. Events and Sewadars list each tab as its own
+  // sidebar page; elsewhere a tab change stays inside the module, so its title, totals and tab bar stay put.
+  const pageKey = key === 'events' || key === 'sewadars' ? `${key}/${tab || ''}` : key;
   const activeEventId = eventScope.scopeFor(headerScopeModule);
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0, behavior: 'auto' });
@@ -717,25 +721,16 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
           <div className="flex min-w-0 items-center gap-1 sm:gap-1.5">
             <AddingToDepartment dark={isDark} />
             {eventScope.events.length > 0 && (
-              <label className="flex min-w-0 items-center gap-1.5 rounded-full border border-line bg-raised/60 px-2 py-1.5 text-[11.5px] text-mute sm:gap-2 sm:px-3 sm:text-xs">
+              <div className="flex min-w-0 items-center gap-1.5 rounded-full border border-line bg-raised/60 px-2 py-1.5 text-[11.5px] text-mute sm:gap-2 sm:px-3 sm:text-xs">
                 <span className="hidden whitespace-nowrap sm:inline">Working on</span>
-                <select
-                  aria-label="Event in focus"
-                  className="max-w-[28vw] cursor-pointer rounded-md border-0 bg-transparent py-0.5 pl-1 pr-5 font-semibold text-ink outline-none focus:ring-1 focus:ring-blue-500 sm:max-w-[22rem]"
-                  style={{ colorScheme: isDark ? 'dark' : 'light' }}
+                <HoverSelect
+                  label="Event in focus"
                   value={activeEventId}
-                  onChange={e => eventScope.setScopeFor(headerScopeModule, e.target.value)}
-                >
-                  <option className="bg-surface text-ink" value="">
-                    Normal
-                  </option>
-                  {eventScope.events.map(event => (
-                    <option className="bg-surface text-ink" key={event.id} value={event.id}>
-                      {event.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  options={[['', 'Normal'], ...eventScope.events.map(event => [event.id, event.name] as const)]}
+                  onChange={id => eventScope.setScopeFor(headerScopeModule, id)}
+                  className="max-w-[28vw] rounded-md py-0.5 pl-1 font-semibold text-ink outline-none focus-visible:ring-1 focus-visible:ring-blue-500 sm:max-w-[22rem]"
+                />
+              </div>
             )}
             <span className="hidden sm:block mr-1">
               <LiveMealChip dark={isDark} />
@@ -745,11 +740,11 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
         </header>
         <main ref={mainRef} className="flex-1 overflow-y-auto [scrollbar-gutter:stable] p-4 sm:p-6">
           <Swap
-            k={`${key}/${tab || ''}`}
+            k={pageKey}
             indexOf={navIndex}
             className="w-full max-w-[1600px] mx-auto"
           >
-            <ErrorBoundary page key={`${key}/${tab || ''}`}>
+            <ErrorBoundary page key={pageKey} resetKey={`${key}/${tab || ''}`}>
               {view}
             </ErrorBoundary>
           </Swap>

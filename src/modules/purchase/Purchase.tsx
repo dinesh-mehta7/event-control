@@ -14,6 +14,7 @@ import { OrderModal } from './views/OrderModal';
 import { OrderEditModal } from './views/OrderEditModal';
 import { AskPayModal } from './views/PaymentModals';
 import { DepartmentSelect } from '../../components/DepartmentSelect';
+import { Swap } from '../../components/Swap';
 
 export type DeskView = 'buy' | 'tracking' | 'orders' | 'receiving' | 'vendors' | 'payments';
 
@@ -57,12 +58,14 @@ export const PurchaseDesk: React.FC<{ view: DeskView }> = ({ view }) => {
           Could not load purchases: {loadError}
         </div>
       )}
-      {view === 'buy' && <BuyListView editOrder={setViewing} />}
-      {view === 'tracking' && <WaitingView open={setViewing} />}
-      {view === 'orders' && <OrderedView open={setViewing} />}
-      {view === 'vendors' && <VendorsView />}
-      {view === 'receiving' && <ReceivingView />}
-      {view === 'payments' && <PaymentsView open={setViewing} onAsk={setAsking} />}
+      <Swap k={view} indexOf={k => PURCHASE_TABS.findIndex(t => t.id === k)}>
+        {view === 'buy' && <BuyListView editOrder={setViewing} />}
+        {view === 'tracking' && <WaitingView open={setViewing} />}
+        {view === 'orders' && <OrderedView open={setViewing} />}
+        {view === 'vendors' && <VendorsView />}
+        {view === 'receiving' && <ReceivingView />}
+        {view === 'payments' && <PaymentsView open={setViewing} onAsk={setAsking} />}
+      </Swap>
 
       {viewing && !editing && !receiving && !asking && (
         <OrderModal

@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronRight, FileSpreadsheet, Inbox, Plus, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, FileSpreadsheet, Inbox, Plus, X } from 'lucide-react';
 import { Empty, Tabs, btnGhost, inputCls, btnPrimary } from '../../components/ui';
 import { Swap } from '../../components/Swap';
+import { HoverSelect } from '../../components/HoverSelect';
+import { hoverMenuList, hoverMenuPanel, useHoverMenu } from '../../hooks/useHoverMenu';
 import { DEPTS } from '../../views/orgData';
 import { useRequests } from './RequestsContext';
 import { NewRequest } from './NewRequest';
@@ -128,6 +130,25 @@ const FILTERS = [
   ['rejected', 'Declined'],
   ['cancelled', 'Cancelled'],
 ] as const;
+// Header control that slides in/out. Clip only while hidden, so an open dropdown (Download menu) is not cut off.
+const slot = (shown: boolean) =>
+  `grid transition-[grid-template-columns,opacity] duration-300 ease-in-out ${
+    shown
+      ? 'grid-cols-[1fr] opacity-100'
+      : 'grid-cols-[0fr] opacity-0 overflow-hidden pointer-events-none [&>*]:overflow-hidden'
+  }`;
+// One look for both header menu buttons (status filter and Download).
+const menuBtn = btnGhost + ' h-9 text-xs';
+// Status filter drawn like the Download menu (a native <select> list looks different in every browser).
+const StatusMenu: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => (
+  <HoverSelect
+    value={value}
+    options={FILTERS}
+    onChange={onChange}
+    label="Filter requests by status"
+    className={menuBtn + ' min-w-[9.5rem] justify-between'}
+  />
+);
 const matches = (r: Req, f: string) =>
   f === 'all' || (f === 'open' ? ['pending_sub', 'pending_it', 'pending_owner'].includes(r.status) : r.status === f);
 
@@ -285,30 +306,19 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
   const { requests, ready, loadError, me, orders, waitingForMe, toArrange, loadAvailability } = useRequests();
   const [filter, setFilter] = useState('all');
   const [q, setQ] = useState('');
-  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const {
+    open: exportMenuOpen,
+    setOpen: setExportMenuOpen,
+    ref: exportMenuRef,
+    hover: exportMenuHover,
+    trigger: exportMenuTrigger,
+  } = useHoverMenu();
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [downloadingCurrent, setDownloadingCurrent] = useState(false);
-  const exportMenuRef = useRef<HTMLDivElement>(null);
   const [copy, setCopy] = useState<{ title: string; purpose: string; deliverTo: string; lines: NewLine[] } | null>(
     null,
   );
   const closeNewRequest = useCallback(() => go(''), []);
-
-  useEffect(() => {
-    if (!exportMenuOpen) return;
-    const closeOnOutside = (event: MouseEvent) => {
-      if (!exportMenuRef.current?.contains(event.target as Node)) setExportMenuOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setExportMenuOpen(false);
-    };
-    document.addEventListener('mousedown', closeOnOutside);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('mousedown', closeOnOutside);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [exportMenuOpen]);
 
   const showReview = me.isExec;
   const tabs = useMemo(
@@ -368,36 +378,16 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
     }
   };
 
-  const statusFilter = (id: string) => (
-    <div className="relative">
-      <label className="sr-only" htmlFor={id}>
-        Filter requests
-      </label>
-      <select
-        id={id}
-        value={filter}
-        onChange={event => setFilter(event.target.value)}
-        className="h-9 appearance-none rounded-lg border border-line-strong bg-raised pl-3 pr-9 text-xs font-medium text-ink outline-none transition-colors hover:bg-raised/80 focus:border-blue-500"
-      >
-        {FILTERS.map(([option, label]) => (
-          <option key={option} value={option}>
-            {label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-mute" />
-    </div>
-  );
 
   const exportControl = () =>
     canExport || me.isExec ? (
-      <div className="relative" ref={exportMenuRef}>
+      <div className="relative" ref={exportMenuRef} {...exportMenuHover}>
         <button
           type="button"
-          className={btnGhost}
+          className={menuBtn}
           aria-haspopup="menu"
           aria-expanded={exportMenuOpen}
-          onClick={() => setExportMenuOpen(open => !open)}
+          {...exportMenuTrigger}
         >
           <FileSpreadsheet size={14} />
           Download{' '}
@@ -406,11 +396,8 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
             className={`transition-transform duration-200 ${exportMenuOpen ? 'rotate-180' : ''}`}
           />
         </button>
-        {exportMenuOpen && (
-          <div
-            role="menu"
-            className="absolute right-0 top-full z-30 mt-2 w-56 origin-top-right rounded-xl border border-line bg-surface p-1.5 shadow-2xl animate-pop-in"
-          >
+        <div className={hoverMenuPanel(exportMenuOpen)}>
+          <div role="menu" className={hoverMenuList}>
             {canExport && (
               <button
                 type="button"
@@ -440,7 +427,7 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
               </button>
             )}
           </div>
-        )}
+        </div>
       </div>
     ) : null;
 
@@ -465,20 +452,16 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
             />
           </div>
           <div className="flex shrink-0 items-center gap-2 pb-1.5">
-            <div
-              className={`grid overflow-hidden transition-[grid-template-columns,opacity] duration-300 ease-in-out ${cur === 'mine' || cur === 'all' ? 'grid-cols-[1fr] opacity-100' : 'grid-cols-[0fr] opacity-0'}`}
-            >
-              <div className="min-w-0 overflow-hidden">{statusFilter('request-status-filter')}</div>
+            <div className={slot(cur === 'mine' || cur === 'all')}>
+              <div className="min-w-0">
+                <StatusMenu value={filter} onChange={setFilter} />
+              </div>
             </div>
-            <div
-              className={`grid overflow-hidden transition-[grid-template-columns,opacity] duration-300 ease-in-out ${cur === 'all' && (canExport || me.isExec) ? 'grid-cols-[1fr] opacity-100' : 'grid-cols-[0fr] opacity-0'}`}
-            >
-              <div className="min-w-0 overflow-hidden">{exportControl()}</div>
+            <div className={slot(cur === 'all' && (canExport || me.isExec))}>
+              <div className="min-w-0">{exportControl()}</div>
             </div>
-            <div
-              className={`grid overflow-hidden transition-[grid-template-columns,opacity] duration-300 ease-in-out ${me.isExec && cur === 'overview' ? 'grid-cols-[1fr] opacity-100' : 'grid-cols-[0fr] opacity-0'}`}
-            >
-              <div className="min-w-0 overflow-hidden whitespace-nowrap">
+            <div className={slot(me.isExec && cur === 'overview')}>
+              <div className="min-w-0 whitespace-nowrap">
                 <button type="button" className={btnGhost} disabled={!ready || downloadingAll} onClick={downloadAll}>
                   <FileSpreadsheet size={14} />
                   {downloadingAll ? 'Preparing Excel…' : 'Download all requests'}
@@ -529,7 +512,8 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
                   location.hash = '#/walkie/requests';
                   return;
                 }
-                go(id);
+                // Replace the "new" entry so Back from the ticket does not reopen the empty form.
+                location.replace('#/requests/' + id);
               }}
             />
           </NewRequestDialog>

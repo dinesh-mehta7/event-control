@@ -61,7 +61,8 @@ export interface Req {
   subDepartment: SubDepartmentId | null;
   departmentId: string | null; // the department the request is made TO
   departmentName: string;
-  fromDepartmentName: string; // the requester's own department
+  fromDepartmentId: string | null; // the requester's own department
+  fromDepartmentName: string;
   deliveryTeam: string;
   deliveryMemberId: string | null;
   title: string;

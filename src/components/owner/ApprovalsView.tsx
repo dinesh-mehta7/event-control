@@ -6,6 +6,7 @@ import { DEPTS, subDepartmentsFor } from '../../views/orgData';
 import { Card, Empty, Pill, btnGhost, btnPrimary, inputCls } from '../ui';
 import type { SubDepartmentId } from '../../types';
 import { useApp as useWalkie } from '../../modules/walkie/context/AppContext';
+import { Select } from '../Select';
 
 const LEVELS: [GrantLevel, string][] = [
   ['staff', 'Staff'],
@@ -65,7 +66,7 @@ const AccessRow: React.FC<{ m: Member; canDecide: boolean }> = ({ m, canDecide }
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-xs text-mute">
             Role
-            <select
+            <Select
               className={inputCls + ' mt-1 !w-48'}
               value={level}
               onChange={e => setLevel(e.target.value as GrantLevel)}
@@ -75,25 +76,25 @@ const AccessRow: React.FC<{ m: Member; canDecide: boolean }> = ({ m, canDecide }
                   {l}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           {
             <label className="text-xs text-mute">
               Department
-              <select className={inputCls + ' mt-1 !w-52'} value={deptId} onChange={e => setDeptId(e.target.value)}>
+              <Select className={inputCls + ' mt-1 !w-52'} value={deptId} onChange={e => setDeptId(e.target.value)}>
                 <option value="">Choose department…</option>
                 {departments.map(d => (
                   <option key={d.id} value={d.id}>
                     {d.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           }
           {level !== 'dept_head' && (
             <label className="text-xs text-mute">
               Sub-department
-              <select
+              <Select
                 className={inputCls + ' mt-1 !w-44'}
                 value={sub}
                 onChange={e => setSub(e.target.value as SubDepartmentId)}
@@ -104,13 +105,13 @@ const AccessRow: React.FC<{ m: Member; canDecide: boolean }> = ({ m, canDecide }
                     {DEPTS[k]}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           )}
           {sub === 'sewadars' && (
             <label className="text-xs text-mute">
               Link Sewadar account
-              <select
+              <Select
                 className={inputCls + ' mt-1 !w-56'}
                 value={sewadarId}
                 onChange={e => setSewadarId(e.target.value)}
@@ -124,7 +125,7 @@ const AccessRow: React.FC<{ m: Member; canDecide: boolean }> = ({ m, canDecide }
                       {s.teamName ? ` · ${s.teamName}` : ''}
                     </option>
                   ))}
-              </select>
+              </Select>
             </label>
           )}
           <button className={btnGhost} disabled={busy} onClick={() => go(false)}>

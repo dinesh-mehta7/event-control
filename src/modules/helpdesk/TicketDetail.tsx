@@ -23,6 +23,8 @@ import type { Helpdesk } from './useHelpdesk';
 import { PRIORITIES, PRIORITY, STATUS, STATUSES, isOverdue, minutesLabel, relative, ticketNo, when } from './types';
 import type { Status, Ticket, TicketEvent, TicketTask } from './types';
 import { Conversation } from './ticket/Conversation';
+import { Select } from '../../components/Select';
+import { PillTabs } from '../../components/PillTabs';
 export { RequesterTicket } from './ticket/RequesterTicket';
 
 const toLocal = (iso: string | null) => {
@@ -159,34 +161,20 @@ export const TicketDetail: React.FC<{ hd: Helpdesk; ticket: Ticket; onBack: () =
           {/* Composer first, like Spiceworks: Respond to the requester or Add an internal note, with time spent. */}
           <div className={cx(panel, 'p-3')}>
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <div
-                role="tablist"
-                aria-label="Message type"
-                className="inline-flex rounded-md border border-line bg-raised/40 p-0.5"
-              >
-                {(
-                  [
-                    ['reply', 'Respond', MessageSquare],
-                    ['note', 'Add note', StickyNote],
-                  ] as const
-                ).map(([k, l, I]) => (
-                  <button
-                    key={k}
-                    role="tab"
-                    aria-selected={mode === k}
-                    onClick={() => setMode(k)}
-                    className={cx(
-                      'inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-[11.5px] font-medium',
-                      mode === k ? 'bg-surface text-ink shadow-sm' : 'text-mute hover:text-ink',
-                    )}
-                  >
-                    <I className="h-3.5 w-3.5" />
-                    {l}
-                  </button>
-                ))}
-              </div>
+              <PillTabs
+                variant="segmented"
+                label="Message type"
+                value={mode}
+                onChange={id => setMode(id as typeof mode)}
+                className="inline-flex flex-nowrap rounded-md border border-line bg-raised/40 p-0.5"
+                itemClassName="px-2.5 py-1 text-[11.5px]"
+                tabs={[
+                  { id: 'reply', label: 'Respond', icon: MessageSquare },
+                  { id: 'note', label: 'Add note', icon: StickyNote },
+                ]}
+              />
               {hd.canned.length > 0 && (
-                <select
+                <Select
                   value=""
                   onChange={e => {
                     const c = hd.canned.find(x => x.id === e.target.value);
@@ -201,7 +189,7 @@ export const TicketDetail: React.FC<{ hd: Helpdesk; ticket: Ticket; onBack: () =
                       {c.title}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
               <span className="ml-auto text-[11.5px] text-faint">
                 {mode === 'note' ? 'Only technicians see notes.' : 'The requester sees responses.'}
@@ -287,7 +275,7 @@ export const TicketDetail: React.FC<{ hd: Helpdesk; ticket: Ticket; onBack: () =
               <label className={labelCls(D)} htmlFor="hd-status">
                 Status
               </label>
-              <select
+              <Select
                 id="hd-status"
                 value={ticket.status}
                 onChange={e => changeStatus(e.target.value as Status)}
@@ -298,13 +286,13 @@ export const TicketDetail: React.FC<{ hd: Helpdesk; ticket: Ticket; onBack: () =
                     {s.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div>
               <label className={labelCls(D)} htmlFor="hd-pri">
                 Priority
               </label>
-              <select
+              <Select
                 id="hd-pri"
                 value={ticket.priority}
                 onChange={e => void set({ priority: e.target.value as Ticket['priority'] })}
@@ -315,13 +303,13 @@ export const TicketDetail: React.FC<{ hd: Helpdesk; ticket: Ticket; onBack: () =
                     {p.label} · {hd.settings.slaHours[p.key]}h SLA
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div>
               <label className={labelCls(D)} htmlFor="hd-asg">
                 Assigned to
               </label>
-              <select
+              <Select
                 id="hd-asg"
                 value={ticket.assigneeId || ''}
                 onChange={e => void set({ assigneeId: e.target.value || null })}
@@ -334,13 +322,13 @@ export const TicketDetail: React.FC<{ hd: Helpdesk; ticket: Ticket; onBack: () =
                     {p.id === hd.me?.id ? ' (me)' : ''}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div>
               <label className={labelCls(D)} htmlFor="hd-cat">
                 Category
               </label>
-              <select
+              <Select
                 id="hd-cat"
                 value={ticket.category}
                 onChange={e => void set({ category: e.target.value })}
@@ -349,13 +337,13 @@ export const TicketDetail: React.FC<{ hd: Helpdesk; ticket: Ticket; onBack: () =
                 {Array.from(new Set([...hd.settings.categories, ticket.category])).map(c => (
                   <option key={c}>{c}</option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div>
               <label className={labelCls(D)} htmlFor="hd-dep">
                 Sub-department
               </label>
-              <select
+              <Select
                 id="hd-dep"
                 value={ticket.department}
                 onChange={e => void set({ department: e.target.value })}
@@ -367,7 +355,7 @@ export const TicketDetail: React.FC<{ hd: Helpdesk; ticket: Ticket; onBack: () =
                     {v}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div>
               <label className={labelCls(D)} htmlFor="hd-loc">
@@ -496,7 +484,7 @@ export const TicketDetail: React.FC<{ hd: Helpdesk; ticket: Ticket; onBack: () =
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-faint">Related item</h3>
             <div className="flex items-center gap-2">
               <Package className="h-4 w-4 shrink-0 text-blue-300" />
-              <select
+              <Select
                 value={ticket.assetItemId || ''}
                 onChange={e => {
                   const it = invItems.find(i => i.id === e.target.value);
@@ -518,7 +506,7 @@ export const TicketDetail: React.FC<{ hd: Helpdesk; ticket: Ticket; onBack: () =
                     {i.code ? ` · ${i.code}` : ''}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <p className="mt-1 text-[10.5px] text-faint">
               The device or equipment this ticket is about, from Inventory.

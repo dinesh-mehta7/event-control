@@ -38,6 +38,7 @@ import {
   useSort,
 } from '../ui/sheet';
 import { ctl } from '../../../components/toolbar';
+import { Select } from '../../../components/Select';
 
 type SortKey = 'name' | 'code' | 'category' | 'location' | 'minLevel' | 'inStock' | 'issued' | 'damaged' | 'total';
 const tool =
@@ -175,7 +176,7 @@ export const ItemsView: React.FC<{ a: Actions; stage: Stage; setStage: (s: Stage
               className={cx(ctl, 'w-full pl-8')}
             />
           </label>
-          <select
+          <Select
             value={cat}
             onChange={e => setCat(e.target.value)}
             aria-label="Category"
@@ -187,7 +188,7 @@ export const ItemsView: React.FC<{ a: Actions; stage: Stage; setStage: (s: Stage
                 {c}
               </option>
             ))}
-          </select>
+          </Select>
           <div
             role="group"
             aria-label="Stock filter"
@@ -253,7 +254,7 @@ export const ItemsView: React.FC<{ a: Actions; stage: Stage; setStage: (s: Stage
               <b className="tabular-nums text-ink">{totals.d}</b>
             </span>
             <span className="flex items-center gap-1.5">
-              <select
+              <Select
                 aria-label="Rows per page"
                 value={size}
                 onChange={e => setSize(+e.target.value)}
@@ -264,7 +265,7 @@ export const ItemsView: React.FC<{ a: Actions; stage: Stage; setStage: (s: Stage
                     {n} rows
                   </option>
                 ))}
-              </select>
+              </Select>
               <button
                 className={iconBtn}
                 disabled={page === 0}

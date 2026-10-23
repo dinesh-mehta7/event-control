@@ -1,6 +1,6 @@
 import { useApp as useWalkie } from '../../walkie/context/AppContext';
 import React, { useState } from 'react';
-import { Edit3, Plus, Trash2 } from 'lucide-react';
+import { ChevronRight, Edit3, Plus, Trash2 } from 'lucide-react';
 import { Modal, ConfirmModal, btnGhost, cx, inputCls, labelCls } from '../../accommodation/ui';
 import { useRequests } from '../../requests/RequestsContext';
 import { STATUS_LABEL as REQUEST_STATUS_LABEL } from '../../requests/types';
@@ -10,12 +10,16 @@ import { STATUS, poTotal } from '../types';
 import type { Vendor, VendorMode } from '../types';
 import { digitsOnly, phoneInputProps } from '../../../lib/phone';
 import { D, Empty, money, panel, primary, vendorModeLabel } from './shared';
+import { Select } from '../../../components/Select';
+
+type LinkedRequest = { number: string; id?: string; title: string; status: string };
 
 export const VendorsView: React.FC = () => {
   const { vendors, orders, canManage, addVendor, updateVendor, deleteVendor, departmentName } = usePurchase();
   const { requests } = useRequests();
   const [form, setForm] = useState<Vendor | 'new' | null>(null);
   const [del, setDel] = useState<Vendor | null>(null);
+  const [showRequests, setShowRequests] = useState<{ vendor: string; list: LinkedRequest[] } | null>(null);
   const stat = (id: string) => {
     const os = orders.filter(o => o.vendorId === id && o.status !== 'cancelled' && o.status !== 'rejected');
     return { orders: os, count: os.length, spend: os.reduce((a, o) => a + poTotal(o), 0) };
@@ -58,15 +62,21 @@ export const VendorsView: React.FC = () => {
             <tbody className="divide-y divide-line/70">
               {vendors.map(v => {
                 const s = stat(v.id);
-                const linked = new Map<string, string>();
+                const linked = new Map<string, LinkedRequest>();
                 s.orders.forEach(order =>
                   order.items.forEach(item => {
                     if (!item.requestNumber || linked.has(item.requestNumber)) return;
                     const request = requests.find(r => r.number === item.requestNumber);
-                    linked.set(
-                      item.requestNumber,
-                      request ? REQUEST_STATUS_LABEL[request.status] : STATUS[order.status]?.label || order.status,
-                    );
+                    linked.set(item.requestNumber, {
+                      number: item.requestNumber,
+                      id: request?.id,
+                      title: request?.title || '',
+                      status: request
+                        ? request.status === 'fulfilled' && request.confirmedAt
+                          ? 'Closed'
+                          : REQUEST_STATUS_LABEL[request.status]
+                        : STATUS[order.status]?.label || order.status,
+                    });
                   }),
                 );
                 return (
@@ -83,16 +93,15 @@ export const VendorsView: React.FC = () => {
                     <td className="px-3 py-3">{v.email || '—'}</td>
                     <td className="px-3 py-3 whitespace-nowrap tabular-nums">{s.count}</td>
                     <td className="px-3 py-3 whitespace-nowrap tabular-nums font-semibold">{money(s.spend)}</td>
-                    <td className="px-3 py-3 min-w-48">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       {linked.size ? (
-                        <div className="space-y-1">
-                          {Array.from(linked, ([number, status]) => (
-                            <div key={number} className="whitespace-nowrap">
-                              <span className="font-mono text-blue-300">{number}</span>
-                              <span className="text-mute"> · {status}</span>
-                            </div>
-                          ))}
-                        </div>
+                        <button
+                          type="button"
+                          className={cx(btnGhost(D), 'text-blue-300')}
+                          onClick={() => setShowRequests({ vendor: v.name, list: Array.from(linked.values()) })}
+                        >
+                          {linked.size} {linked.size === 1 ? 'request' : 'requests'}
+                        </button>
                       ) : (
                         '—'
                       )}
@@ -129,6 +138,29 @@ export const VendorsView: React.FC = () => {
           onClose={() => setForm(null)}
           onSave={v => (form === 'new' ? addVendor(v) : updateVendor(form.id, v))}
         />
+      )}
+      {showRequests && (
+        <Modal title={`${showRequests.vendor} · requests`} dark={D} onClose={() => setShowRequests(null)}>
+          <ul className="max-h-[60vh] divide-y divide-line/70 overflow-y-auto text-xs">
+            {showRequests.list.map(r => (
+              <li key={r.number}>
+                <button
+                  type="button"
+                  disabled={!r.id}
+                  onClick={() => {
+                    location.hash = '#/requests/' + r.id;
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-raised disabled:cursor-default disabled:hover:bg-transparent"
+                >
+                  <span className="font-mono text-blue-300">{r.number}</span>
+                  <span className="min-w-0 flex-1 truncate text-ink">{r.title || '—'}</span>
+                  <span className="whitespace-nowrap text-mute">{r.status}</span>
+                  {r.id && <ChevronRight className="h-3.5 w-3.5 text-faint" />}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Modal>
       )}
       {del && (
         <ConfirmModal
@@ -226,7 +258,7 @@ const VendorForm: React.FC<{
             <label className={labelCls(D)} htmlFor="vn-mode">
               Vendor category
             </label>
-            <select
+            <Select
               id="vn-mode"
               required
               value={f.vendorMode}
@@ -236,7 +268,7 @@ const VendorForm: React.FC<{
               <option value="">Choose category…</option>
               <option value="online">Online marketplace</option>
               <option value="offline">Offline / local vendor</option>
-            </select>
+            </Select>
             <p className="mt-1 text-[10.5px] text-mute">Amazon / Flipkart or local supplier</p>
           </div>
         </div>
@@ -244,7 +276,7 @@ const VendorForm: React.FC<{
           <label className={labelCls(D)} htmlFor="vn-dept">
             Visible to
           </label>
-          <select
+          <Select
             id="vn-dept"
             value={f.departmentId}
             onChange={e => setF(p => ({ ...p, departmentId: e.target.value }))}
@@ -258,7 +290,7 @@ const VendorForm: React.FC<{
                   Only {d.name}
                 </option>
               ))}
-          </select>
+          </Select>
         </div>
         <div className="grid grid-cols-2 gap-3">
           {field('vn-c', 'Contact person', 'contact', 'text', f.vendorMode === 'offline')}

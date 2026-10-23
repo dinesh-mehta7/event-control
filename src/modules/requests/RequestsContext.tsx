@@ -86,7 +86,7 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const isOwner = level === 'owner' && u?.role === 'Admin';
   const isExec = level === 'owner' || level === 'dept_head';
 
-  const [requests, setRequests] = useState<Req[]>([]);
+  const [allRequests, setRequests] = useState<Req[]>([]);
   const [orders, setOrders] = useState<Record<string, OrderInfo>>({});
   const [catalogue, setCatalogue] = useState<CatalogueItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -127,6 +127,7 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           subDepartment: r.sub_department || null,
           departmentId: r.department_id || null,
           departmentName: walkieDepartments.find(d => d.id === r.department_id)?.name || '',
+          fromDepartmentId: r.from_department_id || null,
           fromDepartmentName: walkieDepartments.find(d => d.id === r.from_department_id)?.name || '',
           deliveryTeam: r.delivery_team || '',
           deliveryMemberId: r.delivery_member_id || null,
@@ -262,6 +263,19 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // A Department Head decides only requests made TO their department. Requests from before departments
   // existed have none and belong to the IT department (same as the database guard).
   const itDepartmentId = itDepartmentOf(walkieDepartments)?.id || '';
+  // Super Admin sees every request. Everyone else sees their own requests and those made FROM or TO their department.
+  const requests = useMemo(
+    () =>
+      level === 'owner'
+        ? allRequests
+        : allRequests.filter(
+            r =>
+              r.requesterId === uid ||
+              (!!departmentId &&
+                (r.fromDepartmentId === departmentId || (r.departmentId || itDepartmentId) === departmentId)),
+          ),
+    [allRequests, level, uid, departmentId, itDepartmentId],
+  );
   const isMyDepartment = useCallback(
     (r: Req) => level === 'dept_head' && !!departmentId && (r.departmentId || itDepartmentId) === departmentId,
     [level, departmentId, itDepartmentId],

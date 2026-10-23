@@ -9,6 +9,7 @@ import { MeetingDatePicker, MeetingTimePicker } from '../MeetingDateTimePicker';
 import { useWalkie } from '../../modules/walkie';
 import { supabase } from '../../modules/walkie/lib/supabaseClient';
 import { useEventScope } from '../../context/EventScopeContext';
+import { Select } from '../../components/Select';
 export const MeetingsList: React.FC<{ eventId?: string }> = ({ eventId }) => {
   const {
     meetings,
@@ -383,7 +384,7 @@ export const MeetingsList: React.FC<{ eventId?: string }> = ({ eventId }) => {
                       </label>
                       <label className="text-xs text-mute">
                         Meeting type
-                        <select
+                        <Select
                           className={inputCls + ' mt-1'}
                           aria-label="Meeting type"
                           value={mode}
@@ -391,7 +392,7 @@ export const MeetingsList: React.FC<{ eventId?: string }> = ({ eventId }) => {
                         >
                           <option value="offline">Offline (in person)</option>
                           <option value="online">Online</option>
-                        </select>
+                        </Select>
                       </label>
                     </div>
                     {mode === 'offline' ? (
@@ -410,7 +411,7 @@ export const MeetingsList: React.FC<{ eventId?: string }> = ({ eventId }) => {
                       <div className="grid items-start gap-2 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
                         <label className="text-xs text-mute">
                           Provider
-                          <select
+                          <Select
                             className={inputCls + ' mt-1'}
                             aria-label="Online meeting provider"
                             value={onlinePlatform}
@@ -419,7 +420,7 @@ export const MeetingsList: React.FC<{ eventId?: string }> = ({ eventId }) => {
                             <option value="google">Google Meet / Calendar</option>
                             <option value="teams">Microsoft Teams</option>
                             <option value="outlook">Outlook Calendar</option>
-                          </select>
+                          </Select>
                         </label>
                         <div className="min-w-0 text-xs text-mute">
                           <div className="flex items-center justify-between gap-2">
@@ -500,19 +501,19 @@ export const MeetingsList: React.FC<{ eventId?: string }> = ({ eventId }) => {
                       <div className="grid gap-2 sm:grid-cols-2">
                         <label className="text-xs text-mute">
                           Meeting category
-                          <select
+                          <Select
                             className={inputCls + ' mt-1'}
                             value={meetingCategory}
                             onChange={e => setMeetingCategory(e.target.value as 'general' | 'event')}
                           >
                             <option value="general">General meeting</option>
                             <option value="event">Event-related meeting</option>
-                          </select>
+                          </Select>
                         </label>
                         {meetingCategory === 'event' && (
                           <label className="text-xs text-mute">
                             Event
-                            <select
+                            <Select
                               required
                               className={inputCls + ' mt-1'}
                               value={meetingEventId}
@@ -524,7 +525,7 @@ export const MeetingsList: React.FC<{ eventId?: string }> = ({ eventId }) => {
                                   {event.name}
                                 </option>
                               ))}
-                            </select>
+                            </Select>
                           </label>
                         )}
                       </div>

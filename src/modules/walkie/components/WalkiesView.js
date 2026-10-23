@@ -17,6 +17,7 @@ import {
   Building2,
   LayoutGrid,
 } from 'lucide-react';
+import { Select } from '../../../components/Select';
 
 const STATUS_STYLES = {
   Available: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400',
@@ -395,7 +396,7 @@ export default function WalkiesView() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative">
               <Building2 className="absolute left-3 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
-              <select
+              <Select
                 value={deptFilter}
                 onChange={e => setDeptFilter(e.target.value)}
                 className={`pl-9 pr-8 py-2 text-sm rounded-xl border outline-none appearance-none font-semibold
@@ -408,7 +409,7 @@ export default function WalkiesView() {
                     {d.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="flex items-center gap-1.5">
               <LayoutGrid className="w-4 h-4 text-slate-400 shrink-0" />

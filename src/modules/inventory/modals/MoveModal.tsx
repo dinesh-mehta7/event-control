@@ -6,6 +6,7 @@ import { MOVE } from '../types';
 import type { MoveType } from '../types';
 import { stockDelta } from '../lib/stock';
 import { D, TONE, cx, ghost, primary } from '../ui/kit';
+import { Select } from '../../../components/Select';
 
 // Movement types grouped by what they do, so the right one is quick to find.
 const GROUPS: { label: string; types: MoveType[] }[] = [
@@ -99,14 +100,14 @@ export const MoveModal: React.FC<{ start: { itemId: string; type: MoveType }; on
           <label className={labelCls(D)} htmlFor="mv-i">
             Item
           </label>
-          <select id="mv-i" value={itemId} onChange={e => setItemId(e.target.value)} className={inputCls(D)}>
+          <Select id="mv-i" value={itemId} onChange={e => setItemId(e.target.value)} className={inputCls(D)}>
             {items.map(i => (
               <option key={i.id} value={i.id}>
                 {i.name}
                 {i.code ? ` · ${i.code}` : ''} — {i.inStock} {i.unit} in store
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div role="group" aria-label="Movement type" className="flex flex-wrap gap-x-6 gap-y-3">
@@ -176,14 +177,14 @@ export const MoveModal: React.FC<{ start: { itemId: string; type: MoveType }; on
               <label className={labelCls(D)} htmlFor="mv-l">
                 Coming back from
               </label>
-              <select id="mv-l" value={loc} onChange={e => setLoc(e.target.value)} className={inputCls(D)}>
+              <Select id="mv-l" value={loc} onChange={e => setLoc(e.target.value)} className={inputCls(D)}>
                 <option value="">{held.length ? 'Select location…' : 'This item is not out anywhere'}</option>
                 {held.map(h => (
                   <option key={h.location} value={h.location}>
                     {locationLabel(h.location)} (has {h.qty})
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
         </div>

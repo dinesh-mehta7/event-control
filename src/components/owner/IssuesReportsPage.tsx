@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useApp as useWalkie } from '../../modules/walkie/context/AppContext';
 import { supabase } from '../../modules/walkie/lib/supabaseClient';
 import { useEventScope } from '../../context/EventScopeContext';
+import { Select } from '../Select';
+import { PillTabs } from '../PillTabs';
 
 type Panel = 'issues' | 'feedback' | 'announcements' | 'lessons';
 type Issue = {
@@ -145,26 +147,19 @@ export const IssuesReportsPage: React.FC = () => {
         <h2 className="text-lg font-semibold text-ink">Issues & Reports</h2>
         <p className="mt-1 text-sm text-mute">Issues, feedback, announcements, and lessons learned.</p>
       </div>
-      <div
-        role="tablist"
-        aria-label="Issues and reports modules"
-        className="inline-flex flex-wrap gap-1 rounded-lg border border-line bg-surface p-1"
-      >
-        {tabs.map(t => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={panel === t.id}
-            onClick={() => {
-              setPanel(t.id);
-              setError('');
-              setNotice('');
-            }}
-            className={`rounded-md px-3 py-2 text-sm font-medium ${panel === t.id ? 'bg-blue-600 text-white' : 'text-mute hover:bg-raised hover:text-ink'}`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="inline-flex">
+        <PillTabs
+          label="Issues and reports modules"
+          value={panel}
+          onChange={id => {
+            setPanel(id as typeof panel);
+            setError('');
+            setNotice('');
+          }}
+          className="gap-1 rounded-lg border border-line bg-surface p-1"
+          itemClassName="px-3 py-2 text-sm"
+          tabs={tabs}
+        />
       </div>
 
       {(panel === 'issues' || panel === 'feedback') && isAdmin ? (
@@ -176,7 +171,7 @@ export const IssuesReportsPage: React.FC = () => {
                 Submitted from the header shortcut; each new report is attached to an event.
               </p>
             </div>
-            <select
+            <Select
               aria-label="Filter reports by event"
               value={eventFilter}
               onChange={e => setEventFilter(e.target.value)}
@@ -189,7 +184,7 @@ export const IssuesReportsPage: React.FC = () => {
                 </option>
               ))}
               <option value="unlinked">Unlinked legacy reports</option>
-            </select>
+            </Select>
           </div>
           <ul className="divide-y divide-line">
             {visibleIssues.map(i => (
@@ -214,7 +209,7 @@ export const IssuesReportsPage: React.FC = () => {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {!i.event_id && (
-                    <select
+                    <Select
                       aria-label={`Link ${i.title} to an event`}
                       defaultValue=""
                       onChange={e => void linkIssueToEvent(i, e.target.value)}
@@ -226,9 +221,9 @@ export const IssuesReportsPage: React.FC = () => {
                           {event.name}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   )}
-                  <select
+                  <Select
                     aria-label={`Status for ${i.title}`}
                     value={i.status}
                     onChange={e => void updateStatus(i, e.target.value as Issue['status'])}
@@ -239,7 +234,7 @@ export const IssuesReportsPage: React.FC = () => {
                         {l}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               </li>
             ))}
@@ -258,7 +253,7 @@ export const IssuesReportsPage: React.FC = () => {
                 <h3 className="font-semibold text-ink">
                   Post {panel === 'lessons' ? 'a lesson learned' : 'an announcement'}
                 </h3>
-                <select
+                <Select
                   aria-label="Department audience"
                   value={department}
                   onChange={e => setDepartment(e.target.value)}
@@ -269,7 +264,7 @@ export const IssuesReportsPage: React.FC = () => {
                       {departmentName(d)}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <input
                 required

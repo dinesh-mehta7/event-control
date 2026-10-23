@@ -17,6 +17,7 @@ import type { Helpdesk } from './useHelpdesk';
 import { TicketDetail } from './TicketDetail';
 import { PRIORITIES, PRIORITY, STATUS, STATUSES, isOverdue, relative, ticketNo } from './types';
 import type { Priority, Status, Ticket } from './types';
+import { Select } from '../../components/Select';
 
 export type SavedView = 'open' | 'mine' | 'unassigned' | 'overdue' | 'waiting' | 'closed' | 'all';
 export const VIEWS: {
@@ -163,7 +164,7 @@ export const TicketsView: React.FC<{
               />
             </div>
             <div className={cx('grid gap-2', selected ? 'grid-cols-3' : 'grid-cols-3 xl:flex')}>
-              <select
+              <Select
                 value={pri}
                 onChange={e => setPri(e.target.value as any)}
                 aria-label="Priority"
@@ -175,8 +176,8 @@ export const TicketsView: React.FC<{
                     {p.label}
                   </option>
                 ))}
-              </select>
-              <select
+              </Select>
+              <Select
                 value={cat}
                 onChange={e => setCat(e.target.value)}
                 aria-label="Category"
@@ -186,8 +187,8 @@ export const TicketsView: React.FC<{
                 {hd.settings.categories.map(c => (
                   <option key={c}>{c}</option>
                 ))}
-              </select>
-              <select
+              </Select>
+              <Select
                 value={tech}
                 onChange={e => setTech(e.target.value)}
                 aria-label="Assigned to"
@@ -200,7 +201,7 @@ export const TicketsView: React.FC<{
                     {p.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
 
@@ -208,7 +209,7 @@ export const TicketsView: React.FC<{
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs">
               <ListChecks className="h-4 w-4 text-blue-300" />
               <b className="text-ink">{picked.length} selected</b>
-              <select
+              <Select
                 value=""
                 onChange={e => {
                   if (e.target.value) void bulk({ assigneeId: e.target.value === 'none' ? null : e.target.value });
@@ -223,8 +224,8 @@ export const TicketsView: React.FC<{
                     {p.name}
                   </option>
                 ))}
-              </select>
-              <select
+              </Select>
+              <Select
                 value=""
                 onChange={e => {
                   if (e.target.value) bulkStatus(e.target.value as Status);
@@ -238,8 +239,8 @@ export const TicketsView: React.FC<{
                     {s.label}
                   </option>
                 ))}
-              </select>
-              <select
+              </Select>
+              <Select
                 value=""
                 onChange={e => {
                   if (e.target.value) void bulk({ priority: e.target.value as Priority });
@@ -253,7 +254,7 @@ export const TicketsView: React.FC<{
                     {p.label}
                   </option>
                 ))}
-              </select>
+              </Select>
               <button className="ml-auto text-mute hover:text-ink" onClick={() => setSel(new Set())}>
                 Clear
               </button>

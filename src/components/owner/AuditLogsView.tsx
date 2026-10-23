@@ -3,6 +3,7 @@ import { Search, Download, RefreshCw } from 'lucide-react';
 import { supabase } from '../../modules/walkie/lib/supabaseClient';
 import { Empty, Pill, btnGhost, inputCls, th } from '../ui';
 import { csvCell } from '../../lib/format';
+import { Select } from '../Select';
 
 interface Entry {
   id: string;
@@ -84,7 +85,7 @@ export const AuditLogsView: React.FC = () => {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <select
+        <Select
           className={inputCls + ' !w-auto'}
           aria-label="Type"
           value={type}
@@ -95,7 +96,7 @@ export const AuditLogsView: React.FC = () => {
           <option value="success">Success</option>
           <option value="warning">Warning</option>
           <option value="error">Error</option>
-        </select>
+        </Select>
         <div className="ml-auto flex gap-2">
           <button className={btnGhost} onClick={load}>
             <RefreshCw size={14} />

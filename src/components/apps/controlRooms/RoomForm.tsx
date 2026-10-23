@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { ControlRoom } from '../../../types';
 import { digitsOnly, phoneInputProps } from '../../../lib/phone';
 import { btnGhost, btnPrimary, input } from './shared';
+import { Select } from '../../Select';
 
 // ── Form for add/edit room ────────────────────────────────────────────────────
 export const EMPTY_FORM: Omit<ControlRoom, 'id'> = {
@@ -53,11 +54,11 @@ export const RoomForm: React.FC<{
         </div>
         <div>
           <Label text="Status" />
-          <select className={input} value={f.status} onChange={e => n('status', e.target.value as any)}>
+          <Select className={input} value={f.status} onChange={e => n('status', e.target.value as any)}>
             <option value="operational">Operational</option>
             <option value="alert">Alert</option>
             <option value="standby">Standby</option>
-          </select>
+          </Select>
         </div>
       </div>
       <Label text="Room Name" />

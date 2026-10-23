@@ -21,6 +21,7 @@ import { useEventScope } from '../../context/EventScopeContext';
 import { DEPTS } from '../../views/orgData';
 import { localDate } from '../../lib/format';
 import { ctl } from '../../components/toolbar';
+import { Select } from '../../components/Select';
 
 const D = true;
 // Same shift keys and times as CCTV Control Room, so both screens read one roster.
@@ -514,7 +515,7 @@ export const DutiesShiftsPage: React.FC = () => {
                 className={cx(ctl, 'w-full pl-8')}
               />
             </label>
-            <select
+            <Select
               value={dept}
               onChange={e => setDept(e.target.value)}
               aria-label="Sub-department"
@@ -528,7 +529,7 @@ export const DutiesShiftsPage: React.FC = () => {
                     {deptLabel(d)} · {deptCounts.get(d)}
                   </option>
                 ))}
-            </select>
+            </Select>
             <div
               role="group"
               aria-label="Assignment filter"
@@ -557,7 +558,7 @@ export const DutiesShiftsPage: React.FC = () => {
                   <Monitor className="h-3.5 w-3.5 text-blue-300" />
                   CCTV room
                 </span>
-                <select
+                <Select
                   value={roomId}
                   onChange={e => setRoomId(e.target.value)}
                   aria-label="CCTV control room for CCTV members"
@@ -572,7 +573,7 @@ export const DutiesShiftsPage: React.FC = () => {
                   ) : (
                     <option value="">No control rooms yet</option>
                   )}
-                </select>
+                </Select>
               </label>
               <label className="flex items-center gap-2 text-[11.5px] text-mute">
                 <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap">
@@ -608,7 +609,7 @@ export const DutiesShiftsPage: React.FC = () => {
             <button disabled={busy} className={cx(btn, 'h-8 py-0')} onClick={() => pick(selectedIds, 'special')}>
               Special…
             </button>
-            <select
+            <Select
               value=""
               disabled={busy}
               aria-label="Set sub-department for selected"
@@ -628,7 +629,7 @@ export const DutiesShiftsPage: React.FC = () => {
                 </option>
               ))}
               <option value="none">No sub-department</option>
-            </select>
+            </Select>
             {selectedHasCctv && (
               <span className="text-[11.5px] text-blue-200">
                 CCTV members go to {rooms.find(r => r.id === roomId)?.name || '— choose a room'}
@@ -753,7 +754,7 @@ export const DutiesShiftsPage: React.FC = () => {
                       </td>
                       <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 text-ink-soft">
                         {canManage ? (
-                          <select
+                          <Select
                             value={m.department || ''}
                             disabled={busy}
                             aria-label={`Sub-department for ${m.name}`}
@@ -768,7 +769,7 @@ export const DutiesShiftsPage: React.FC = () => {
                                 {deptLabel(d)}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         ) : (
                           deptLabel(m.department || '')
                         )}

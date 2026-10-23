@@ -6,6 +6,7 @@ import { DEPTS, subDepartmentsFor } from '../../../views/orgData';
 import { Pill, btnDanger, btnGhost, btnPrimary, inputCls } from '../../ui';
 import type { SubDepartmentId } from '../../../types';
 import { ROLE_TONE, roleLabel } from '../../../lib/roles';
+import { Select } from '../../Select';
 
 type DepartmentOption = { id: string; name: string; itServices?: boolean };
 
@@ -149,7 +150,7 @@ export const MemberRow: React.FC<{ m: Member; canEdit: boolean; departments: Dep
         )}
         {edit && (
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <select
+            <Select
               className={inputCls + ' !w-44'}
               aria-label="Role"
               value={level}
@@ -158,9 +159,9 @@ export const MemberRow: React.FC<{ m: Member; canEdit: boolean; departments: Dep
               <option value="staff">Staff</option>
               <option value="sub_dept_head">Sub-department Head</option>
               <option value="dept_head">Department Head</option>
-            </select>
+            </Select>
             {
-              <select
+              <Select
                 className={inputCls + ' !w-52'}
                 aria-label="Department"
                 value={deptId}
@@ -172,10 +173,10 @@ export const MemberRow: React.FC<{ m: Member; canEdit: boolean; departments: Dep
                     {d.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             }
             {level !== 'dept_head' && (
-              <select
+              <Select
                 className={inputCls + ' !w-40'}
                 aria-label="Sub-department"
                 value={sub}
@@ -187,10 +188,10 @@ export const MemberRow: React.FC<{ m: Member; canEdit: boolean; departments: Dep
                     {DEPTS[k]}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
             {sub === 'sewadars' && (
-              <select
+              <Select
                 className={inputCls + ' !w-48'}
                 aria-label="Link Sewadar roster member"
                 value={sewadarId}
@@ -205,7 +206,7 @@ export const MemberRow: React.FC<{ m: Member; canEdit: boolean; departments: Dep
                       {s.teamName ? ` · ${s.teamName}` : ''}
                     </option>
                   ))}
-              </select>
+              </Select>
             )}
             <button className={btnGhost} onClick={() => setEdit(false)}>
               Cancel

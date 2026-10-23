@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp as useWalkie } from '../modules/walkie/context/AppContext';
+import { Select } from './Select';
 
 // One dropdown of the organization's departments, used wherever a department is picked or filtered.
 // `emptyOption` adds a first option with value '' (e.g. "Choose a department"); `allOption` adds one with
@@ -17,7 +18,7 @@ export const DepartmentSelect: React.FC<{
 }> = ({ value, onChange, className = filterCls, emptyOption, allOption, ...rest }) => {
   const departments: { id: string; name: string }[] = (useWalkie() as any).departments || [];
   return (
-    <select
+    <Select
       aria-label={rest['aria-label'] || 'Department'}
       id={rest.id}
       required={rest.required}
@@ -33,7 +34,7 @@ export const DepartmentSelect: React.FC<{
           {d.name}
         </option>
       ))}
-    </select>
+    </Select>
   );
 };
 

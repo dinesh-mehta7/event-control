@@ -8,6 +8,7 @@ import type { Availability } from '../RequestsContext';
 import { SOURCE_LABEL, fmtDate, lineDone, lineStatus } from '../types';
 import type { PartSource, PlanPart, Req, ReqItem, ReqPart } from '../types';
 import { Err } from './shared';
+import { Select } from '../../../components/Select';
 
 // ── Store / Walkie team: split every approved line ───────────────────────────────────────────────
 interface Row {
@@ -139,7 +140,7 @@ const LineArranger: React.FC<{ r: Req; item: ReqItem; avail: Record<string, Avai
               className={`grid grid-cols-12 items-end gap-2.5 rounded-lg border border-line/80 border-l-2 bg-raised/15 p-3 ${stock ? 'border-l-blue-500/70' : 'border-l-amber-500/70'}`}
             >
               <Field label="Source" className="col-span-7 sm:col-span-3">
-                <select
+                <Select
                   className={inputCls}
                   value={x.source}
                   onChange={e => set(i, { source: e.target.value as PartSource })}
@@ -149,7 +150,7 @@ const LineArranger: React.FC<{ r: Req; item: ReqItem; avail: Record<string, Avai
                       {SOURCE_LABEL[s]}
                     </option>
                   ))}
-                </select>
+                </Select>
               </Field>
               <Field label={`Quantity (${item.unit})`} className="col-span-5 sm:col-span-2">
                 <input
@@ -162,7 +163,7 @@ const LineArranger: React.FC<{ r: Req; item: ReqItem; avail: Record<string, Avai
               </Field>
               {!radio && stock && (
                 <Field label="Matching stock" className="col-span-10 sm:col-span-6">
-                  <select
+                  <Select
                     className={inputCls}
                     value={x.inventoryItemId || ''}
                     onChange={e => set(i, { inventoryItemId: e.target.value || null })}
@@ -174,7 +175,7 @@ const LineArranger: React.FC<{ r: Req; item: ReqItem; avail: Record<string, Avai
                         {it.code ? ` (${it.code})` : ''} · {avail[it.id]?.available ?? it.inStock} free
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </Field>
               )}
               {!radio && !stock && (
@@ -296,14 +297,14 @@ const HandOver: React.FC<{ r: Req; item: ReqItem; part: ReqPart }> = ({ r, item,
         </Field>
       ) : (
         <Field label="Send to location" className="col-span-12 sm:col-span-5">
-          <select className={inputCls} value={loc} onChange={e => setLoc(e.target.value)}>
+          <Select className={inputCls} value={loc} onChange={e => setLoc(e.target.value)}>
             <option value="">{match ? 'Choose…' : `Use "${r.deliverTo || 'delivery place'}"`}</option>
             {inv.locations.map(l => (
               <option key={l.id} value={l.id}>
                 {l.name}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
       )}
       <Field label="Received by" className="col-span-8 sm:col-span-4">

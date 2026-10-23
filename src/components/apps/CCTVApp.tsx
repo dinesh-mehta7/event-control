@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronRight, Edit3, Plus, Search, Trash2 } from 'lucide-rea
 import { useApp } from '../../context/AppContext';
 import type { CameraItem } from '../../types';
 import type { CameraInput } from '../../context/AppContext';
+import { Select } from '../Select';
 
 const EMPTY: CameraInput = { cameraCode: '', location: '', type: '', nvrId: '', switchId: '', status: 'online' };
 const STATUS_LABEL: Record<CameraItem['status'], string> = {
@@ -403,7 +404,7 @@ export const CCTVApp: React.FC = () => {
               </label>
               <label className="text-xs text-mute">
                 Status
-                <select
+                <Select
                   value={form.status}
                   onChange={e => set('status', e.target.value as CameraInput['status'])}
                   className="mt-1 w-full rounded-md border border-line bg-field px-3 py-2 text-sm text-ink"
@@ -411,7 +412,7 @@ export const CCTVApp: React.FC = () => {
                   <option value="online">Active</option>
                   <option value="maintenance">Needs orientation</option>
                   <option value="offline">Not working</option>
-                </select>
+                </Select>
               </label>
             </div>
             <div className="flex justify-end gap-2">

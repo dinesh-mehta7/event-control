@@ -11,6 +11,7 @@ import { EmptyRow, MoveTable, Sheet, cellTone, num, rowHover, sheetHead, sheetTa
 import { ctl } from '../../../components/toolbar';
 import { rowBtn } from '../../../components/toolbar';
 import { tool } from '../../../components/toolbar';
+import { Select } from '../../../components/Select';
 const primaryTool =
   'inline-flex h-8 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[11.5px] font-semibold text-white hover:bg-blue-500 disabled:opacity-50';
 
@@ -292,7 +293,7 @@ export const HistoryView: React.FC = () => {
               className={cx(ctl, 'w-56 pl-8')}
             />
           </label>
-          <select
+          <Select
             value={type}
             onChange={e => setType(e.target.value as 'all' | MoveType)}
             aria-label="Movement type"
@@ -304,7 +305,7 @@ export const HistoryView: React.FC = () => {
                 {m.label}
               </option>
             ))}
-          </select>
+          </Select>
           <button type="button" className={tool} onClick={exportExcel} disabled={!shown?.length}>
             <Download className="h-3.5 w-3.5" />
             Export Excel

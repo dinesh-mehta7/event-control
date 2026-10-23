@@ -34,6 +34,7 @@ import { useApp as useWalkie } from '../../modules/walkie/context/AppContext';
 import type { ModuleKey } from '../../lib/permissions';
 import { subDeptLabel } from '../../lib/roles';
 import { DepartmentSelect } from '../DepartmentSelect';
+import { PillTabs } from '../PillTabs';
 
 const ICON: Record<ModuleKey, React.ComponentType<{ className?: string }>> = {
   helpdesk: Headset,
@@ -157,29 +158,18 @@ export const SubDeptPermissionsView: React.FC = () => {
           ) : (
             dept && <span className="text-xs font-semibold text-ink">{dept.name}</span>
           )}
-          <div
-            role="tablist"
-            aria-label="Permissions view"
-            className="inline-flex h-9 rounded-lg border border-line bg-raised/40 p-0.5"
-          >
-            {(
-              [
-                ['sub', 'By sub-department', ShieldCheck],
-                ['module', 'By module', LayoutGrid],
-              ] as const
-            ).map(([k, l, I]) => (
-              <button
-                key={k}
-                role="tab"
-                aria-selected={view === k}
-                onClick={() => setView(k)}
-                className={`inline-flex items-center gap-1.5 rounded-md px-3 text-xs font-medium ${view === k ? 'bg-surface text-ink shadow-sm' : 'text-mute hover:text-ink'}`}
-              >
-                <I className="h-3.5 w-3.5" />
-                {l}
-              </button>
-            ))}
-          </div>
+          <PillTabs
+            variant="segmented"
+            label="Permissions view"
+            value={view}
+            onChange={id => setView(id as typeof view)}
+            className="inline-flex h-9 flex-nowrap rounded-lg border border-line bg-raised/40 p-0.5"
+            itemClassName="h-full px-3 text-xs"
+            tabs={[
+              { id: 'sub', label: 'By sub-department', icon: ShieldCheck },
+              { id: 'module', label: 'By module', icon: LayoutGrid },
+            ]}
+          />
           <label className="relative min-w-0 flex-1 sm:w-56 sm:flex-none">
             <span className="sr-only">Find a module</span>
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />

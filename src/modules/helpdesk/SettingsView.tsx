@@ -5,6 +5,7 @@ import { D, Section, cx, ghost, iconBtn, primary } from '../inventory/ui/kit';
 import type { Helpdesk } from './useHelpdesk';
 import { PRIORITIES } from './types';
 import type { Settings } from './types';
+import { Select } from '../../components/Select';
 
 export const SettingsView: React.FC<{ hd: Helpdesk }> = ({ hd }) => {
   const [s, setS] = useState<Settings>(hd.settings);
@@ -157,7 +158,7 @@ export const SettingsView: React.FC<{ hd: Helpdesk }> = ({ hd }) => {
               <span className="truncate text-ink-soft" title={c}>
                 {c}
               </span>
-              <select
+              <Select
                 value={s.categoryRules[c] || ''}
                 disabled={ro}
                 onChange={e =>
@@ -179,7 +180,7 @@ export const SettingsView: React.FC<{ hd: Helpdesk }> = ({ hd }) => {
                       {p.name}
                     </option>
                   ))}
-              </select>
+              </Select>
             </li>
           ))}
         </ul>

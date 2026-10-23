@@ -7,6 +7,7 @@ import { useEventScope } from '../../../context/EventScopeContext';
 import { D, ViewHeader, cx } from '../ui/kit';
 import { EmptyRow, Sheet, num, rowHover, sheetHead, sheetTable, td, th } from '../ui/sheet';
 import type { Tone } from '../ui/kit';
+import { Select } from '../../../components/Select';
 
 const STATUSES = ['requested', 'in_progress', 'ready', 'not_needed'];
 const STATUS_TONE: Record<string, Tone> = { requested: 'warn', in_progress: 'info', ready: 'ok', not_needed: 'mute' };
@@ -62,7 +63,7 @@ export const EventRequirementsView: React.FC = () => {
         title="Event requirements"
         hint="A shared list from Event Planning. Status changes here appear on the event requirement record."
       >
-        <select
+        <Select
           aria-label="Event"
           className={cx(inputCls(D), 'h-9 w-auto !py-1.5 text-xs')}
           value={eventFilter}
@@ -74,7 +75,7 @@ export const EventRequirementsView: React.FC = () => {
               {event.name}
             </option>
           ))}
-        </select>
+        </Select>
       </ViewHeader>
       {error && (
         <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-300">
@@ -137,7 +138,7 @@ export const EventRequirementsView: React.FC = () => {
                       {row.notes || '—'}
                     </td>
                     <td className={cx(td, 'py-0.5')}>
-                      <select
+                      <Select
                         aria-label={`Inventory requirement status for ${row.title}`}
                         className="h-7 w-full rounded border border-line bg-field px-1.5 text-[11.5px] capitalize text-ink outline-none focus:border-blue-500"
                         disabled={busyId === row.id}
@@ -149,7 +150,7 @@ export const EventRequirementsView: React.FC = () => {
                             {label(status)}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </td>
                   </tr>
                 );

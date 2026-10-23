@@ -5,6 +5,8 @@ import { ConfirmModal, Modal, inputCls, labelCls } from '../../accommodation/ui'
 import { useInventory } from '../InventoryContext';
 import type { Loc } from '../InventoryContext';
 import { D, cx, ghost, iconBtn, primary } from '../ui/kit';
+import { Select } from '../../../components/Select';
+import { PillTabs } from '../../../components/PillTabs';
 
 export const LocationForm: React.FC<{
   initial: Loc | null;
@@ -302,23 +304,18 @@ export const ImportModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   return (
     <Modal title="Import items" dark={D} onClose={onClose} xxl>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div role="tablist" className="inline-flex rounded-md border border-line bg-raised/40 p-0.5">
-          {(['file', 'paste'] as const).map(m => (
-            <button
-              key={m}
-              type="button"
-              role="tab"
-              aria-selected={mode === m}
-              onClick={() => setMode(m)}
-              className={cx(
-                'rounded px-3 py-1.5 text-xs font-medium transition-colors',
-                mode === m ? 'bg-surface text-ink shadow-sm' : 'text-mute hover:text-ink',
-              )}
-            >
-              {m === 'file' ? 'Excel / CSV file' : 'Paste rows'}
-            </button>
-          ))}
-        </div>
+        <PillTabs
+          variant="segmented"
+          label="Import from"
+          value={mode}
+          onChange={id => setMode(id as typeof mode)}
+          className="inline-flex flex-nowrap rounded-md border border-line bg-raised/40 p-0.5"
+          itemClassName="px-3 py-1.5 text-xs"
+          tabs={[
+            { id: 'file', label: 'Excel / CSV file' },
+            { id: 'paste', label: 'Paste rows' },
+          ]}
+        />
         <button type="button" className={ghost} onClick={downloadTemplate}>
           <Download className="h-3.5 w-3.5" />
           Download template
@@ -373,7 +370,7 @@ export const ImportModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           {file && file.book.SheetNames.length > 1 && (
             <label className="mt-2 flex items-center gap-2 text-xs text-mute">
               Sheet
-              <select
+              <Select
                 value={file.sheet}
                 onChange={e => setFile({ ...file, sheet: e.target.value })}
                 className="h-8 rounded-md border border-line bg-field px-2 text-xs text-ink"
@@ -381,7 +378,7 @@ export const ImportModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 {file.book.SheetNames.map(s => (
                   <option key={s}>{s}</option>
                 ))}
-              </select>
+              </Select>
             </label>
           )}
         </>

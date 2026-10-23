@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { memberMeta } from './memberMeta';
+import { badgeNo, memberMeta } from './memberMeta';
 import * as XLSX from 'xlsx';
 import {
   Check,
@@ -29,7 +29,8 @@ import {
 import { useWalkie } from '../walkie';
 import { permanentStaffLabel } from '../../lib/roles';
 import { supabase } from '../walkie/lib/supabaseClient';
-import { DEPT_LABEL, DEPT_OPTIONS } from '../accommodation/types';
+import { DEPT_LABEL } from '../accommodation/types';
+import { useSubDepartmentOptions } from '../../hooks/useSubDepartments';
 import { Modal, ConfirmModal, btnGhost, btnPrimary, cx, inputCls } from '../accommodation/ui';
 import { useInventory } from '../inventory';
 import { useManpower } from './ManpowerContext';
@@ -41,6 +42,7 @@ import { SewadarForm } from './parts/SewadarForm';
 import { CallModal } from './parts/CallModal';
 import { D, panel } from './parts/shared';
 import { ImportModal } from './parts/ImportModal';
+import { Select } from '../../components/Select';
 
 const rosterSelect =
   'h-9 w-full rounded-md border border-line bg-field px-2.5 text-xs text-ink outline-none focus:border-blue-500 md:w-auto md:shrink-0';
@@ -127,6 +129,8 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
   const scopedEventId = eventScope.scopeFor('sewadars');
   const callingEvent = eventScope.events.find(event => event.id === scopedEventId);
   const orgId = auth.currentUser?.organizationId;
+  // Sub-department pickers list only this department's own sub-departments.
+  const subOptions = useSubDepartmentOptions();
   const { sewadars, stats, canManage, loading, loadError } = m;
   const [tasks, setTasks] = useState<any[]>([]);
   const [workspace, setWorkspace] = useState<'members' | 'permanent' | 'teams' | 'tasks'>('members');
@@ -1136,7 +1140,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
               </label>
               <label className="text-[11.5px] text-mute">
                 Team lead
-                <select
+                <Select
                   value={newTeamLead}
                   onChange={e => setNewTeamLead(e.target.value)}
                   className={cx(inputCls(D), 'mt-1 h-9')}
@@ -1148,7 +1152,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                       {memberMeta(person) ? ` · ${memberMeta(person)}` : ''}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <button disabled={teamBusy} className={cx(btnPrimary, 'self-end py-2 text-xs')}>
                 {teamBusy ? (
@@ -1329,7 +1333,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                           </span>
                         </span>
                         {canManage && teamGroups.length > 0 && (
-                          <select
+                          <Select
                             aria-label={`Assign ${person.name} to a team`}
                             defaultValue=""
                             onChange={e => {
@@ -1347,7 +1351,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                                   {team.name} · {team.members.length} members
                                 </option>
                               ))}
-                          </select>
+                          </Select>
                         )}
                         <div className="flex gap-1">
                           <button
@@ -1447,7 +1451,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
             <div className="grid gap-2 border-b border-line px-4 py-3 sm:grid-cols-2">
               <label className="text-[10.5px] font-medium text-mute">
                 Event
-                <select
+                <Select
                   value={taskEventFilter}
                   onChange={e => setTaskEventFilter(e.target.value)}
                   className={cx(inputCls(D), 'mt-1 h-9 w-full')}
@@ -1458,24 +1462,24 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                       {event.name}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <label className="text-[10.5px] font-medium text-mute">
                 Sub-department
-                <select
+                <Select
                   disabled={!!lockedTaskDept}
                   value={lockedTaskDept || taskDepartmentFilter}
                   onChange={e => setTaskDepartmentFilter(e.target.value)}
                   className={cx(inputCls(D), 'mt-1 h-9 w-full')}
                 >
                   <option value="all">All sub-departments</option>
-                  {DEPT_OPTIONS.map(([key, label]) => (
+                  {subOptions.map(([key, label]) => (
                     <option key={key} value={key}>
                       {label}
                     </option>
                   ))}
                   <option value="none">No sub-department assigned</option>
-                </select>
+                </Select>
               </label>
             </div>
             {taskDialogOpen && (
@@ -1494,7 +1498,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                     </label>
                     <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4">
                       Event
-                      <select
+                      <Select
                         value={taskEventId}
                         onChange={e => setTaskEventId(e.target.value)}
                         className={cx(inputCls(D), 'h-10 w-full')}
@@ -1505,26 +1509,26 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                             {event.name}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </label>
                     <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4">
                       Sub-department
-                      <select
+                      <Select
                         value={taskDepartment}
                         onChange={e => setTaskDepartment(e.target.value)}
                         className={cx(inputCls(D), 'h-10 w-full')}
                       >
                         <option value="">Choose a sub-department</option>
-                        {DEPT_OPTIONS.map(([key, label]) => (
+                        {subOptions.map(([key, label]) => (
                           <option key={key} value={key}>
                             {label}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </label>
                     <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4">
                       Team
-                      <select
+                      <Select
                         value={taskTeam}
                         onChange={e => {
                           const name = e.target.value;
@@ -1551,7 +1555,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                             </option>
                           );
                         })}
-                      </select>
+                      </Select>
                       <span className="text-[10.5px] font-normal text-faint">
                         All registered teams are available. Available Sewadars are selected automatically.
                       </span>
@@ -1567,7 +1571,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                     </label>
                     <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4">
                       Priority
-                      <select
+                      <Select
                         value={taskPriority}
                         onChange={e => setTaskPriority(e.target.value as typeof taskPriority)}
                         className={cx(inputCls(D), 'h-10 w-full')}
@@ -1575,7 +1579,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                         <option value="immediately">Immediately</option>
                         <option value="till_time">Till the time</option>
                         <option value="as_you_have_time">As you have time</option>
-                      </select>
+                      </Select>
                     </label>
                     {taskPriority === 'till_time' && (
                       <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-mute md:col-span-1 xl:col-span-4">
@@ -1698,7 +1702,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                         return (
                           <label className="flex min-w-0 flex-col gap-1.5 text-[11.5px] text-mute">
                             Tool / material
-                            <select
+                            <Select
                               required
                               value={resourceItemId}
                               onChange={e => setResourceItemId(e.target.value)}
@@ -1720,13 +1724,13 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                                   ))}
                                 </optgroup>
                               )}
-                            </select>
+                            </Select>
                           </label>
                         );
                       })()}
                       <label className="flex min-w-0 flex-col gap-1.5 text-[11.5px] text-mute">
                         Handover location
-                        <select
+                        <Select
                           required
                           value={resourceLocationId}
                           onChange={e => setResourceLocationId(e.target.value)}
@@ -1738,7 +1742,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                               {location.name}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       </label>
                       <label className="flex min-w-0 flex-col gap-1.5 text-[11.5px] text-mute">
                         Quantity
@@ -1996,7 +2000,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                   <label className="flex flex-col gap-1.5 text-xs font-medium text-mute">
                     Delivery location{' '}
                     <span className="font-normal text-faint">(leave blank to use the request location)</span>
-                    <select
+                    <Select
                       value={deliveryLocation}
                       onChange={e => setDeliveryLocation(e.target.value)}
                       className={inputCls(D)}
@@ -2007,7 +2011,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                           {location.name}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                   <label className="flex flex-col gap-1.5 text-xs font-medium text-mute">
                     Delivered to
@@ -2708,7 +2712,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
               />
             </label>
             {workspace === 'members' && (
-              <select
+              <Select
                 value={memberType}
                 onChange={e => setMemberType(e.target.value as 'all' | SewadarMemberType)}
                 aria-label="Member type"
@@ -2717,23 +2721,23 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                 <option value="all">All member types</option>
                 <option value="monthly">Regular ({sewadars.filter(s => s.memberType === 'monthly').length})</option>
                 <option value="annual">Annual ({sewadars.filter(s => s.memberType === 'annual').length})</option>
-              </select>
+              </Select>
             )}
-            <select
+            <Select
               value={dept}
               onChange={e => setDept(e.target.value)}
               aria-label="Sub-department"
               className={cx(rosterSelect, 'md:min-w-[170px]')}
             >
               <option value="all">All sub-departments</option>
-              {DEPT_OPTIONS.map(([k, l]) => (
+              {subOptions.map(([k, l]) => (
                 <option key={k} value={k}>
                   {l}
                 </option>
               ))}
               <option value="none">No sub-department</option>
-            </select>
-            <select
+            </Select>
+            <Select
               value={stage}
               onChange={e => setStage(e.target.value as Stage)}
               aria-label="Member status"
@@ -2750,7 +2754,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
               <option value="arrived">Arrived ({statusCounts.arrived})</option>
               <option value="badge">Badge pending ({statusCounts.badge})</option>
               <option value="notComing">Not coming ({statusCounts.notComing})</option>
-            </select>
+            </Select>
           </section>
 
           {sel.size > 0 && canManage && (
@@ -2763,7 +2767,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
               <button className={btnGhost(D)} onClick={() => m.setBadge(ids, true)}>
                 Issue badge
               </button>
-              <select
+              <Select
                 aria-label="Assign selected members to a team"
                 value=""
                 onChange={e => {
@@ -2786,8 +2790,8 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                       {team.name} · {team.members.length} members
                     </option>
                   ))}
-              </select>
-              <select
+              </Select>
+              <Select
                 aria-label="Move to sub-department"
                 value=""
                 onChange={e => {
@@ -2796,13 +2800,13 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                 className={cx(inputCls(D), 'w-auto !py-1.5 text-xs')}
               >
                 <option value="">Move to sub-department…</option>
-                {DEPT_OPTIONS.map(([k, l]) => (
+                {subOptions.map(([k, l]) => (
                   <option key={k} value={k}>
                     {l}
                   </option>
                 ))}
                 <option value="__none">No sub-department</option>
-              </select>
+              </Select>
               <button className={cx(btnGhost(D), 'text-rose-400')} onClick={() => setConfirmDel(true)}>
                 <Trash2 className="w-3.5 h-3.5" />
                 Delete
@@ -2830,11 +2834,13 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                 </span>
               </div>
               <div className="max-h-[calc(100vh-18rem)] min-h-[180px] overflow-auto">
-                <table className="h-auto w-full min-w-[1250px] border-collapse text-[11.5px] leading-4">
+                <table className="h-auto w-full min-w-[1350px] border-collapse text-[11.5px] leading-4">
                   <thead className="sticky top-0 z-10 bg-raised text-left text-[10.5px] font-semibold uppercase tracking-wide text-mute shadow-sm">
                     <tr>
                       {[
-                        'Sewadar',
+                        'Badge no.',
+                        'Name',
+                        'Branch',
                         'Mobile',
                         'Team',
                         'Sub-department',
@@ -2859,14 +2865,14 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                       const overdue = isArrivalOverdue(s, new Date());
                       return (
                         <tr key={s.id} className={cx('h-auto hover:bg-raised/50', overdue && 'bg-rose-500/5')}>
+                          <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 tabular-nums text-ink-soft">
+                            {badgeNo(s) || '—'}
+                          </td>
                           <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 font-semibold text-ink">
                             {s.name}
-                            <span className="ml-1.5 font-normal text-mute">
-                              {s.memberType === 'monthly' ? 'Regular' : 'Annual'}
-                            </span>
-                            {memberMeta(s) && (
-                              <span className="block text-[10.5px] font-normal text-mute">{memberMeta(s)}</span>
-                            )}
+                          </td>
+                          <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 text-ink-soft">
+                            {(s.branch || '').trim() || '—'}
                           </td>
                           <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 text-ink-soft">
                             {s.phone ? (
@@ -2911,7 +2917,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                                       }
                                       className="h-7 w-36 rounded border border-line bg-field px-2 text-[11.5px] text-ink"
                                     />
-                                    <select
+                                    <Select
                                       aria-label={`Expected arrival time for ${s.name}`}
                                       value={draft.period}
                                       onChange={e =>
@@ -2927,7 +2933,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                                       <option value="noon">Noon</option>
                                       <option value="evening">Evening</option>
                                       <option value="night">Night</option>
-                                    </select>
+                                    </Select>
                                     {changed && (
                                       <button
                                         type="button"
@@ -3061,7 +3067,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                     : '0 results'}
                 </span>
                 <div className="flex items-center gap-2">
-                  <select
+                  <Select
                     aria-label="Rows per page"
                     value={size}
                     onChange={e => setSize(+e.target.value)}
@@ -3072,7 +3078,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                         {n} / page
                       </option>
                     ))}
-                  </select>
+                  </Select>
                   <button
                     className={btnGhost(D)}
                     disabled={page === 0}
@@ -3310,7 +3316,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                     : '0 results'}
                 </span>
                 <div className="flex items-center gap-2">
-                  <select
+                  <Select
                     aria-label="Rows per page"
                     value={size}
                     onChange={e => setSize(+e.target.value)}
@@ -3321,7 +3327,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                         {n} / page
                       </option>
                     ))}
-                  </select>
+                  </Select>
                   <button
                     className={btnGhost(D)}
                     disabled={page === 0}

@@ -3,6 +3,7 @@ import { Edit3, Eye, EyeOff, KeyRound, Plus, RefreshCw, ShieldCheck } from 'luci
 import { supabase } from '../../modules/walkie/lib/supabaseClient';
 import { useEventScope } from '../../context/EventScopeContext';
 import { inputCls, btnGhost, btnPrimary } from '../ui';
+import { Select } from '../Select';
 
 type AccessRow = {
   id: string;
@@ -262,7 +263,7 @@ export const WiFiAccessRegister: React.FC<{
           </label>
           <label className="text-xs text-mute">
             Department
-            <select
+            <Select
               value={form.department}
               onChange={e => set('department', e.target.value)}
               className={inputCls + ' mt-1'}
@@ -273,7 +274,7 @@ export const WiFiAccessRegister: React.FC<{
                   {name}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <label className="text-xs text-mute">
             Access valid through

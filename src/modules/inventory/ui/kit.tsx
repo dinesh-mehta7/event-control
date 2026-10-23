@@ -7,6 +7,8 @@ import { useInventory } from '../InventoryContext';
 import { MOVE } from '../types';
 import type { Item, Movement } from '../types';
 import { SlideNav } from '../../../components/SlideNav';
+import { useAnimatedPresence } from '../../../hooks/useAnimatedPresence';
+import { useHoverMenu } from '../../../hooks/useHoverMenu';
 import { levelOf, peopleLine, signedQty, when } from '../lib/stock';
 
 export { cx };
@@ -283,10 +285,10 @@ export interface MenuAction {
   hidden?: boolean;
 }
 export const RowMenu: React.FC<{ label: string; actions: MenuAction[] }> = ({ label, actions }) => {
-  const [open, setOpen] = useState(false);
+  // Opens on hover; the menu is portaled, so both the button and the menu carry the hover handlers.
+  const { open, setOpen, ref: btn, panelRef: menu, hover, trigger } = useHoverMenu<HTMLButtonElement>();
+  const present = useAnimatedPresence(open);
   const [pos, setPos] = useState({ top: 0, right: 0 });
-  const btn = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
   const shown = actions.filter(a => !a.hidden);
   useLayoutEffect(() => {
     if (!open || !btn.current) return;
@@ -295,21 +297,16 @@ export const RowMenu: React.FC<{ label: string; actions: MenuAction[] }> = ({ la
   }, [open]);
   useEffect(() => {
     if (!open) return;
-    const close = (e: Event) => {
-      if (!menu.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) setOpen(false);
-    };
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setOpen(false);
-        btn.current?.focus();
-      }
+      if (e.key === 'Escape') btn.current?.focus();
     };
-    const scroll = () => setOpen(false);
-    document.addEventListener('mousedown', close);
+    // A scroll inside the menu itself is fine; anything else moves the button away from the menu.
+    const scroll = (e: Event) => {
+      if (!menu.current?.contains(e.target as Node)) setOpen(false);
+    };
     document.addEventListener('keydown', key);
     window.addEventListener('scroll', scroll, true);
     return () => {
-      document.removeEventListener('mousedown', close);
       document.removeEventListener('keydown', key);
       window.removeEventListener('scroll', scroll, true);
     };
@@ -324,17 +321,24 @@ export const RowMenu: React.FC<{ label: string; actions: MenuAction[] }> = ({ la
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen(o => !o)}
+        {...hover}
+        {...trigger}
       >
         <MoreHorizontal className="h-4 w-4" />
       </button>
-      {open &&
+      {present &&
         createPortal(
           <div
             ref={menu}
             role="menu"
+            aria-hidden={!open}
+            {...({ inert: !open } as any)}
+            {...hover}
             style={{ top: pos.top, right: pos.right }}
-            className="animate-menu-enter fixed z-50 min-w-44 rounded-lg border border-line bg-surface p-1 shadow-2xl"
+            className={cx(
+              'fixed z-50 min-w-44 origin-top-right rounded-lg border border-line bg-surface p-1 shadow-2xl transition-[opacity,transform] duration-200 ease-out',
+              open ? 'translate-y-0 scale-100 opacity-100' : 'pointer-events-none -translate-y-1 scale-95 opacity-0',
+            )}
           >
             {shown.map(a => (
               <button

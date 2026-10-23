@@ -6,6 +6,7 @@ import { useAnimatedPresence } from '../hooks/useAnimatedPresence';
 import { useEventScope } from '../context/EventScopeContext';
 import { DepartmentSelect } from './DepartmentSelect';
 import { homeDepartmentOf } from '../views/orgData';
+import { Select } from './Select';
 
 type Kind = 'issue' | 'feedback';
 type Issue = {
@@ -198,7 +199,7 @@ export const IssueReportsButton: React.FC = () => {
                 </label>
                 <label className="block text-xs text-mute">
                   Event
-                  <select
+                  <Select
                     required
                     value={eventId}
                     onChange={e => {
@@ -213,7 +214,7 @@ export const IssueReportsButton: React.FC = () => {
                         {event.name}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
                 {!eventScope.events.length && (
                   <p className="text-xs text-amber-300">Create an event before submitting an issue or feedback.</p>
@@ -280,7 +281,7 @@ export const IssueReportsButton: React.FC = () => {
                 <div>
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <h3 className="text-sm font-semibold text-ink">Department reports inbox</h3>
-                    <select
+                    <Select
                       aria-label="Filter reports by event"
                       value={eventFilter}
                       onChange={e => setEventFilter(e.target.value)}
@@ -293,7 +294,7 @@ export const IssueReportsButton: React.FC = () => {
                         </option>
                       ))}
                       <option value="unlinked">Unlinked legacy reports</option>
-                    </select>
+                    </Select>
                   </div>
                   <ul className="divide-y divide-line rounded-lg border border-line">
                     {issues
@@ -326,7 +327,7 @@ export const IssueReportsButton: React.FC = () => {
                             )}
                           </div>
                           {canManage ? (
-                            <select
+                            <Select
                               aria-label={`Status for ${issue.title}`}
                               value={issue.status}
                               onChange={e => void updateStatus(issue, e.target.value as Issue['status'])}
@@ -337,7 +338,7 @@ export const IssueReportsButton: React.FC = () => {
                                   {label}
                                 </option>
                               ))}
-                            </select>
+                            </Select>
                           ) : (
                             <span className="rounded-full bg-raised px-2 py-1 text-[10.5px] text-mute">
                               {statusLabel[issue.status]}

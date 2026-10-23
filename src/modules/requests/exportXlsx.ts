@@ -5,6 +5,8 @@ import type { Availability } from './RequestsContext';
 import type { OrderInfo, Req } from './types';
 
 const d = (iso?: string | null) => (iso ? iso.slice(0, 10) : '');
+// Same wording as the status badge: a delivered ticket the requester confirmed is "Closed".
+const statusOf = (r: Req) => (r.status === 'fulfilled' && r.confirmedAt ? 'Closed' : STATUS_LABEL[r.status]);
 const dept = (r: Req) => r.departmentName || (r.subDepartment ? DEPTS[r.subDepartment] : 'Other department');
 
 // Sheet 1: one row per requested line, across the given tickets.
@@ -12,7 +14,7 @@ const demandRows = (reqs: Req[]) =>
   reqs.flatMap(r =>
     r.items.map(i => ({
       Ticket: r.number,
-      Status: STATUS_LABEL[r.status],
+      Status: statusOf(r),
       Department: dept(r),
       'Requested by': r.requesterName,
       Item: i.name,
@@ -92,7 +94,7 @@ const departmentRows = (reqs: Req[]) => {
       else
         rows.push([
           r.number,
-          STATUS_LABEL[r.status],
+          statusOf(r),
           name,
           r.requesterName,
           '(no line items)',

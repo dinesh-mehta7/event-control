@@ -4,6 +4,7 @@ import { useManpower } from '../../manpower';
 import { useRequests } from '../RequestsContext';
 import type { Req } from '../types';
 import { Err } from './shared';
+import { Select } from '../../../components/Select';
 
 // After final approval, IT assigns the handover to a team or an IT Sewadar.
 export const DeliveryAssignmentPanel: React.FC<{ r: Req }> = ({ r }) => {
@@ -37,7 +38,7 @@ export const DeliveryAssignmentPanel: React.FC<{ r: Req }> = ({ r }) => {
       </p>
       <div className="flex flex-wrap items-end gap-2">
         <Field label="Delivery team or IT Sewadar" className="min-w-[240px] flex-1">
-          <select className={inputCls} value={target} onChange={e => setTarget(e.target.value)}>
+          <Select className={inputCls} value={target} onChange={e => setTarget(e.target.value)}>
             <option value="">Choose an assignee</option>
             {manpower.teams.length > 0 && (
               <optgroup label="Teams">
@@ -57,7 +58,7 @@ export const DeliveryAssignmentPanel: React.FC<{ r: Req }> = ({ r }) => {
                 ))}
               </optgroup>
             )}
-          </select>
+          </Select>
         </Field>
         <button type="button" className={btnPrimary} disabled={busy || !target} onClick={save}>
           {busy ? 'Assigning…' : r.deliveryTeam || r.deliveryMemberId ? 'Update assignment' : 'Assign delivery task'}

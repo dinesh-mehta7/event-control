@@ -10,13 +10,14 @@ import { PRIORITIES, PRIORITY, STATUSES, dueToday, hours, isOverdue, minutesLabe
 import type { Ticket } from './types';
 
 // A labelled horizontal bar list (one series, so one colour; counts beside each bar).
-const Bars: React.FC<{ rows: { label: string; n: number }[]; empty: string }> = ({ rows, empty }) => {
+// `id` keys a row when labels can repeat (two people with the same name).
+const Bars: React.FC<{ rows: { id?: string; label: string; n: number }[]; empty: string }> = ({ rows, empty }) => {
   const max = Math.max(1, ...rows.map(r => r.n));
   if (!rows.some(r => r.n)) return <Empty>{empty}</Empty>;
   return (
     <ul className="space-y-2 p-4">
       {rows.map(r => (
-        <li key={r.label} className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)_2.5rem] items-center gap-3 text-xs">
+        <li key={r.id ?? r.label} className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)_2.5rem] items-center gap-3 text-xs">
           <span className="truncate text-ink-soft" title={r.label}>
             {r.label}
           </span>
@@ -42,8 +43,8 @@ export const OverviewView: React.FC<{ hd: Helpdesk; go: (v: SavedView) => void; 
   const week = Date.now() - 7 * 8.64e7;
   const openT = t.filter(x => x.status !== 'closed');
   const byTech = [
-    ...hd.technicians.map(p => ({ label: p.name, n: openT.filter(x => x.assigneeId === p.id).length })),
-    { label: 'Unassigned', n: openT.filter(x => !x.assigneeId).length },
+    ...hd.technicians.map(p => ({ id: p.id, label: p.name, n: openT.filter(x => x.assigneeId === p.id).length })),
+    { id: 'unassigned', label: 'Unassigned', n: openT.filter(x => !x.assigneeId).length },
   ];
   const byPri = PRIORITIES.map(p => ({ label: p.label, n: openT.filter(x => x.priority === p.key).length }));
   const attention = [...openT].filter(x => isOverdue(x) || x.priority === 'critical' || !x.assigneeId).slice(0, 6);
@@ -346,7 +347,11 @@ export const ReportsView: React.FC<{ hd: Helpdesk }> = ({ hd }) => {
         <Section title="Closed by technician">
           <Bars
             rows={[
-              ...hd.technicians.map(p => ({ label: p.name, n: closed.filter(t => t.assigneeId === p.id).length })),
+              ...hd.technicians.map(p => ({
+                id: p.id,
+                label: p.name,
+                n: closed.filter(t => t.assigneeId === p.id).length,
+              })),
               { label: 'Unassigned', n: closed.filter(t => !t.assigneeId).length },
             ].sort((a, b) => b.n - a.n)}
             empty="Nothing closed in this period."

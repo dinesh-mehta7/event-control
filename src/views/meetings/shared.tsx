@@ -15,8 +15,10 @@ import {
 } from 'lucide-react';
 import type { MeetingRow, MeetingStatus } from '../../context/MeetingsContext';
 import { DEPTS } from '../orgData';
+import { useSubDepartmentOptions } from '../../hooks/useSubDepartments';
 import { Pill, inputCls, linkBtn } from '../../components/ui';
 import type { SubDepartmentId } from '../../types';
+import { Select } from '../../components/Select';
 
 export const when = (iso: string) =>
   new Date(iso).toLocaleString('en-IN', {
@@ -110,6 +112,12 @@ export const AudiencePicker: React.FC<{
 }> = ({ all, setAll, depts, setDepts, groups, setGroups, teams }) => {
   const toggleDept = (d: SubDepartmentId) => setDepts(p => (p.includes(d) ? p.filter(x => x !== d) : [...p, d]));
   const toggleGroup = (g: string) => setGroups(p => (p.includes(g) ? p.filter(x => x !== g) : [...p, g]));
+  // Only this department's own sub-departments (plus any already ticked).
+  const subOptions = useSubDepartmentOptions();
+  const subChoices = [
+    ...subOptions,
+    ...depts.filter(d => !subOptions.some(([k]) => k === d)).map(d => [d, DEPTS[d] || d] as [string, string]),
+  ];
   const choices: [string, string][] = [
     ['it:staff', 'IT Staff'],
     ['sewadar:all', 'All Sewadars'],
@@ -133,10 +141,14 @@ export const AudiencePicker: React.FC<{
           <div className="space-y-2">
             <div className="text-[10.5px] font-semibold uppercase tracking-wide text-mute">Departments</div>
             <div className="grid gap-2 sm:grid-cols-2">
-              {(Object.keys(DEPTS) as SubDepartmentId[]).map(d => (
+              {subChoices.map(([d, label]) => (
                 <label key={d} className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" checked={depts.includes(d)} onChange={() => toggleDept(d)} />
-                  {DEPTS[d]}
+                  <input
+                    type="checkbox"
+                    checked={depts.includes(d as SubDepartmentId)}
+                    onChange={() => toggleDept(d as SubDepartmentId)}
+                  />
+                  {label}
                 </label>
               ))}
             </div>
@@ -187,6 +199,7 @@ export const MeetingRowView: React.FC<{
   });
   const [taskError, setTaskError] = useState('');
   const [savingTask, setSavingTask] = useState(false);
+  const subOptions = useSubDepartmentOptions(undefined, task.department);
   const open = m.status === 'scheduled' || m.status === 'live';
   const saveMom = async () => {
     setSavingMom(true);
@@ -377,18 +390,18 @@ export const MeetingRowView: React.FC<{
             value={task.title}
             onChange={e => setTask(old => ({ ...old, title: e.target.value }))}
           />
-          <select
+          <Select
             className={inputCls}
             aria-label="Department responsible"
             value={task.department}
             onChange={e => setTask(old => ({ ...old, department: e.target.value as SubDepartmentId }))}
           >
-            {Object.entries(DEPTS).map(([id, label]) => (
+            {subOptions.map(([id, label]) => (
               <option key={id} value={id}>
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
           <label className="text-xs text-mute">
             Deadline
             <input
@@ -401,7 +414,7 @@ export const MeetingRowView: React.FC<{
           </label>
           <label className="text-xs text-mute">
             Priority
-            <select
+            <Select
               className={inputCls + ' mt-1'}
               value={task.priority}
               onChange={e => setTask(old => ({ ...old, priority: e.target.value }))}
@@ -409,7 +422,7 @@ export const MeetingRowView: React.FC<{
               <option value="immediately">Urgent</option>
               <option value="till_time">High · due by deadline</option>
               <option value="as_you_have_time">Normal</option>
-            </select>
+            </Select>
           </label>
           <Err msg={taskError} />
           <button type="submit" className={linkBtn} disabled={savingTask}>

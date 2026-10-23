@@ -216,12 +216,12 @@ tbody tr {
 }
 /* A field with a fixed height (h-8/h-9/h-10…) must not also keep its vertical padding: together they
    leave less room than one line of text, and the browser cuts the text off at the bottom. */
-:is(select, input:not([type='checkbox']):not([type='radio']))[class~='h-7'],
-:is(select, input:not([type='checkbox']):not([type='radio']))[class~='h-8'],
-:is(select, input:not([type='checkbox']):not([type='radio']))[class~='h-9'],
-:is(select, input:not([type='checkbox']):not([type='radio']))[class~='h-10'],
-:is(select, input:not([type='checkbox']):not([type='radio']))[class~='!h-9'],
-:is(select, input:not([type='checkbox']):not([type='radio']))[class~='!h-10'] {
+:is(select, [data-select], input:not([type='checkbox']):not([type='radio']))[class~='h-7'],
+:is(select, [data-select], input:not([type='checkbox']):not([type='radio']))[class~='h-8'],
+:is(select, [data-select], input:not([type='checkbox']):not([type='radio']))[class~='h-9'],
+:is(select, [data-select], input:not([type='checkbox']):not([type='radio']))[class~='h-10'],
+:is(select, [data-select], input:not([type='checkbox']):not([type='radio']))[class~='!h-9'],
+:is(select, [data-select], input:not([type='checkbox']):not([type='radio']))[class~='!h-10'] {
   padding-top: 0 !important;
   padding-bottom: 0 !important;
   line-height: 1.25;

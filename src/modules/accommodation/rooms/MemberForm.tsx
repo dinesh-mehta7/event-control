@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { DEPT_OPTIONS } from '../types';
+import { useSubDepartmentOptions } from '../../../hooks/useSubDepartments';
 import type { Member, Room } from '../types';
 import { Modal, btnGhost, btnPrimary, inputCls, labelCls } from '../ui';
 import { digitsOnly, phoneInputProps } from '../../../lib/phone';
+import { Select } from '../../../components/Select';
 
 export const MemberForm: React.FC<{
   dark: boolean;
@@ -17,6 +18,7 @@ export const MemberForm: React.FC<{
 }> = ({ dark, rooms, members, edit, presetRoom, canAssignRoomMembers, onClose, onAdd, onEdit }) => {
   const [names, setNames] = useState(edit?.name || '');
   const [dept, setDept] = useState(edit?.department || '');
+  const subOptions = useSubDepartmentOptions(undefined, dept);
   const [roomId, setRoomId] = useState(edit?.roomId || presetRoom || '');
   const [detail, setDetail] = useState({
     memberType: edit?.memberType || ('salary_based' as Member['memberType']),
@@ -97,20 +99,20 @@ export const MemberForm: React.FC<{
             <label className={labelCls(dark)} htmlFor="md">
               Department (optional)
             </label>
-            <select id="md" value={dept} onChange={e => setDept(e.target.value)} className={inputCls(dark)}>
+            <Select id="md" value={dept} onChange={e => setDept(e.target.value)} className={inputCls(dark)}>
               <option value="">—</option>
-              {DEPT_OPTIONS.map(([v, l]) => (
+              {subOptions.map(([v, l]) => (
                 <option key={v} value={v}>
                   {l}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div>
             <label className={labelCls(dark)} htmlFor="mr">
               Room
             </label>
-            <select
+            <Select
               id="mr"
               value={roomId}
               disabled={!canAssignRoomMembers}
@@ -123,14 +125,14 @@ export const MemberForm: React.FC<{
                   {r.name} ({Math.max(0, freeIn(r))} free)
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
         {!edit && (
           <div className="grid grid-cols-2 gap-3 border-t border-line pt-3">
             <div>
               <label className={labelCls(dark)}>Member type</label>
-              <select
+              <Select
                 value={detail.memberType}
                 onChange={e => setDetail(p => ({ ...p, memberType: e.target.value as Member['memberType'] }))}
                 className={inputCls(dark)}
@@ -138,7 +140,7 @@ export const MemberForm: React.FC<{
                 <option value="salary_based">Salary based (hired)</option>
                 <option value="monthly">Monthly</option>
                 <option value="annual">Annual (main event)</option>
-              </select>
+              </Select>
             </div>
             <div>
               <label className={labelCls(dark)}>Sewa joining / promised date</label>
@@ -157,7 +159,7 @@ export const MemberForm: React.FC<{
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelCls(dark)}>Member type</label>
-                <select
+                <Select
                   value={detail.memberType}
                   onChange={e => setDetail(p => ({ ...p, memberType: e.target.value as Member['memberType'] }))}
                   className={inputCls(dark)}
@@ -165,7 +167,7 @@ export const MemberForm: React.FC<{
                   <option value="salary_based">Salary based (hired)</option>
                   <option value="monthly">Monthly</option>
                   <option value="annual">Annual (main event)</option>
-                </select>
+                </Select>
               </div>
               <div>
                 <label className={labelCls(dark)}>Sewa joining / promised date</label>

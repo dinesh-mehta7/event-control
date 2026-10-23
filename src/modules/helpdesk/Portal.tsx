@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { LifeBuoy, Search, Send, Ticket as TicketIcon } from 'lucide-react';
 import { inputCls, labelCls } from '../accommodation/ui';
-import { DEPTS, homeDepartmentOf } from '../../views/orgData';
+import { homeDepartmentOf } from '../../views/orgData';
+import { useSubDepartmentOptions } from '../../hooks/useSubDepartments';
 import { useApp as useWalkie } from '../walkie/context/AppContext';
 import { Badge, D, Empty, Section, cx, ghost, panel, primary } from '../inventory/ui/kit';
 import type { Helpdesk } from './useHelpdesk';
 import { PRIORITIES, STATUS, relative, ticketNo } from './types';
 import { DepartmentSelect } from '../../components/DepartmentSelect';
+import { Select } from '../../components/Select';
 
 // Submit a request. Technicians can also log one on behalf of someone else.
 export const NewTicketForm: React.FC<{ hd: Helpdesk; onDone: (id: string) => void; onCancel?: () => void }> = ({
@@ -30,6 +32,8 @@ export const NewTicketForm: React.FC<{ hd: Helpdesk; onDone: (id: string) => voi
   const [behalf, setBehalf] = useState(false);
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof f, v: string) => setF(p => ({ ...p, [k]: v }));
+  // The requester's sub-department, from their own department's list.
+  const subOptions = useSubDepartmentOptions(undefined, f.department);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -114,23 +118,23 @@ export const NewTicketForm: React.FC<{ hd: Helpdesk; onDone: (id: string) => voi
           <label className={labelCls(D)} htmlFor="nt-c">
             Category
           </label>
-          <select id="nt-c" value={f.category} onChange={e => set('category', e.target.value)} className={inputCls(D)}>
+          <Select id="nt-c" value={f.category} onChange={e => set('category', e.target.value)} className={inputCls(D)}>
             {hd.settings.categories.map(c => (
               <option key={c}>{c}</option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label className={labelCls(D)} htmlFor="nt-p">
             Urgency
           </label>
-          <select id="nt-p" value={f.priority} onChange={e => set('priority', e.target.value)} className={inputCls(D)}>
+          <Select id="nt-p" value={f.priority} onChange={e => set('priority', e.target.value)} className={inputCls(D)}>
             {PRIORITIES.map(p => (
               <option key={p.key} value={p.key}>
                 {p.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label className={labelCls(D)} htmlFor="nt-to">
@@ -149,19 +153,19 @@ export const NewTicketForm: React.FC<{ hd: Helpdesk; onDone: (id: string) => voi
           <label className={labelCls(D)} htmlFor="nt-dep">
             Sub-department
           </label>
-          <select
+          <Select
             id="nt-dep"
             value={f.department}
             onChange={e => set('department', e.target.value)}
             className={inputCls(D)}
           >
             <option value="">—</option>
-            {Object.entries(DEPTS).map(([k, v]) => (
+            {subOptions.map(([k, v]) => (
               <option key={k} value={k}>
                 {v}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label className={labelCls(D)} htmlFor="nt-l">

@@ -8,6 +8,7 @@ import { useWalkie } from '../walkie';
 import { supabase } from '../walkie/lib/supabaseClient';
 import { DepartmentSelect } from '../../components/DepartmentSelect';
 import { homeDepartmentOf } from '../../views/orgData';
+import { Select } from '../../components/Select';
 
 const UNITS = ['pcs', 'box', 'roll', 'meter', 'set', 'pair', 'kg', 'litre', 'packet'];
 const blank = (): NewLine => ({
@@ -35,6 +36,7 @@ export const NewRequest: React.FC<{
   const [events, setEvents] = useState<any[]>([]);
   const [eventId, setEventId] = useState('');
   const [radioQty, setRadioQty] = useState({ walkies: '1', chargers: '0', earphones: '0' });
+  const [collectFrom, setCollectFrom] = useState('');
   const [title, setTitle] = useState(copyFrom?.title || '');
   const [purpose, setPurpose] = useState(copyFrom?.purpose || '');
   const [deliverTo, setDeliverTo] = useState(copyFrom?.deliverTo || '');
@@ -118,12 +120,14 @@ export const NewRequest: React.FC<{
         );
       if (![walkies, chargers, earphones].every(q => Number.isInteger(q) && q >= 0) || walkies < 1)
         return setErr('Enter whole-number quantities. Request at least one walkie set.');
+      if (!collectFrom.trim()) return setErr('Choose or enter the unit to collect the radios from.');
       setBusy(true);
       const { error } = await supabase.rpc('event_radio_request_submit', {
         p_event_id: eventId,
         p_walkies: walkies,
         p_chargers: chargers,
         p_earphones: earphones,
+        p_collect_from: collectFrom.trim(),
       });
       setBusy(false);
       if (error) return setErr(error.message || 'Could not send the Walkie request.');
@@ -459,14 +463,14 @@ export const NewRequest: React.FC<{
           <p className="mt-1 text-xs text-mute">This request goes to the event approval queue.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Event">
-              <select className={inputCls} value={eventId} onChange={e => setEventId(e.target.value)}>
+              <Select className={inputCls} value={eventId} onChange={e => setEventId(e.target.value)}>
                 <option value="">Choose an event</option>
                 {events.map(event => (
                   <option key={event.id} value={event.id}>
                     {event.name} · {new Date(event.starts_at).toLocaleDateString('en-IN')}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="Department">
               <div className="flex min-h-10 items-center rounded-lg border border-line bg-raised/30 px-3 text-sm text-ink">
@@ -474,7 +478,22 @@ export const NewRequest: React.FC<{
               </div>
             </Field>
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label="Collect from">
+              <input
+                className={inputCls}
+                list="req-walkie-collection-units"
+                placeholder="e.g. Main Control Room"
+                value={collectFrom}
+                onChange={e => setCollectFrom(e.target.value)}
+              />
+              <datalist id="req-walkie-collection-units">
+                <option value="Main Control Room" />
+                <option value="Walkie-Talkie Store" />
+                <option value="IT Office" />
+                <option value="Control Room" />
+              </datalist>
+            </Field>
             {(
               [
                 ['walkies', 'Walkie sets', 1],

@@ -13,6 +13,7 @@ import {
   MessageCircle,
   X,
 } from 'lucide-react';
+import { Select } from '../../../components/Select';
 
 export default function ReturnsView() {
   const { walkies, departments, returnWalkies, getWhatsAppLinksForDepartment, settings, currentUser, addToast } =
@@ -144,14 +145,14 @@ export default function ReturnsView() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <label className="text-sm font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
             <span>Sort by</span>
-            <select
+            <Select
               value={sortBy}
               onChange={e => setSortBy(e.target.value)}
               className={`rounded-lg border px-3 py-2 text-sm outline-none ${isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-700'}`}
             >
               <option value="name">Name</option>
               <option value="id">Walkie ID</option>
-            </select>
+            </Select>
           </label>
           {selectedToReturn.length > 0 && !isClient && (
             <button

@@ -14,6 +14,7 @@ import {
   Users,
   Building2,
 } from 'lucide-react';
+import { Select } from '../../../components/Select';
 
 export default function AllocationsView() {
   const {
@@ -328,7 +329,7 @@ export default function AllocationsView() {
             <form onSubmit={handleAllocationSubmit} className="space-y-4">
               <div>
                 <label className={labelCls}>Target Department</label>
-                <select
+                <Select
                   required
                   disabled={isClient}
                   value={selectedDept}
@@ -342,7 +343,7 @@ export default function AllocationsView() {
                       {d.channelNumber ? ` — Channel ${d.channelNumber}` : ''}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               {selectedDept && (
@@ -357,7 +358,7 @@ export default function AllocationsView() {
                 <div className="space-y-4">
                   <div>
                     <label className={labelCls}>Model Filter (Optional)</label>
-                    <select
+                    <Select
                       disabled={isClient}
                       value={bulkModel}
                       onChange={e => {
@@ -372,7 +373,7 @@ export default function AllocationsView() {
                           {m}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className={labelCls}>Quantity to Allocate ({matchingForBulk.length} available)</label>
@@ -637,7 +638,7 @@ export default function AllocationsView() {
 
               <div>
                 <label className={labelCls}>Target Department</label>
-                <select
+                <Select
                   required
                   disabled={isClient}
                   value={transferTargetDept}
@@ -651,7 +652,7 @@ export default function AllocationsView() {
                       {d.channelNumber ? ` — Channel ${d.channelNumber}` : ''}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>

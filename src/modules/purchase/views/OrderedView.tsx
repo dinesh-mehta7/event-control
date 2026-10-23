@@ -2,14 +2,56 @@ import React, { useState } from 'react';
 import { btnGhost, cx } from '../../accommodation/ui';
 import { usePurchase } from '../PurchaseContext';
 import { OFFLINE_STEPS, poTotal } from '../types';
-import type { OfflineStatus } from '../types';
+import type { OfflineStatus, PO } from '../types';
 import { localDate } from '../../../lib/format';
 import type { VendorMode } from '../types';
 import { D, Empty, Section, StatusChip, day, money, when } from './shared';
+import { Select } from '../../../components/Select';
 
-// Orders that have been placed but still need their marketplace/order reference details.
+// Progress of an order from a local (offline) vendor, recorded by hand: offline vendors have no
+// marketplace order ID or courier tracking. Read-only text for people who cannot update it.
+const OfflineProgress: React.FC<{ order: PO; canUpdate: boolean }> = ({ order, canUpdate }) => {
+  const { setOfflineStatus } = usePurchase();
+  const [busy, setBusy] = useState(false);
+  const step = OFFLINE_STEPS.find(x => x.id === order.offlineStatus);
+  return (
+    <>
+      {canUpdate ? (
+        <Select
+          aria-label={`Progress of ${order.number}`}
+          value={order.offlineStatus || ''}
+          disabled={busy}
+          onChange={async e => {
+            setBusy(true);
+            await setOfflineStatus(order.id, (e.target.value || null) as OfflineStatus | null);
+            setBusy(false);
+          }}
+          className="h-7 rounded-md border border-line bg-field px-2 text-xs text-ink outline-none focus:border-blue-500 disabled:opacity-50"
+        >
+          <option value="">Ordered · not confirmed yet</option>
+          {OFFLINE_STEPS.map(x => (
+            <option key={x.id} value={x.id}>
+              {x.label}
+            </option>
+          ))}
+        </Select>
+      ) : (
+        step?.label || 'Ordered · not confirmed yet'
+      )}
+      {order.offlineStatusAt && (
+        <span className="block text-[10.5px] text-faint">
+          {order.offlineStatusBy ? `${order.offlineStatusBy} · ` : ''}
+          {when(order.offlineStatusAt)}
+        </span>
+      )}
+    </>
+  );
+};
+
+// Orders that have been placed: online ones still need their marketplace/order reference details,
+// offline ones get their progress updated here (same control as the Waiting tab).
 export const OrderedView: React.FC<{ open: (id: string) => void }> = ({ open }) => {
-  const { orders, vendors, trackings, loading } = usePurchase();
+  const { orders, vendors, trackings, loading, canManage, canReceive } = usePurchase();
   const [kind, setKind] = useState<'all' | VendorMode>('all');
   const rows = orders
     .filter(
@@ -89,27 +131,41 @@ export const OrderedView: React.FC<{ open: (id: string) => void }> = ({ open }) 
                       <td className="px-3 py-2.5">
                         <StatusChip s={order.status} />
                       </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        {trackingRows
-                          .map(row => row.marketplaceOrderNumber)
-                          .filter(Boolean)
-                          .join(', ') || '—'}
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        {trackingRows
-                          .map(row => row.trackingNumber)
-                          .filter(Boolean)
-                          .join(', ') || '—'}
-                      </td>
-                      <td className="px-3 py-2.5 text-right">
-                        {mode === 'online' && (
-                          <button type="button" className={btnGhost(D)} onClick={() => open(order.id)}>
-                            {trackingRows.some(row => row.marketplaceOrderNumber || row.trackingNumber)
-                              ? 'Edit details'
-                              : 'Add details'}
-                          </button>
-                        )}
-                      </td>
+                      {mode === 'online' ? (
+                        <>
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            {trackingRows
+                              .map(row => row.marketplaceOrderNumber)
+                              .filter(Boolean)
+                              .join(', ') || '—'}
+                          </td>
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            {trackingRows
+                              .map(row => row.trackingNumber)
+                              .filter(Boolean)
+                              .join(', ') || '—'}
+                          </td>
+                          <td className="px-3 py-2.5 text-right">
+                            <button type="button" className={btnGhost(D)} onClick={() => open(order.id)}>
+                              {trackingRows.some(row => row.marketplaceOrderNumber || row.trackingNumber)
+                                ? 'Edit details'
+                                : 'Add details'}
+                            </button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          {/* Local vendors have no marketplace order or courier shipment: track progress instead. */}
+                          <td colSpan={2} className="px-3 py-2.5 whitespace-nowrap">
+                            <OfflineProgress order={order} canUpdate={canManage || canReceive} />
+                          </td>
+                          <td className="px-3 py-2.5 text-right">
+                            <button type="button" className={btnGhost(D)} onClick={() => open(order.id)}>
+                              Open order
+                            </button>
+                          </td>
+                        </>
+                      )}
                     </tr>
                   );
                 })}
@@ -200,7 +256,7 @@ export const WaitingView: React.FC<{ open: (id: string) => void }> = ({ open }) 
                           'Awaiting update'
                         )
                       ) : canUpdate ? (
-                        <select
+                        <Select
                           aria-label={`Progress of ${order.number}`}
                           value={order.offlineStatus || ''}
                           disabled={busy === order.id}
@@ -213,7 +269,7 @@ export const WaitingView: React.FC<{ open: (id: string) => void }> = ({ open }) 
                               {x.label}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       ) : (
                         step?.label || 'Ordered · not confirmed yet'
                       )}

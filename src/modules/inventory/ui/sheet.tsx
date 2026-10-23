@@ -7,11 +7,13 @@ import { signedQty } from '../lib/stock';
 import { cx } from './kit';
 
 // Spreadsheet look shared by every inventory table: indigo header band, banded rows, bordered cells.
-export const sheetTable = 'w-full border-collapse text-[11.5px] leading-4';
+// Separate borders + sticky header CELLS: a sticky <thead> in a border-collapse table leaves a gap that rows
+// scroll through. Each cell draws only its bottom/right line, so the grid still looks single-ruled.
+export const sheetTable = 'w-full border-separate border-spacing-0 text-[11.5px] leading-4';
 export const sheetHead =
-  'sticky top-0 z-10 bg-brand-soft text-left text-[10.5px] font-semibold uppercase tracking-wide text-brand shadow-[inset_0_-2px_0_rgb(var(--c-brand)/0.55)]';
-export const th = 'whitespace-nowrap border border-line/70 px-2.5 py-2';
-export const td = 'whitespace-nowrap border border-line/70 px-2.5 py-1.5';
+  'text-left text-[10.5px] font-semibold uppercase tracking-wide text-brand [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-brand-soft [&_th]:shadow-[inset_0_-2px_0_rgb(var(--c-brand)/0.55)]';
+export const th = 'whitespace-nowrap border-b border-r border-line/70 px-2.5 py-2 last:border-r-0';
+export const td = 'whitespace-nowrap border-b border-r border-line/70 px-2.5 py-1.5 last:border-r-0';
 export const num = 'text-right tabular-nums';
 export const rowHover = 'transition-colors even:bg-raised/40 hover:bg-brand-soft/70';
 // Conditional-formatting cells: colour only where something needs attention.
@@ -38,7 +40,9 @@ export const Sheet: React.FC<{
   footer?: React.ReactNode;
   maxHeight?: string;
   children: React.ReactNode;
-}> = ({ title, count, tools, footer, maxHeight = 'max-h-[calc(100vh-18rem)]', children }) => (
+  // Default: once scrolled into view the sheet fills the screen below the app header, so the page scroll hands
+  // over to the table scroll instead of both scrolling a little at a time.
+}> = ({ title, count, tools, footer, maxHeight = 'max-h-[calc(100dvh-12rem)]', children }) => (
   <section className="overflow-hidden rounded-lg border border-line bg-surface">
     <div className="flex flex-wrap items-center gap-2 border-b border-line bg-raised/30 px-2.5 py-2 text-[11.5px] text-mute">
       <i className="h-4 w-1 rounded-full bg-brand" aria-hidden />
@@ -59,7 +63,7 @@ export const Sheet: React.FC<{
 
 export const EmptyRow: React.FC<{ cols: number; children: React.ReactNode }> = ({ cols, children }) => (
   <tr>
-    <td colSpan={cols} className="border border-line/70 px-4 py-8 text-center text-mute">
+    <td colSpan={cols} className="border-b border-line/70 px-4 py-8 text-center text-mute">
       {children}
     </td>
   </tr>

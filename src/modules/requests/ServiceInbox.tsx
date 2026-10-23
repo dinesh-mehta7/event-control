@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronRight, ClipboardList, Search } from 'lucide-react';
+import { Tabs } from '../../components/ui';
+import { Swap } from '../../components/Swap';
 import { DEPTS } from '../../views/orgData';
 import { RequestDetail } from './RequestDetail';
 import { useRequests } from './RequestsContext';
@@ -77,48 +79,43 @@ export const ServiceInbox: React.FC<{ kind: LineKind; title: string }> = ({ kind
           {loadError}
         </p>
       )}
-      <div className="flex flex-wrap gap-1 border-b border-line" role="tablist" aria-label={`${title} request filters`}>
-        {FILTERS.map(f => (
-          <button
-            key={f.id}
-            role="tab"
-            aria-selected={filter === f.id}
-            onClick={() => setFilter(f.id)}
-            className={`px-3 py-2 text-xs border-b-2 ${filter === f.id ? 'border-blue-500 text-blue-400' : 'border-transparent text-mute hover:text-ink'}`}
-          >
-            {f.label}
-            <span className="ml-1.5 text-[10.5px] opacity-70">{counts[f.id]}</span>
-          </button>
-        ))}
-      </div>
-      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-        <table className="w-full min-w-[620px] text-xs">
-          <thead>
-            <tr className="border-b border-line bg-raised/50 text-left text-[10.5px] uppercase tracking-wide text-faint">
-              <th className="px-3 py-2">Request</th>
-              <th className="px-3 py-2">Department / requester</th>
-              <th className="px-3 py-2">Requested {kind === 'radio' ? 'walkies' : 'items'}</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Needed by</th>
-              <th className="px-3 py-2" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {rows.map(r => (
-              <InboxRow key={r.id} request={r} kind={kind} onOpen={() => setSelected(r.id)} />
-            ))}
-          </tbody>
-        </table>
-        {!rows.length && (
-          <div className="px-4 py-10 text-center text-xs text-mute">
-            {!ready || loading
-              ? 'Loading requests…'
-              : query
-                ? 'No matching requests.'
-                : 'No department requests here yet.'}
-          </div>
-        )}
-      </div>
+      <Tabs
+        compact
+        label={`${title} request filters`}
+        value={filter}
+        onChange={id => setFilter(id as Filter)}
+        tabs={FILTERS.map(f => ({ ...f, count: counts[f.id] }))}
+      />
+      <Swap k={filter} indexOf={k => FILTERS.findIndex(f => f.id === k)}>
+        <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+          <table className="w-full min-w-[620px] text-xs">
+            <thead>
+              <tr className="border-b border-line bg-raised/50 text-left text-[10.5px] uppercase tracking-wide text-faint">
+                <th className="px-3 py-2">Request</th>
+                <th className="px-3 py-2">Department / requester</th>
+                <th className="px-3 py-2">Requested {kind === 'radio' ? 'walkies' : 'items'}</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Needed by</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {rows.map(r => (
+                <InboxRow key={r.id} request={r} kind={kind} onOpen={() => setSelected(r.id)} />
+              ))}
+            </tbody>
+          </table>
+          {!rows.length && (
+            <div className="px-4 py-10 text-center text-xs text-mute">
+              {!ready || loading
+                ? 'Loading requests…'
+                : query
+                  ? 'No matching requests.'
+                  : 'No department requests here yet.'}
+            </div>
+          )}
+        </div>
+      </Swap>
     </section>
   );
 };

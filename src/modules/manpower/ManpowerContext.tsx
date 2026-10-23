@@ -102,6 +102,8 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [loadError, setLoadError] = useState('');
   const ref = useRef(sewadars);
   ref.current = sewadars;
+  // Scope already shown on screen; later reloads (realtime, saves, interval) refresh silently instead of blanking the roster.
+  const loadedScope = useRef('');
 
   const toast = useCallback(
     (m: string, t: 'success' | 'error' | 'warning' = 'success') => w.addToast?.(m, t),
@@ -120,7 +122,8 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const load = useCallback(async () => {
     if (!ready) return;
-    setLoading(true);
+    const scopeKey = `${orgId}|${eventScopeKey}`;
+    if (loadedScope.current !== scopeKey) setLoading(true);
     const out: any[] = [];
     let error: any = null;
     for (let from = 0; ; from += 1000) {
@@ -225,6 +228,7 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           })
           .sort(sortSewadars),
       );
+      loadedScope.current = scopeKey;
     }
     setLoading(false);
   }, [ready, orgId, eventId, eventScopeKey, eventScope.events]);
@@ -234,6 +238,7 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setSewadars([]);
       setTeams([]);
       setLoadError('');
+      loadedScope.current = '';
       return;
     }
     load();

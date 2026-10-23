@@ -20,6 +20,7 @@ import { ConfirmModal, btnGhost, btnPrimary, card, cx, inputCls } from './ui';
 import { dishes } from './menu/shared';
 import { AllDays } from './menu/AllDays';
 import { AddMealForm, MealForm } from './menu/MealForm';
+import { PillTabs } from '../../components/PillTabs';
 
 const StatusBadge: React.FC<{ s: MealRow['status']; dark: boolean }> = ({ s, dark }) => (
   <span className={cx('text-xs font-bold px-2 py-0.5 rounded-full border whitespace-nowrap', statusTone(s, dark))}>
@@ -269,27 +270,17 @@ export const MenuView: React.FC = () => {
             <CalendarDays className="w-4 h-4 text-blue-500" />
             Menu chart
           </h2>
-          <div role="tablist" aria-label="Chart view" className="inline-flex p-1 rounded-lg bg-raised">
-            {(
-              [
-                ['day', 'Day'],
-                ['all', 'All days'],
-              ] as const
-            ).map(([k, l]) => (
-              <button
-                key={k}
-                role="tab"
-                aria-selected={view === k}
-                onClick={() => setView(k)}
-                className={cx(
-                  'px-3 py-1.5 rounded-md text-[11.5px] font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
-                  view === k ? 'bg-blue-600 text-white shadow-sm' : muted,
-                )}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
+          <PillTabs
+            label="Chart view"
+            value={view}
+            onChange={id => setView(id as typeof view)}
+            className="inline-flex flex-nowrap rounded-lg bg-raised p-1"
+            itemClassName="px-3 py-1.5 text-[11.5px] font-semibold"
+            tabs={[
+              { id: 'day', label: 'Day' },
+              { id: 'all', label: 'All days' },
+            ]}
+          />
         </div>
 
         {view === 'day' && (

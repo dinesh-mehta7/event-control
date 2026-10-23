@@ -44,7 +44,8 @@ export const Swap: React.FC<{
             : ''
       }`}
     >
-      {current.children}
+      {/* Same view: render live children so filters/state inside it still update. Only the outgoing view is a snapshot. */}
+      {current.key === k ? children : current.children}
     </div>
   );
 };

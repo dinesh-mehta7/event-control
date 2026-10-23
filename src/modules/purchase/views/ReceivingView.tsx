@@ -4,6 +4,7 @@ import { usePurchase } from '../PurchaseContext';
 import { useInventory } from '../../inventory';
 import type { Receipt } from '../types';
 import { D, Empty, ReceiptList, Section, StatusChip, good, useLedger } from './shared';
+import { Select } from '../../../components/Select';
 
 export const ReceivingView: React.FC = () => {
   const { orders, vendorName } = usePurchase();
@@ -156,14 +157,14 @@ export const ReceiveModal: React.FC<{ id: string; onClose: () => void }> = ({ id
             <label className={labelCls(D)} htmlFor="rc-l">
               Store location
             </label>
-            <select id="rc-l" value={location} onChange={e => setLocation(e.target.value)} className={inputCls(D)}>
+            <Select id="rc-l" value={location} onChange={e => setLocation(e.target.value)} className={inputCls(D)}>
               <option value="">Main Store (default)</option>
               {inventory.locations.map(place => (
                 <option key={place.id} value={place.id}>
                   {place.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div>
             <label className={labelCls(D)} htmlFor="rc-g">

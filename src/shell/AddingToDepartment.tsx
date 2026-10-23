@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../modules/walkie/lib/supabaseClient';
 import { useApp as useWalkie } from '../modules/walkie/context/AppContext';
+import { Select } from '../components/Select';
 
 // Super Admin only. The Super Admin belongs to no department, so this says which department the sewadars,
 // rooms, meals, teams, tasks, events and meetings they create go to. "Organisation-wide" makes events, meetings
@@ -37,7 +38,7 @@ export const AddingToDepartment: React.FC<{ dark: boolean }> = ({ dark }) => {
   return (
     <label className="flex min-w-0 items-center gap-1.5 rounded-full border border-line bg-raised/60 px-2 py-1.5 text-[11.5px] text-mute sm:gap-2 sm:px-3 sm:text-xs">
       <span className="hidden whitespace-nowrap sm:inline">Adding to</span>
-      <select
+      <Select
         aria-label="Department new records go to"
         className="max-w-[24vw] cursor-pointer rounded-md border-0 bg-transparent py-0.5 pl-1 pr-5 font-semibold text-ink outline-none focus:ring-1 focus:ring-blue-500 sm:max-w-[14rem]"
         style={{ colorScheme: dark ? 'dark' : 'light' }}
@@ -53,7 +54,7 @@ export const AddingToDepartment: React.FC<{ dark: boolean }> = ({ dark }) => {
             {d.name}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 };

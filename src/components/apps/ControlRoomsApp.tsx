@@ -29,6 +29,7 @@ import { Modal, btnGhost, btnPrimary, input } from './controlRooms/shared';
 import { ExtraAdd } from './controlRooms/ExtraAdd';
 import { EMPTY_FORM, RoomForm } from './controlRooms/RoomForm';
 import { ConfirmDelete } from './controlRooms/ConfirmDelete';
+import { Select } from '../Select';
 
 const btnDanger =
   'inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all whitespace-nowrap';
@@ -426,7 +427,7 @@ export const ControlRoomsApp: React.FC = () => {
                             <p className="text-xs text-mute">No members assigned.</p>
                           )}
                           {editing && (
-                            <select
+                            <Select
                               className={input + ' mt-2 text-xs'}
                               value=""
                               aria-label="Add member"
@@ -447,7 +448,7 @@ export const ControlRoomsApp: React.FC = () => {
                                     {s.name} {s.department === 'control' ? '· Control' : ''}
                                   </option>
                                 ))}
-                            </select>
+                            </Select>
                           )}
                         </div>
 
@@ -509,7 +510,7 @@ export const ControlRoomsApp: React.FC = () => {
                           {/* Inventory location linkage & extra add */}
                           {editing && (
                             <div className="mt-3 space-y-2">
-                              <select
+                              <Select
                                 className={input + ' text-xs'}
                                 value={ops.invLoc[r.id] || ''}
                                 aria-label="Inventory location"
@@ -521,7 +522,7 @@ export const ControlRoomsApp: React.FC = () => {
                                     {l.name}
                                   </option>
                                 ))}
-                              </select>
+                              </Select>
                               <ExtraAdd
                                 onAdd={(name, qty) =>
                                   patch(o => ({

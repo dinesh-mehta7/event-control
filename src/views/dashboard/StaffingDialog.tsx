@@ -12,6 +12,7 @@ import {
   fmtDate,
 } from './charts';
 import type { DepartmentPoint, StaffingPoint } from './charts';
+import { Select } from '../../components/Select';
 
 export const StaffingDialog: React.FC<{
   eventName?: string;
@@ -50,7 +51,7 @@ export const StaffingDialog: React.FC<{
           >
             <ChevronLeft size={15} />
           </button>
-          <select
+          <Select
             aria-label="Selected date"
             className="h-8 rounded-md border border-line bg-field px-2 text-xs text-ink"
             value={date}
@@ -61,7 +62,7 @@ export const StaffingDialog: React.FC<{
                 {fmtDate(r.date)}
               </option>
             ))}
-          </select>
+          </Select>
           <button
             type="button"
             className={navBtn}

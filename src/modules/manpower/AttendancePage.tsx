@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { memberMeta } from './memberMeta';
 import { CalendarCheck, Search, Users } from 'lucide-react';
 import { cx } from '../accommodation/ui';
+import { DEPT_LABEL } from '../accommodation/types';
 import { useWalkie } from '../walkie';
 import { useManpower } from './ManpowerContext';
 import { useEventScope } from '../../context/EventScopeContext';
@@ -29,6 +29,12 @@ const uid = () => `attendance-${globalThis.crypto?.randomUUID?.() || Date.now()}
 const cls = 'rounded-lg border border-line bg-surface';
 const btn =
   'rounded-md border border-line px-3 py-2 text-xs font-medium text-ink-soft hover:bg-raised disabled:opacity-50';
+const formatAttendanceTime = (value: string | null) =>
+  value
+    ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' }).format(
+        new Date(value),
+      )
+    : null;
 
 export const AttendancePage: React.FC = () => {
   const auth: any = useWalkie();
@@ -188,8 +194,10 @@ export const AttendancePage: React.FC = () => {
                   key={label}
                   type="button"
                   aria-pressed={on}
+                  aria-label={
+                    on ? `Show everyone; currently showing ${label.toLowerCase()}` : `Show only ${label.toLowerCase()}`
+                  }
                   onClick={() => setStatusFilter(f => (f === key ? '' : key))}
-                  title={on ? 'Show everyone' : `Show only ${label.toLowerCase()}`}
                   className={cx(
                     'rounded-lg border bg-surface p-3 text-left transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:border-blue-400/50',
                     on ? 'border-blue-500 ring-1 ring-blue-500/40' : 'border-line',
@@ -202,78 +210,132 @@ export const AttendancePage: React.FC = () => {
             })}
           </div>
           <section className={`${cls} overflow-hidden`}>
-            <div className="flex items-center gap-2 border-b border-line p-3 text-sm font-semibold text-ink">
-              <Users size={15} className="text-blue-300" />
-              Sewadar attendance
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line p-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+                <Users size={15} className="text-blue-300" />
+                Sewadar attendance
+              </div>
+              <div className="flex items-center gap-2 text-xs text-mute" aria-live="polite">
+                <span>
+                  {statusFilter ? `Showing ${statusFilter.replace('_', ' ')}` : 'Showing everyone'} · {visible.length}{' '}
+                  of {eligible.length}
+                </span>
+                {statusFilter && (
+                  <button type="button" className={btn} onClick={() => setStatusFilter('')}>
+                    Clear filter
+                  </button>
+                )}
+              </div>
             </div>
             {loading ? (
               <p className="p-5 text-sm text-mute">Loading roster…</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1000px] text-left text-xs">
-                  <thead className="bg-raised text-mute">
+              <div className="max-h-[calc(100vh-18rem)] min-h-[180px] overflow-auto">
+                <table className="h-auto w-full min-w-[1250px] border-collapse text-left text-[11.5px] leading-4">
+                  <thead className="sticky top-0 z-10 bg-raised text-left text-[10.5px] font-semibold uppercase tracking-wide text-mute shadow-sm">
                     <tr>
                       {[
                         'Badge no.',
-                        'Sewadar',
+                        'Name',
                         'Branch',
-                        'Team / sub-department',
+                        'Mobile',
+                        'Team',
+                        'Sub-department',
                         'Status',
                         'Arrived',
                         'Returned',
-                        'Badge status',
+                        'Badge',
                         'Actions',
                       ].map(label => (
-                        <th key={label} className="px-3 py-2.5">
+                        <th key={label} className="whitespace-nowrap border border-line/70 px-2.5 py-1.5">
                           {label}
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-line">
+                  <tbody>
                     {visible.map(person => {
                       const a = byMember.get(person.id);
                       const b = opByMember.get(person.id);
+                      const status = a?.status || 'expected';
+                      const arrivedAt = formatAttendanceTime(a?.checked_in_at || null);
+                      const returnedAt = formatAttendanceTime(a?.checked_out_at || null);
                       return (
-                        <tr key={person.id}>
-                          <td className="px-3 py-2.5 whitespace-nowrap tabular-nums text-ink-soft">
-                            {person.batchNo || '—'}
+                        <tr key={person.id} className="h-auto hover:bg-raised/50">
+                          <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 tabular-nums text-ink-soft">
+                            {(person.batchNo || '').trim() || '—'}
                           </td>
-                          <td className="px-3 py-2.5 font-medium text-ink">
-                            {person.name}
-                            {memberMeta(person) && (
-                              <span className="block text-[10.5px] font-normal text-mute">{memberMeta(person)}</span>
+                          <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 font-semibold text-ink">
+                            {person.name || '—'}
+                          </td>
+                          <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 text-ink-soft">
+                            {(person.branch || '').trim() || '—'}
+                          </td>
+                          <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 text-ink-soft">
+                            {person.phone ? (
+                              <a href={`tel:${person.phone}`} className="hover:text-blue-300">
+                                {person.phone}
+                              </a>
+                            ) : (
+                              '—'
                             )}
                           </td>
-                          <td className="px-3 py-2.5 text-mute">{person.branch || '—'}</td>
-                          <td className="px-3 py-2.5 text-mute">{person.teamName || person.department || '—'}</td>
-                          <td className="px-3 py-2.5 capitalize text-mute">
-                            {(a?.status || 'expected').replace('_', ' ')}
+                          <td className="border border-line/70 px-2.5 py-1.5 text-ink-soft">
+                            {person.teamName || '—'}
                           </td>
-                          <td className="px-3 py-2.5 text-mute">
-                            {a?.checked_in_at ? new Date(a.checked_in_at).toLocaleString('en-IN') : '—'}
+                          <td className="border border-line/70 px-2.5 py-1.5 text-ink-soft">
+                            {DEPT_LABEL[person.department] || person.department || '—'}
                           </td>
-                          <td className="px-3 py-2.5 text-mute">
-                            {a?.checked_out_at ? new Date(a.checked_out_at).toLocaleString('en-IN') : '—'}
+                          <td
+                            className={cx(
+                              'whitespace-nowrap border border-line/70 px-2.5 py-1.5',
+                              status === 'present'
+                                ? 'text-emerald-300'
+                                : status === 'checked_out'
+                                  ? 'text-cyan-300'
+                                  : status === 'absent'
+                                    ? 'text-rose-300'
+                                    : 'text-mute',
+                            )}
+                          >
+                            {status === 'present'
+                              ? 'Arrived'
+                              : status === 'checked_out'
+                                ? 'Returned back'
+                                : status === 'absent'
+                                  ? 'Absent'
+                                  : 'Expected'}
                           </td>
-                          <td className="px-3 py-2.5 text-mute">
-                            {b?.badge_returned ? 'Returned' : b?.badge_issued ? 'Issued' : '—'}
+                          <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 text-ink-soft">
+                            {arrivedAt || '—'}
                           </td>
-                          <td className="px-3 py-2.5">
+                          <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5 text-ink-soft">
+                            {returnedAt || '—'}
+                          </td>
+                          <td className="whitespace-nowrap border border-line/70 px-2.5 py-1.5">
+                            {b?.badge_returned ? (
+                              <span className="text-cyan-300">Returned</span>
+                            ) : b?.badge_issued ? (
+                              <span className="text-emerald-300">Issued</span>
+                            ) : (
+                              <span className="text-mute">Not issued</span>
+                            )}
+                          </td>
+                          <td className="border border-line/70 px-2.5 py-1.5">
                             <div className="flex flex-wrap gap-1">
                               {canManage && (
                                 <>
                                   {(!a || a.status === 'expected' || a.status === 'absent') && (
                                     <>
                                       <button
-                                        className={btn}
+                                        className="rounded border border-line px-1.5 py-1 text-[10px] text-ink-soft hover:bg-raised disabled:opacity-50"
                                         disabled={!!busyId}
                                         onClick={() => void mark(person, 'present')}
                                       >
-                                        Arrived
+                                        Arrived + badge
                                       </button>
                                       <button
-                                        className={btn}
+                                        className="rounded border border-line px-1.5 py-1 text-[10px] text-ink-soft hover:bg-raised disabled:opacity-50"
                                         disabled={!!busyId}
                                         onClick={() => void mark(person, 'absent')}
                                       >
@@ -283,7 +345,7 @@ export const AttendancePage: React.FC = () => {
                                   )}
                                   {a?.status === 'present' && (
                                     <button
-                                      className={btn}
+                                      className="rounded border border-line px-1.5 py-1 text-[10px] text-ink-soft hover:bg-raised disabled:opacity-50"
                                       disabled={!!busyId}
                                       onClick={() => void mark(person, 'checked_out')}
                                     >
@@ -292,16 +354,16 @@ export const AttendancePage: React.FC = () => {
                                   )}
                                   {a?.status === 'checked_out' && (
                                     <button
-                                      className={btn}
+                                      className="rounded border border-line px-1.5 py-1 text-[10px] text-ink-soft hover:bg-raised disabled:opacity-50"
                                       disabled={!!busyId}
                                       onClick={() => void mark(person, 'present')}
                                     >
-                                      Mark arrived again
+                                      Arrived again
                                     </button>
                                   )}
                                   {(!b?.badge_issued || b?.badge_returned) && (
                                     <button
-                                      className={btn}
+                                      className="rounded border border-line px-1.5 py-1 text-[10px] text-ink-soft hover:bg-raised disabled:opacity-50"
                                       disabled={!!busyId}
                                       onClick={() => void badge(person.id, 'issue')}
                                     >
@@ -310,7 +372,7 @@ export const AttendancePage: React.FC = () => {
                                   )}
                                   {b?.badge_issued && !b.badge_returned && (
                                     <button
-                                      className={btn}
+                                      className="rounded border border-line px-1.5 py-1 text-[10px] text-ink-soft hover:bg-raised disabled:opacity-50"
                                       disabled={!!busyId}
                                       onClick={() => void badge(person.id, 'return')}
                                     >
