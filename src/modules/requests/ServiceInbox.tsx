@@ -2,10 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { ChevronRight, ClipboardList, Search } from 'lucide-react';
 import { Tabs } from '../../components/ui';
 import { Swap } from '../../components/Swap';
-import { DEPTS } from '../../views/orgData';
 import { RequestDetail } from './RequestDetail';
 import { useRequests } from './RequestsContext';
-import { StatusBadge, UrgentBadge } from './parts';
+import { DeptRoute, StatusBadge, UrgentBadge } from './parts';
 import { requestStage } from './types';
 import type { LineKind, Req } from './types';
 
@@ -47,7 +46,7 @@ export const ServiceInbox: React.FC<{ kind: LineKind; title: string }> = ({ kind
       return (
         stage &&
         (!q ||
-          [r.number, r.title, r.requesterName, r.departmentName, r.subDepartment ? DEPTS[r.subDepartment] : '']
+          [r.number, r.title, r.requesterName, r.departmentName, r.fromDepartmentName]
             .join(' ')
             .toLowerCase()
             .includes(q))
@@ -141,7 +140,7 @@ const InboxRow: React.FC<{ request: Req; kind: LineKind; onOpen: () => void }> =
         </button>
       </td>
       <td className="px-3 py-2 text-ink-soft">
-        {r.departmentName || (r.subDepartment ? DEPTS[r.subDepartment] : 'Department')}
+        <DeptRoute r={r} />
         <span className="block text-[10.5px] text-faint">{r.requesterName || 'Requester'}</span>
       </td>
       <td className="px-3 py-2 text-ink-soft">{lines.map(i => `${i.requested} ${i.unit} ${i.name}`).join(', ')}</td>

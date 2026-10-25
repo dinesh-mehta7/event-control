@@ -568,11 +568,6 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
     const walkies = Number(radioRequestForm.walkies);
     const chargers = Number(radioRequestForm.chargers);
     const earphones = Number(radioRequestForm.earphones);
-    const radioFrom = sourceLabel(radioRequestForm.fromDepartment, radioRequestForm.fromLocation);
-    if (!radioFrom) {
-      setError('Choose the department or enter the location to collect the radios from.');
-      return;
-    }
     if (![walkies, chargers, earphones].every(value => Number.isInteger(value) && value >= 0) || walkies < 1) {
       setError('Enter whole-number quantities and request at least one walkie-talkie.');
       return;
@@ -584,7 +579,7 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
       p_walkies: walkies,
       p_chargers: chargers,
       p_earphones: earphones,
-      p_collect_from: radioFrom,
+      p_collect_from: '', // set by the Walkie team when the radios are allocated
     });
     if (requestError) setError(schemaError(requestError));
     else {
@@ -2092,51 +2087,7 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
                       {requirementCategory === 'walkie' && (
                         <section className="border-t border-line">
                           {canPlan && (
-                            <form
-                              onSubmit={addWalkieRequest}
-                              className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4 sm:items-end"
-                            >
-                              <label className="text-xs font-medium text-mute">
-                                From department
-                                <Select
-                                  className={`${input} mt-1`}
-                                  value={radioRequestForm.fromDepartment}
-                                  onChange={event =>
-                                    setRadioRequestForm(old => ({ ...old, fromDepartment: event.target.value }))
-                                  }
-                                >
-                                  <option value="">Choose department</option>
-                                  {sourceDepartments.map(name => (
-                                    <option key={name} value={name}>
-                                      {name}
-                                    </option>
-                                  ))}
-                                </Select>
-                                <span className="mt-1 block text-[10.5px] font-normal text-faint">
-                                  Which department hands over the radios.
-                                </span>
-                              </label>
-                              <label className="text-xs font-medium text-mute">
-                                From location
-                                <input
-                                  list="event-radio-source-places"
-                                  className={`${input} mt-1`}
-                                  placeholder="e.g. Main Control Room"
-                                  value={radioRequestForm.fromLocation}
-                                  onChange={event =>
-                                    setRadioRequestForm(old => ({ ...old, fromLocation: event.target.value }))
-                                  }
-                                />
-                                <datalist id="event-radio-source-places">
-                                  <option value="Main Control Room" />
-                                  <option value="Walkie-Talkie Store" />
-                                  <option value="IT Office" />
-                                  <option value="Control Room" />
-                                </datalist>
-                                <span className="mt-1 block text-[10.5px] font-normal text-faint">
-                                  Where the team collects them.
-                                </span>
-                              </label>
+                            <form onSubmit={addWalkieRequest} className="grid gap-3 p-4 sm:grid-cols-3 sm:items-end">
                               {(
                                 [
                                   ['walkies', 'Walkie-talkies', 'At least one set is required'],
@@ -2161,12 +2112,13 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
                                   <span className="mt-1 block text-[10.5px] font-normal text-faint">{hint}</span>
                                 </label>
                               ))}
-                              <div className="flex flex-wrap items-center gap-3 sm:col-span-2 xl:col-span-4">
+                              <div className="flex flex-wrap items-center gap-3 sm:col-span-3">
                                 <button className={action} disabled={busy || !selected}>
                                   {busy ? 'Sending…' : 'Send radio request'} <Radio size={14} />
                                 </button>
                                 <span className="text-[10.5px] text-mute">
-                                  This creates a request in the event radio approval queue.
+                                  The IT Department Head approves it; the Walkie team then allocates the radios and sets
+                                  where to collect them.
                                 </span>
                               </div>
                             </form>

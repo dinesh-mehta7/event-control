@@ -1,7 +1,91 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Radio, BatteryCharging, Headphones, Wrench, Pencil } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
+import { useEventScope } from '../../../context/EventScopeContext';
+import { Radio, BatteryCharging, Headphones, Wrench, Pencil, ArrowRight } from 'lucide-react';
 import * as XLSX from 'xlsx';
+
+// Event walkie requests for the event in "Working on", stage by stage; each tile opens Event radio requests.
+const PIPELINE = [
+  ['To approve', ['pending_approval'], 'text-amber-300'],
+  ['To allocate', ['approved'], 'text-blue-300'],
+  ['Ready to hand over', ['ready'], 'text-violet-300'],
+  ['With departments', ['delivered', 'partial_return'], 'text-cyan-300'],
+  ['Returned', ['returned'], 'text-emerald-300'],
+];
+function EventPipeline() {
+  const { currentUser, setCurrentTab } = useApp();
+  const eventScope = useEventScope();
+  const eventId = eventScope.scopeFor('walkie');
+  const eventName = eventScope.events.find(e => e.id === eventId)?.name;
+  const [rows, setRows] = useState([]);
+  const orgId = currentUser?.organizationId;
+  useEffect(() => {
+    if (!orgId) return;
+    let on = true;
+    const load = () => {
+      let q = supabase
+        .from('event_radio_requests')
+        .select('status,walkie_count,delivered_walkies,returned_walkies')
+        .eq('organization_id', orgId);
+      if (eventId) q = q.eq('event_id', eventId);
+      q.then(({ data }) => on && setRows(data || []));
+    };
+    load();
+    const ch = supabase
+      .channel(`walkie-overview-${orgId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'event_radio_requests', filter: `organization_id=eq.${orgId}` },
+        load,
+      )
+      .subscribe();
+    return () => {
+      on = false;
+      supabase.removeChannel(ch);
+    };
+  }, [orgId, eventId]);
+  if (!rows.length) return null;
+  return (
+    <section className="rounded-xl border border-line bg-surface p-4">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold text-ink">
+          Event walkie requests{eventName ? ` · ${eventName}` : ' · all events'}
+        </h2>
+        <button
+          type="button"
+          onClick={() => setCurrentTab('requests')}
+          className="inline-flex items-center gap-1 text-xs font-medium text-blue-300 hover:underline"
+        >
+          Open requests <ArrowRight className="h-3 w-3" />
+        </button>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-5">
+        {PIPELINE.map(([label, statuses, tone]) => {
+          const list = rows.filter(r => statuses.includes(r.status));
+          const radios = list.reduce(
+            (t, r) => t + (statuses[0] === 'delivered' ? r.delivered_walkies - r.returned_walkies : r.walkie_count),
+            0,
+          );
+          return (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setCurrentTab('requests')}
+              className="rounded-lg border border-line bg-raised/30 px-3 py-2.5 text-left transition-colors hover:bg-raised/60"
+            >
+              <div className="text-[10.5px] font-semibold uppercase tracking-wider text-faint">{label}</div>
+              <div className={`mt-0.5 text-xl font-semibold tabular-nums ${tone}`}>{list.length}</div>
+              <div className="text-[11px] text-mute">
+                request{list.length === 1 ? '' : 's'} · {radios} walkie{radios === 1 ? '' : 's'}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 function StockBreakdownChart({ title, total, out, free, fix, dark }) {
   const radius = 38;
@@ -147,6 +231,7 @@ export default function DashboardView() {
 
   return (
     <div className="space-y-6">
+      <EventPipeline />
       <div className="grid md:grid-cols-3 gap-4">
         {cards.map(({ key, title, icon: Icon, tone, total, out, free, fix }) => (
           <div key={key} className={`${box} p-5`}>

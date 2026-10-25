@@ -9,6 +9,7 @@ import { supabase } from '../walkie/lib/supabaseClient';
 import { DepartmentSelect } from '../../components/DepartmentSelect';
 import { homeDepartmentOf } from '../../views/orgData';
 import { Select } from '../../components/Select';
+import { useEventScope } from '../../context/EventScopeContext';
 
 const UNITS = ['pcs', 'box', 'roll', 'meter', 'set', 'pair', 'kg', 'litre', 'packet'];
 const blank = (): NewLine => ({
@@ -36,7 +37,9 @@ export const NewRequest: React.FC<{
   const [events, setEvents] = useState<any[]>([]);
   const [eventId, setEventId] = useState('');
   const [radioQty, setRadioQty] = useState({ walkies: '1', chargers: '0', earphones: '0' });
-  const [collectFrom, setCollectFrom] = useState('');
+  const eventScope = useEventScope();
+  // One walkie request per department per event: the open one, if the department already asked.
+  const [existingRadio, setExistingRadio] = useState<any | null>(null);
   const [title, setTitle] = useState(copyFrom?.title || '');
   const [purpose, setPurpose] = useState(copyFrom?.purpose || '');
   const [deliverTo, setDeliverTo] = useState(copyFrom?.deliverTo || '');
@@ -101,10 +104,32 @@ export const NewRequest: React.FC<{
         if (error) setErr(error.message);
         else {
           setEvents(data || []);
-          setEventId(id => id || data?.[0]?.id || '');
+          // Start on the event chosen in the header ("Working on"), else the latest one.
+          const focused = eventScope.scopeFor('event-reports');
+          setEventId(id => id || (data || []).find(e => e.id === focused)?.id || data?.[0]?.id || '');
         }
       });
   }, [orgId]);
+
+  useEffect(() => {
+    if (!orgId || !eventId || !ownDept) {
+      setExistingRadio(null);
+      return;
+    }
+    let on = true;
+    supabase
+      .from('event_radio_requests')
+      .select('id,status,walkie_count,charger_count,earphone_count')
+      .eq('organization_id', orgId)
+      .eq('event_id', eventId)
+      .eq('department_id', ownDept.id)
+      .not('status', 'in', '(rejected,returned)')
+      .limit(1)
+      .then(({ data }) => on && setExistingRadio(data?.[0] || null));
+    return () => {
+      on = false;
+    };
+  }, [orgId, eventId, ownDept?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = async () => {
     if (busy) return;
@@ -118,19 +143,26 @@ export const NewRequest: React.FC<{
         return setErr(
           'Your account is not linked to a department yet. Ask an administrator to assign your department.',
         );
+      if (existingRadio)
+        return setErr(`${ownDept.name} already asked for walkies for this event. Change it under My requests.`);
       if (![walkies, chargers, earphones].every(q => Number.isInteger(q) && q >= 0) || walkies < 1)
         return setErr('Enter whole-number quantities. Request at least one walkie set.');
-      if (!collectFrom.trim()) return setErr('Choose or enter the unit to collect the radios from.');
       setBusy(true);
+      // The pickup point is set by the Walkie team when they allocate the radios.
       const { error } = await supabase.rpc('event_radio_request_submit', {
         p_event_id: eventId,
         p_walkies: walkies,
         p_chargers: chargers,
         p_earphones: earphones,
-        p_collect_from: collectFrom.trim(),
+        p_collect_from: '',
       });
       setBusy(false);
-      if (error) return setErr(error.message || 'Could not send the Walkie request.');
+      if (error)
+        return setErr(
+          /collect/i.test(error.message || '')
+            ? 'Run supabase/migration_v112_event_walkie_request_sync.sql in the Supabase SQL Editor, then try again.'
+            : error.message || 'Could not send the Walkie request.',
+        );
       onDone('event-radio');
       return;
     }
@@ -478,22 +510,21 @@ export const NewRequest: React.FC<{
               </div>
             </Field>
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label="Collect from">
-              <input
-                className={inputCls}
-                list="req-walkie-collection-units"
-                placeholder="e.g. Main Control Room"
-                value={collectFrom}
-                onChange={e => setCollectFrom(e.target.value)}
-              />
-              <datalist id="req-walkie-collection-units">
-                <option value="Main Control Room" />
-                <option value="Walkie-Talkie Store" />
-                <option value="IT Office" />
-                <option value="Control Room" />
-              </datalist>
-            </Field>
+          {existingRadio && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2.5 text-xs text-blue-200">
+              <span>
+                {ownDept?.name} already asked for this event: {existingRadio.walkie_count} walkies ·{' '}
+                {existingRadio.charger_count} chargers · {existingRadio.earphone_count} earphones.
+                {existingRadio.status === 'pending_approval'
+                  ? ' You can change the quantities until it is approved.'
+                  : ' Ask the Walkie team if you need more.'}
+              </span>
+              <a href="#/requests/mine" className="font-semibold text-blue-300 hover:underline">
+                Open My requests
+              </a>
+            </div>
+          )}
+          <div className={`mt-4 grid gap-3 sm:grid-cols-3 ${existingRadio ? 'pointer-events-none opacity-50' : ''}`}>
             {(
               [
                 ['walkies', 'Walkie sets', 1],
@@ -514,7 +545,8 @@ export const NewRequest: React.FC<{
             ))}
           </div>
           <p className="mt-3 text-xs text-mute">
-            The IT Department Head reviews it first; approved requests appear in Walkie-Talkie → Event radio requests.
+            The IT Department Head approves it, then the Walkie team allocates the radios and tells you where to collect
+            them. Follow it under My requests.
           </p>
         </section>
       )}
@@ -528,7 +560,7 @@ export const NewRequest: React.FC<{
         <p className="text-xs text-mute">
           {requestType === 'walkies' ? 'Approval and tracking happen in the event Walkie queue.' : route}
         </p>
-        <button className={btnPrimary} disabled={busy} onClick={send}>
+        <button className={btnPrimary} disabled={busy || (requestType === 'walkies' && !!existingRadio)} onClick={send}>
           <Send size={14} />
           {busy ? 'Sending…' : requestType === 'walkies' ? 'Send Walkie request' : 'Send item request'}
         </button>

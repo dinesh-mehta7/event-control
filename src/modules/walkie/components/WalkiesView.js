@@ -16,7 +16,10 @@ import {
   Square,
   Building2,
   LayoutGrid,
+  Wrench,
+  CircleCheck,
 } from 'lucide-react';
+import { btnGhost, btnPrimary, inputCls } from '../../../components/ui';
 import { Select } from '../../../components/Select';
 
 const STATUS_STYLES = {
@@ -43,10 +46,38 @@ export default function WalkiesView() {
     bulkDeleteWalkies,
     departments,
     assignPersonToWalkie,
+    maintenance,
+    sendToMaintenance,
+    completeMaintenance,
     settings,
     currentUser,
     addToast,
   } = useApp();
+  // Repairs are handled here, on the radio itself (there is no separate Maintenance tab any more).
+  const openRepairs = maintenance.filter(m => m.status === 'In Progress');
+  const repairOf = id => openRepairs.find(m => m.walkieId === id);
+  const [repairWalkie, setRepairWalkie] = useState(null);
+  const [repairForm, setRepairForm] = useState({ issue: '', technician: '' });
+  const [repairBusy, setRepairBusy] = useState(false);
+  const submitRepair = async e => {
+    e.preventDefault();
+    if (!repairWalkie || !repairForm.issue.trim()) return;
+    setRepairBusy(true);
+    const ok = await sendToMaintenance(repairWalkie.id, repairForm.issue.trim(), repairForm.technician.trim());
+    setRepairBusy(false);
+    if (ok) {
+      setRepairWalkie(null);
+      setRepairForm({ issue: '', technician: '' });
+    }
+  };
+  const markRepaired = async walkie => {
+    const record = repairOf(walkie.id);
+    if (!record) {
+      addToast('No open repair record for this radio.', 'error');
+      return;
+    }
+    await completeMaintenance(record.id, 'Fixed', 'Repaired');
+  };
 
   const isDark = settings.theme === 'dark';
   const isAdmin = currentUser?.role === 'Admin';
@@ -434,6 +465,50 @@ export default function WalkiesView() {
         </div>
       </section>
 
+      {/* Radios in repair right now, with the issue and who has them. */}
+      {openRepairs.length > 0 && (
+        <section className="rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-300">
+              <Wrench className="h-3.5 w-3.5" />
+              In repair · {openRepairs.length}
+            </h3>
+            <button
+              type="button"
+              className="text-[11.5px] font-medium text-amber-300 hover:underline"
+              onClick={() => setStatusFilter('Under Maintenance')}
+            >
+              Show only these
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {openRepairs.map(m => {
+              const w = walkies.find(x => x.id === m.walkieId);
+              return (
+                <span
+                  key={m.id}
+                  className="inline-flex items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[11.5px]"
+                >
+                  <span className="font-semibold text-ink">{w?.label || m.walkieId}</span>
+                  <span className="text-mute">
+                    {m.issue} · {m.technician || 'Technician'} · since {m.date}
+                  </span>
+                  {!isClient && w && (
+                    <button
+                      type="button"
+                      className="font-semibold text-emerald-300 hover:underline"
+                      onClick={() => void markRepaired(w)}
+                    >
+                      Repaired
+                    </button>
+                  )}
+                </span>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Select-all bar (only shows once a filtered set is in view) */}
       {paginatedWalkies.length > 0 && (
         <div className="flex items-center justify-between px-1">
@@ -538,6 +613,33 @@ export default function WalkiesView() {
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex justify-end gap-1">
+                        {!isClient &&
+                          (walkie.status === 'Under Maintenance' ? (
+                            <button
+                              type="button"
+                              onClick={() => void markRepaired(walkie)}
+                              className="rounded-md px-2 py-1.5 text-[11.5px] font-semibold text-emerald-300 hover:bg-emerald-500/10"
+                              title="Repaired: back to available"
+                              aria-label={`Mark ${walkie.id} repaired`}
+                            >
+                              <CircleCheck className="inline h-4 w-4" /> Repaired
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRepairWalkie(walkie);
+                                setRepairForm({ issue: '', technician: '' });
+                              }}
+                              className="rounded-md p-2 text-amber-300 hover:bg-amber-500/10"
+                              title={
+                                walkie.status === 'Allocated' ? 'Send to repair (returns it first)' : 'Send to repair'
+                              }
+                              aria-label={`Send ${walkie.id} to repair`}
+                            >
+                              <Wrench className="h-4 w-4" />
+                            </button>
+                          ))}
                         <button
                           type="button"
                           onClick={() => openAssignModal(walkie)}
@@ -851,6 +953,64 @@ export default function WalkiesView() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Send to repair */}
+      {repairWalkie && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Send radio to repair"
+          onClick={() => setRepairWalkie(null)}
+        >
+          <form
+            onSubmit={submitRepair}
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-md space-y-4 rounded-2xl border border-line bg-surface p-5 shadow-2xl"
+          >
+            <div>
+              <h3 className="flex items-center gap-2 text-base font-semibold text-ink">
+                <Wrench className="h-4 w-4 text-amber-300" />
+                Send {repairWalkie.label || repairWalkie.id} to repair
+              </h3>
+              {repairWalkie.status === 'Allocated' && (
+                <p className="mt-1 text-xs text-amber-300">
+                  It is with {departments.find(d => d.id === repairWalkie.departmentId)?.name || 'a department'} — it is
+                  returned from there first.
+                </p>
+              )}
+            </div>
+            <label className="block text-xs text-mute">
+              What is wrong? *
+              <input
+                autoFocus
+                className={`${inputCls} mt-1`}
+                placeholder="e.g. No sound, battery not charging"
+                value={repairForm.issue}
+                onChange={e => setRepairForm(f => ({ ...f, issue: e.target.value }))}
+              />
+            </label>
+            <label className="block text-xs text-mute">
+              Technician
+              <input
+                className={`${inputCls} mt-1`}
+                placeholder="On-site Tech"
+                value={repairForm.technician}
+                onChange={e => setRepairForm(f => ({ ...f, technician: e.target.value }))}
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" className={btnGhost} onClick={() => setRepairWalkie(null)}>
+                Cancel
+              </button>
+              <button type="submit" className={btnPrimary} disabled={repairBusy || !repairForm.issue.trim()}>
+                <Wrench className="h-3.5 w-3.5" />
+                {repairBusy ? 'Saving…' : 'Send to repair'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check } from 'lucide-react';
+import { ArrowRight, Check } from 'lucide-react';
 import { Pill } from '../../components/ui';
 import { STATUS_LABEL, STATUS_TONE, fmtDateTime, lineStatus, purchaseAtStore } from './types';
 import type { OrderInfo, Req, ReqStatus } from './types';
@@ -15,6 +15,18 @@ export const StatusBadge: React.FC<{ status: ReqStatus; closed?: boolean; stage?
   </Pill>
 );
 export const UrgentBadge: React.FC = () => <Pill c="bg-red-500/15 text-red-300">Urgent</Pill>;
+
+// Both departments of a request, everywhere it is listed: the requester's (from) → the one it was made to.
+export const DeptRoute: React.FC<{ r: Pick<Req, 'fromDepartmentName' | 'departmentName'>; className?: string }> = ({
+  r,
+  className = '',
+}) => (
+  <span className={`inline-flex flex-wrap items-center gap-x-1 ${className}`}>
+    <span title="From">{r.fromDepartmentName || '—'}</span>
+    <ArrowRight size={11} className="shrink-0 text-faint" aria-label="to" />
+    <span title="To">{r.departmentName || '—'}</span>
+  </span>
+);
 
 // Approved by the Super Admin: the request was escalated, not sent back after its last escalation, and is now
 // approved (the approval text is the same whoever approves, so it cannot be used to tell them apart).

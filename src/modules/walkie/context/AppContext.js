@@ -71,20 +71,12 @@ const mapDepartmentHead = row => ({
   mobileNumber: row.mobile_number,
 });
 
-const mapDelivery = row => ({
-  id: row.id,
-  departmentId: row.department_id || '',
-  walkieCount: row.walkie_count,
-  chargerCount: row.charger_count,
-  earphoneCount: row.earphone_count || 0,
-  status: row.status,
-  deliveredBy: row.delivered_by || '',
-  signedBy: row.signed_by || '',
-  remarks: row.remarks || '',
-  deliveredAt: row.delivered_at || null,
-  returnedAt: row.returned_at || null,
-  createdAt: row.created_at,
-});
+// Chargers / earphones out on active allocations of every event (accessory stock is shared).
+const sumAccessories = rows =>
+  rows.reduce(
+    (t, r) => ({ chargers: t.chargers + (r.charger_count || 0), earphones: t.earphones + (r.earphone_count || 0) }),
+    { chargers: 0, earphones: 0 },
+  );
 
 const mapInventorySettings = row => ({
   totalEarphones: row.total_earphones || 0,
@@ -153,7 +145,8 @@ export function AppProvider({ children }) {
   const [maintenance, setMaintenance] = useState([]);
   const [history, setHistory] = useState([]);
   const [departmentHeads, setDepartmentHeads] = useState([]);
-  const [deliveries, setDeliveries] = useState([]);
+  // Org-wide accessories out (null until loaded): the allocations list is limited to "Working on".
+  const [accessoriesOut, setAccessoriesOut] = useState(null);
   const [inventorySettings, setInventorySettings] = useState({
     totalEarphones: 0,
     totalChargers: 0,
@@ -831,10 +824,7 @@ export function AppProvider({ children }) {
           supabase.from('maintenance').select('*').order('created_at', { ascending: false }),
           supabase.from('history').select('*').order('created_at', { ascending: false }).limit(300),
           supabase.from('department_heads').select('*').order('created_at', { ascending: true }),
-          (eventId
-            ? supabase.from('deliveries').select('*').eq('event_id', eventId)
-            : supabase.from('deliveries').select('*').is('event_id', null)
-          ).order('created_at', { ascending: false }),
+          supabase.from('allocations').select('charger_count,earphone_count').eq('status', 'Active'),
           supabase
             .from('inventory_settings')
             .select('*')
@@ -865,11 +855,11 @@ export function AppProvider({ children }) {
           addToast(`Could not load some data (${failed[0]}). Check your connection and the Supabase setup.`, 'error');
         }
 
-        // New tables (department heads / deliveries / accessory inventory) are
+        // New tables (department heads / accessory inventory) and the accessory totals are
         // handled independently so a missing migration doesn't block the rest
         // of the app's data from loading.
         if (!dh.error && Array.isArray(dh.data)) setDepartmentHeads(dh.data.map(mapDepartmentHead));
-        if (!dl.error && Array.isArray(dl.data)) setDeliveries(dl.data.map(mapDelivery));
+        if (!dl.error && Array.isArray(dl.data)) setAccessoriesOut(sumAccessories(dl.data));
         if (!inv.error && inv.data) setInventorySettings(mapInventorySettings(inv.data));
       } catch (err) {
         // eslint-disable-next-line no-console
@@ -912,11 +902,17 @@ export function AppProvider({ children }) {
         { event: '*', schema: 'public', table: 'departments' },
         makeHandler(setDepartments, mapDepartment),
       )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'allocations' },
-        makeHandler(setAllocations, mapAllocation, true, true),
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'allocations' }, payload => {
+        makeHandler(setAllocations, mapAllocation, true, true)(payload);
+        // Any allocation change (any event) can move the shared accessory totals.
+        supabase
+          .from('allocations')
+          .select('charger_count,earphone_count')
+          .eq('status', 'Active')
+          .then(({ data, error }) => {
+            if (isMounted && !error && Array.isArray(data)) setAccessoriesOut(sumAccessories(data));
+          });
+      })
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'maintenance' },
@@ -931,11 +927,6 @@ export function AppProvider({ children }) {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'department_heads' },
         makeHandler(setDepartmentHeads, mapDepartmentHead),
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'deliveries' },
-        makeHandler(setDeliveries, mapDelivery, true, true),
       )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_settings' }, payload => {
         if (payload.eventType === 'DELETE') return;
@@ -1315,7 +1306,6 @@ export function AppProvider({ children }) {
     );
     // Department heads cascade-delete in the DB; mirror that locally right away.
     setDepartmentHeads(prev => prev.filter(h => h.departmentId !== id));
-    setDeliveries(prev => prev.map(d => (d.departmentId === id ? { ...d, departmentId: '' } : d)));
 
     logAction(
       force ? 'Department Force Deleted' : 'Department Deleted',
@@ -1340,6 +1330,7 @@ export function AppProvider({ children }) {
     holderContact = '',
     chargers = 0,
     earphones = 0,
+    forEventId = undefined, // event requests: the request's event, not the header's "Working on"
   ) => {
     if (currentUser?.role === 'Client') {
       addToast('Clients are not authorized to allocate radios.', 'error');
@@ -1384,7 +1375,7 @@ export function AppProvider({ children }) {
       status: 'Active',
       charger_count: cN,
       earphone_count: eN,
-      event_id: eventId,
+      event_id: forEventId !== undefined ? forEventId || null : eventId,
       organization_id: currentUser.organizationId,
     };
 
@@ -1484,198 +1475,76 @@ export function AppProvider({ children }) {
     );
   };
 
-  // Return Walkies
+  // Radios, allocations and history again after a server-side change (realtime also catches up,
+  // this just makes the screen current right away). Allocations stay scoped to "Working on".
+  const refreshRadioData = async () => {
+    const [w, a, h, out] = await Promise.all([
+      supabase.from('walkies').select('*').order('created_at', { ascending: true }),
+      (eventId
+        ? supabase.from('allocations').select('*').eq('event_id', eventId)
+        : supabase.from('allocations').select('*').is('event_id', null)
+      ).order('created_at', { ascending: false }),
+      supabase.from('history').select('*').order('created_at', { ascending: false }).limit(300),
+      supabase.from('allocations').select('charger_count,earphone_count').eq('status', 'Active'),
+    ]);
+    if (!w.error && Array.isArray(w.data)) setWalkies(w.data.map(mapWalkie));
+    if (!a.error && Array.isArray(a.data)) setAllocations(a.data.map(mapAllocation));
+    if (!h.error && Array.isArray(h.data)) setHistory(h.data.map(mapHistory));
+    if (!out.error && Array.isArray(out.data)) setAccessoriesOut(sumAccessories(out.data));
+  };
+  const needsV117 = error =>
+    /walkie_return|walkie_transfer|schema cache/i.test(error?.message || '')
+      ? 'Run supabase/migration_v117_walkie_return_transfer.sql in the Supabase SQL Editor, then reload.'
+      : describeDbError(error);
+
+  // Return Walkies. One server function (walkie_return) for every screen: it frees exactly these radios,
+  // trims or closes every active allocation holding them (whatever event it belongs to) and updates the
+  // event walkie request they were given on.
   const returnWalkies = async (walkieIds, returnRemarks = '') => {
     if (currentUser?.role === 'Client') {
       addToast('Clients are not authorized to check-in radios.', 'error');
       return false;
     }
     if (walkieIds.length === 0) return false;
-
-    const { error: walkieError } = await supabase
-      .from('walkies')
-      .update({
-        status: 'Available',
-        department_id: null,
-        channel: '',
-        assigned_person_name: null,
-        assigned_person_contact: null,
-      })
-      .in('id', walkieIds);
-    if (walkieError) {
-      addToast(`Failed to return walkies: ${walkieError.message}`, 'error');
+    const { error } = await supabase.rpc('walkie_return', { p_walkie_ids: walkieIds, p_remarks: returnRemarks || '' });
+    if (error) {
+      addToast(`Failed to return walkies: ${needsV117(error)}`, 'error');
       return false;
     }
-
-    setWalkies(prev =>
-      prev.map(w =>
-        walkieIds.includes(w.id)
-          ? { ...w, status: 'Available', departmentId: '', channel: '', assignedPerson: null }
-          : w,
-      ),
-    );
-
-    setAllocations(prev =>
-      prev.map(alloc => {
-        if (alloc.status !== 'Active') return alloc;
-        const remainingWalkies = alloc.walkieIds.filter(id => !walkieIds.includes(id));
-        if (remainingWalkies.length === alloc.walkieIds.length) return alloc;
-        if (remainingWalkies.length === 0) {
-          return { ...alloc, status: 'Returned', returnedDate: new Date().toISOString().split('T')[0] };
-        }
-        return { ...alloc, walkieIds: remainingWalkies };
-      }),
-    );
-
-    // Update or close out any active allocation rows that reference these walkies
-    const activeAllocs = allocations.filter(a => a.status === 'Active');
-    for (const alloc of activeAllocs) {
-      const remainingWalkies = alloc.walkieIds.filter(id => !walkieIds.includes(id));
-      if (remainingWalkies.length === alloc.walkieIds.length) continue; // this allocation is unaffected
-
-      const { error: bookErr } =
-        remainingWalkies.length === 0
-          ? await supabase
-              .from('allocations')
-              .update({
-                status: 'Returned',
-                returned_date: new Date().toISOString().split('T')[0],
-              })
-              .eq('id', alloc.id)
-          : await supabase.from('allocations').update({ walkie_ids: remainingWalkies }).eq('id', alloc.id);
-      if (bookErr) {
-        addToast(
-          `Radios returned, but allocation record ${alloc.id} could not be updated: ${describeDbError(bookErr)}`,
-          'warning',
-        );
-      }
-    }
-
-    logAction(
-      'Walkies Returned',
-      `Returned ${walkieIds.length} walkies back to inventory by ${currentUser.name}. Remarks: ${returnRemarks || 'None'}`,
-      'success',
-    );
+    await refreshRadioData();
     addToast(`Successfully returned ${walkieIds.length} walkies.`);
     return true;
   };
 
-  // Transfer Walkie (optionally moving chargers / earphones along with it).
-  // Accessories are taken from the allocation batch the radio currently
-  // belongs to and handed to the destination department in a new allocation.
+  // Transfer Walkie (optionally moving chargers / earphones along with it). Server function walkie_transfer:
+  // the radio joins a new allocation for the target department that keeps the batch's event; the moved
+  // accessories leave the source batch; an event request counts the radio as transferred.
   const transferWalkie = async (walkieId, targetDepartmentId, remarks, chargers = 0, earphones = 0) => {
     if (currentUser?.role === 'Client') {
       addToast('Clients are not authorized to transfer radios.', 'error');
       return false;
     }
     const walkie = walkies.find(w => w.id === walkieId);
-    if (!walkie) return false;
-    if (walkie.status !== 'Allocated') {
-      addToast('Only allocated radios can be transferred.', 'error');
-      return false;
-    }
-
-    const sourceDept = departments.find(d => d.id === walkie.departmentId);
     const targetDept = departments.find(d => d.id === targetDepartmentId);
-    if (!targetDept) {
-      addToast('Target department not found', 'error');
+    if (!walkie || !targetDept) {
+      addToast('Choose the radio and the department to transfer to.', 'error');
       return false;
     }
-    if (walkie.departmentId === targetDepartmentId) {
-      addToast('This radio is already in that department.', 'error');
-      return false;
-    }
-
-    const priorAlloc = allocations.find(a => a.status === 'Active' && a.walkieIds.includes(walkieId));
     const cN = Math.max(0, parseInt(chargers, 10) || 0);
     const eN = Math.max(0, parseInt(earphones, 10) || 0);
-    const heldChargers = priorAlloc ? priorAlloc.chargerCount : 0;
-    const heldEarphones = priorAlloc ? priorAlloc.earphoneCount : 0;
-    if (cN > heldChargers) {
-      addToast(`Only ${heldChargers} chargers are held by this radio's current batch.`, 'error');
-      return false;
-    }
-    if (eN > heldEarphones) {
-      addToast(`Only ${heldEarphones} earphones are held by this radio's current batch.`, 'error');
-      return false;
-    }
-
-    const today = new Date().toISOString().split('T')[0];
-
-    // 1) Create the destination allocation first (carries the accessories)
-    const newAllocRow = {
-      id: `alloc-${Date.now()}`,
-      department_id: targetDepartmentId,
-      walkie_ids: [walkieId],
-      date: today,
-      allocated_by: currentUser.name,
-      remarks: `Transferred from ${sourceDept ? sourceDept.name : 'Unknown'}. ${remarks || ''}`.trim(),
-      status: 'Active',
-      charger_count: cN,
-      earphone_count: eN,
-      organization_id: currentUser.organizationId,
-    };
-    const { error: allocError } = await supabase.from('allocations').insert(newAllocRow);
-    if (allocError) {
-      addToast(`Transfer failed: ${describeDbError(allocError)}`, 'error');
-      return false;
-    }
-
-    // 2) Move the radio itself
-    const { error: walkieError } = await supabase
-      .from('walkies')
-      .update({ department_id: targetDepartmentId, status: 'Allocated', channel: targetDept.channelNumber })
-      .eq('id', walkieId);
-    if (walkieError) {
-      await supabase.from('allocations').delete().eq('id', newAllocRow.id);
-      addToast(`Transfer failed: ${describeDbError(walkieError)}`, 'error');
-      return false;
-    }
-
-    // 3) Take the radio (and the moved accessories) out of the source batch.
-    //    If that was the batch's last radio, the batch closes and anything
-    //    not moved returns to stock — same rule as a normal return.
-    let sourceUpdate = null;
-    if (priorAlloc) {
-      const remaining = priorAlloc.walkieIds.filter(id => id !== walkieId);
-      sourceUpdate =
-        remaining.length === 0
-          ? { status: 'Returned', returned_date: today }
-          : { walkie_ids: remaining, charger_count: heldChargers - cN, earphone_count: heldEarphones - eN };
-      const { error: srcError } = await supabase.from('allocations').update(sourceUpdate).eq('id', priorAlloc.id);
-      if (srcError) {
-        addToast(
-          `Radio moved, but the source allocation could not be updated: ${describeDbError(srcError)}`,
-          'warning',
-        );
-      }
-    }
-
-    // Local state (realtime will confirm)
-    setWalkies(prev =>
-      prev.map(w =>
-        w.id === walkieId
-          ? { ...w, departmentId: targetDepartmentId, status: 'Allocated', channel: targetDept.channelNumber }
-          : w,
-      ),
-    );
-    setAllocations(prev => {
-      const updated = prev.map(a => {
-        if (!priorAlloc || a.id !== priorAlloc.id) return a;
-        const remaining = a.walkieIds.filter(id => id !== walkieId);
-        return remaining.length === 0
-          ? { ...a, walkieIds: remaining, status: 'Returned', returnedDate: today }
-          : { ...a, walkieIds: remaining, chargerCount: heldChargers - cN, earphoneCount: heldEarphones - eN };
-      });
-      return updated.some(a => a.id === newAllocRow.id) ? updated : [mapAllocation(newAllocRow), ...updated];
+    const { error } = await supabase.rpc('walkie_transfer', {
+      p_walkie_id: walkieId,
+      p_target_department: targetDepartmentId,
+      p_chargers: cN,
+      p_earphones: eN,
+      p_remarks: remarks || '',
     });
-
+    if (error) {
+      addToast(`Transfer failed: ${needsV117(error)}`, 'error');
+      return false;
+    }
+    await refreshRadioData();
     const accText = cN || eN ? ` with ${cN} charger(s) and ${eN} earphone(s)` : '';
-    logAction(
-      'Walkie Transferred',
-      `Transferred ${walkie.label} (${walkieId}) from ${sourceDept ? sourceDept.name : 'None'} to ${targetDept.name} (Channel ${targetDept.channelNumber})${accText} by ${currentUser.name}`,
-      'info',
-    );
     addToast(`Transferred ${walkie.label} to ${targetDept.name}${accText}`);
     return true;
   };
@@ -1734,8 +1603,10 @@ export function AppProvider({ children }) {
     const walkie = walkies.find(w => w.id === walkieId);
     if (!walkie) return false;
 
-    if (walkie.status === 'Allocated') {
-      await returnWalkies([walkieId], 'Sent directly to maintenance');
+    // An allocated radio is returned first (one return path, so its event request is updated too);
+    // if that is refused, it does not go to repair.
+    if (walkie.status === 'Allocated' && !(await returnWalkies([walkieId], 'Sent directly to maintenance'))) {
+      return false;
     }
 
     const priorHolder = walkie.assignedPerson?.name;
@@ -1917,8 +1788,10 @@ export function AppProvider({ children }) {
   // --------------------------------------------------------------------------
   const activeAllocs = allocations.filter(a => a.status === 'Active');
   const sumOf = k => activeAllocs.reduce((t, a) => t + (a[k] || 0), 0);
-  const allocatedChargers = sumOf('chargerCount');
-  const allocatedEarphones = sumOf('earphoneCount');
+  // Accessory stock is shared by every event, so "out" counts active allocations of all events
+  // (the allocations list itself only holds the event in "Working on").
+  const allocatedChargers = accessoriesOut ? accessoriesOut.chargers : sumOf('chargerCount');
+  const allocatedEarphones = accessoriesOut ? accessoriesOut.earphones : sumOf('earphoneCount');
   const availableChargers =
     (inventorySettings.totalChargers || 0) - allocatedChargers - (inventorySettings.chargersMaintenance || 0);
   const availableEarphones =
@@ -1976,180 +1849,6 @@ export function AppProvider({ children }) {
       'info',
     );
     addToast('Stock updated.');
-    return true;
-  };
-
-  // --------------------------------------------------------------------------
-  // DELIVERY ACTIONS  (separate from Allocations: tracks whether a handover
-  // of walkie talkies + chargers + earphones to a department has actually
-  // been delivered/signed for, and notifies the department head via
-  // WhatsApp when it is)
-  // --------------------------------------------------------------------------
-  const createDelivery = async (
-    departmentId,
-    walkieCount,
-    chargerCount,
-    earphoneCount,
-    remarks = '',
-    deliveredBy = '',
-  ) => {
-    if (currentUser?.role === 'Client') {
-      addToast('Clients are not authorized to create deliveries.', 'error');
-      return false;
-    }
-    const wCount = parseInt(walkieCount, 10) || 0;
-    const cCount = Math.max(0, parseInt(chargerCount ?? wCount, 10) || 0);
-    const eCount = Math.max(0, parseInt(earphoneCount, 10) || 0);
-
-    if (!departmentId || wCount <= 0) {
-      addToast('Please select a department and enter a valid walkie talkie count.', 'error');
-      return false;
-    }
-    if (eCount > availableEarphones) {
-      addToast(`Only ${availableEarphones} earphones are currently available in stock.`, 'error');
-      return false;
-    }
-
-    if (cCount > wCount) {
-      addToast('Chargers cannot exceed the walkie count.', 'error');
-      return false;
-    }
-
-    const newDeliveryRow = {
-      id: `del-${Date.now()}`,
-      department_id: departmentId,
-      walkie_count: wCount,
-      charger_count: cCount,
-      earphone_count: eCount,
-      status: 'Pending',
-      delivered_by: deliveredBy || currentUser.name,
-      remarks: remarks || '',
-      organization_id: currentUser.organizationId,
-      event_id: eventId,
-    };
-
-    setDeliveries(prev => [mapDelivery(newDeliveryRow), ...prev]);
-
-    const { error } = await supabase.from('deliveries').insert(newDeliveryRow);
-    if (error) {
-      addToast(`Failed to create delivery: ${error.message}`, 'error');
-      setDeliveries(prev => prev.filter(d => d.id !== newDeliveryRow.id));
-      return false;
-    }
-
-    const dept = departments.find(d => d.id === departmentId);
-    logAction(
-      'Delivery Created',
-      `Prepared delivery of ${wCount} walkies, ${cCount} chargers, ${eCount} earphones for ${dept ? dept.name : 'Unknown Department'} by ${currentUser.name}`,
-      'info',
-    );
-    addToast('Delivery record created — mark it delivered once it is signed for.');
-    return mapDelivery(newDeliveryRow);
-  };
-
-  // Marks a delivery as Delivered/signed-for. Returns the WhatsApp links for
-  // the department's heads so the UI can let the user tap-to-send.
-  const markDeliveryDelivered = async (deliveryId, signedByName) => {
-    if (currentUser?.role === 'Client') {
-      addToast('Clients are not authorized to confirm deliveries.', 'error');
-      return false;
-    }
-    const delivery = deliveries.find(d => d.id === deliveryId);
-    if (!delivery) return false;
-
-    const trimmedSigner = (signedByName || '').trim();
-    const deliveredAt = new Date().toISOString();
-
-    setDeliveries(prev =>
-      prev.map(d => (d.id === deliveryId ? { ...d, status: 'Delivered', signedBy: trimmedSigner, deliveredAt } : d)),
-    );
-
-    const { error } = await supabase
-      .from('deliveries')
-      .update({
-        status: 'Delivered',
-        signed_by: trimmedSigner,
-        delivered_at: deliveredAt,
-      })
-      .eq('id', deliveryId);
-    if (error) {
-      addToast(`Failed to confirm delivery: ${error.message}`, 'error');
-      return false;
-    }
-
-    const dept = departments.find(d => d.id === delivery.departmentId);
-    const deptName = dept ? dept.name : 'Unknown Department';
-    logAction(
-      'Delivery Confirmed',
-      `${delivery.walkieCount} walkies, ${delivery.chargerCount} chargers, ${delivery.earphoneCount} earphones handed over to ${deptName}${trimmedSigner ? `, signed by ${trimmedSigner}` : ''}`,
-      'success',
-    );
-    addToast(`Delivery to ${deptName} confirmed.`);
-
-    const message = `Delivery confirmation: ${delivery.walkieCount} walkie talkie(s), ${delivery.chargerCount} charger(s), and ${delivery.earphoneCount} earphone(s) have been handed over to ${deptName}${trimmedSigner ? ` and signed for by ${trimmedSigner}` : ''}.`;
-    return {
-      delivery: { ...delivery, status: 'Delivered', signedBy: trimmedSigner, deliveredAt },
-      whatsappLinks: getWhatsAppLinksForDepartment(delivery.departmentId, message),
-    };
-  };
-
-  // Marks a delivered set as returned, freeing up earphone stock, and
-  // returns WhatsApp links so the UI can notify the department head.
-  const markDeliveryReturned = async (deliveryId, returnRemarks = '') => {
-    if (currentUser?.role === 'Client') {
-      addToast('Clients are not authorized to process returns.', 'error');
-      return false;
-    }
-    const delivery = deliveries.find(d => d.id === deliveryId);
-    if (!delivery) return false;
-
-    const returnedAt = new Date().toISOString();
-    const combinedRemarks = returnRemarks
-      ? `${delivery.remarks ? delivery.remarks + ' | ' : ''}Return: ${returnRemarks}`
-      : delivery.remarks;
-
-    setDeliveries(prev =>
-      prev.map(d => (d.id === deliveryId ? { ...d, status: 'Returned', returnedAt, remarks: combinedRemarks } : d)),
-    );
-
-    const { error } = await supabase
-      .from('deliveries')
-      .update({
-        status: 'Returned',
-        returned_at: returnedAt,
-        remarks: combinedRemarks,
-      })
-      .eq('id', deliveryId);
-    if (error) {
-      addToast(`Failed to process return: ${error.message}`, 'error');
-      return false;
-    }
-
-    const dept = departments.find(d => d.id === delivery.departmentId);
-    const deptName = dept ? dept.name : 'Unknown Department';
-    logAction(
-      'Delivery Returned',
-      `${delivery.walkieCount} walkies, ${delivery.chargerCount} chargers, ${delivery.earphoneCount} earphones returned by ${deptName} by ${currentUser.name}`,
-      'success',
-    );
-    addToast(`Return from ${deptName} recorded.`);
-
-    const message = `Return confirmation: ${delivery.walkieCount} walkie talkie(s), ${delivery.chargerCount} charger(s), and ${delivery.earphoneCount} earphone(s) have been received back from ${deptName}.`;
-    return { whatsappLinks: getWhatsAppLinksForDepartment(delivery.departmentId, message) };
-  };
-
-  const deleteDelivery = async deliveryId => {
-    if (currentUser?.role !== 'Admin') {
-      addToast('Only Administrators can delete delivery records.', 'error');
-      return false;
-    }
-    setDeliveries(prev => prev.filter(d => d.id !== deliveryId));
-    const { error } = await supabase.from('deliveries').delete().eq('id', deliveryId);
-    if (error) {
-      addToast(`Failed to delete delivery: ${error.message}`, 'error');
-      return false;
-    }
-    addToast('Delivery record deleted.');
     return true;
   };
 
@@ -2215,11 +1914,6 @@ export function AppProvider({ children }) {
         editDepartmentHead,
         deleteDepartmentHead,
         getWhatsAppLinksForDepartment,
-        deliveries,
-        createDelivery,
-        markDeliveryDelivered,
-        markDeliveryReturned,
-        deleteDelivery,
         inventorySettings,
         availableEarphones,
         availableChargers,

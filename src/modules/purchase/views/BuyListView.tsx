@@ -4,6 +4,7 @@ import { cx } from '../../accommodation/ui';
 import { useRequests } from '../../requests/RequestsContext';
 import { unlinkedPurchaseParts } from '../../requests/types';
 import type { Req, ReqItem, ReqPart } from '../../requests/types';
+import { DeptRoute } from '../../requests/parts';
 import { usePurchase } from '../PurchaseContext';
 import type { PO } from '../types';
 import { Empty, StatusChip, day, money, panel, primary } from './shared';
@@ -14,8 +15,7 @@ type Line = { request: Req; part: ReqPart; item: ReqItem };
 // One row per draft order (approval creates it), so Purchase sees what each order still needs before placing.
 export const BuyListView: React.FC<{ editOrder: (id: string) => void }> = ({ editOrder }) => {
   const { requests } = useRequests();
-  const { orders, createOrder, canManage, vendorName, inMyDepartment, showDepartments, departmentFilter } =
-    usePurchase();
+  const { orders, createOrder, canManage, vendorName, inMyDepartment } = usePurchase();
   // Each department buys for the requests made to it (the Super Admin sees every department's).
   const myRequests = useMemo(() => requests.filter(r => inMyDepartment(r.departmentId)), [requests, inMyDepartment]);
   const lines = useMemo(
@@ -75,7 +75,6 @@ export const BuyListView: React.FC<{ editOrder: (id: string) => void }> = ({ edi
       (minNeeded(a.lines) || '9999').localeCompare(minNeeded(b.lines) || '9999'),
     );
   }, [myRequests, orders]);
-  const showDept = showDepartments && departmentFilter === 'all';
 
   return (
     <div className="space-y-3">
@@ -88,16 +87,7 @@ export const BuyListView: React.FC<{ editOrder: (id: string) => void }> = ({ edi
           <table className="w-full min-w-[860px] text-xs">
             <thead className="bg-raised/40 text-left text-[10.5px] uppercase tracking-wide text-mute">
               <tr>
-                {[
-                  'Order',
-                  'For',
-                  ...(showDept ? ['Department'] : []),
-                  'Items',
-                  'Needed by',
-                  'Budget',
-                  'Vendor & rates',
-                  '',
-                ].map((heading, index) => (
+                {['Order', 'For', 'Items', 'Needed by', 'Budget', 'Vendor & rates', ''].map((heading, index) => (
                   <th key={index} className="px-3 py-2.5 font-semibold">
                     {heading}
                   </th>
@@ -134,11 +124,12 @@ export const BuyListView: React.FC<{ editOrder: (id: string) => void }> = ({ edi
                         <div key={r.id} className="min-w-0">
                           <span className="font-mono font-semibold text-ink-soft">{r.number}</span>
                           <span className="ml-1.5 text-ink">{r.title}</span>
-                          <div className="text-[10.5px] text-mute">{r.requesterName}</div>
+                          <div className="text-[10.5px] text-mute">
+                            {r.requesterName} · <DeptRoute r={r} />
+                          </div>
                         </div>
                       ))}
                     </td>
-                    {showDept && <td className="px-3 py-3 text-ink-soft">{requestsOf[0]?.departmentName || '—'}</td>}
                     <td className="px-3 py-3">
                       {rows.map(x => (
                         <div key={x.part.id} className="whitespace-nowrap">

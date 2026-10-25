@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft,
-  ArrowRight,
   Printer,
   Ban,
   RotateCcw,
@@ -17,7 +16,7 @@ import { Card, btnGhost, printLight } from '../../components/ui';
 import { DEPTS } from '../../views/orgData';
 import { useRequests } from './RequestsContext';
 import { DeliveryAssignmentPanel, FulfilmentPanel, ItReviewPanel, OwnerReviewPanel } from './panels';
-import { ItemsTable, StatusBadge, Stepper, Timeline, UrgentBadge } from './parts';
+import { DeptRoute, ItemsTable, StatusBadge, Stepper, Timeline, UrgentBadge } from './parts';
 import { exportRequestsXlsx } from './exportXlsx';
 import { fmtDate, isOverdue, requestStage } from './types';
 import type { NewLine } from './types';
@@ -191,15 +190,7 @@ export const RequestDetail: React.FC<{
                 {r.requesterName || '—'}
                 {r.subDepartment && <span className="font-normal text-mute"> · {DEPTS[r.subDepartment]}</span>}
               </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-mute">
-                {r.fromDepartmentName && r.fromDepartmentName !== r.departmentName && (
-                  <>
-                    {r.fromDepartmentName}
-                    <ArrowRight size={12} className="text-faint" aria-label="to" />
-                  </>
-                )}
-                {r.departmentName}
-              </div>
+              <DeptRoute r={r} className="mt-0.5 text-xs text-mute" />
             </div>
           </div>
           <Info label="Raised on" icon={CalendarPlus}>

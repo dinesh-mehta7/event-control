@@ -3,6 +3,8 @@ import { AppProvider, useApp } from './context/AppContext';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import ToastContainer from './components/ToastContainer';
+import { Tabs } from '../../components/ui';
+import { Swap } from '../../components/Swap';
 
 // Views are code-split: each tab's JS is only fetched the first time that
 // tab is opened, instead of all nine views loading up front on login.
@@ -11,11 +13,13 @@ const WalkiesView = lazy(() => import('./components/WalkiesView'));
 const DepartmentsView = lazy(() => import('./components/DepartmentsView'));
 const AllocationsView = lazy(() => import('./components/AllocationsView'));
 const ReturnsView = lazy(() => import('./components/ReturnsView'));
-const MaintenanceView = lazy(() => import('./components/MaintenanceView'));
+const TransferView = lazy(() => import('./components/TransferView'));
 const HistoryView = lazy(() => import('./components/HistoryView'));
 const SettingsView = lazy(() => import('./components/SettingsView'));
-const ServiceInbox = lazy(() => import('../requests/ServiceInbox'));
 const EventRadioRequests = lazy(() => import('./components/EventRadioRequests'));
+
+// Old tab ids that now live inside another tab: repairs are done from Walkie devices.
+const tabOf = tab => (tab === 'settings' ? 'users' : tab === 'maintenance' ? 'walkies' : tab);
 
 function ViewLoadingFallback() {
   return (
@@ -29,7 +33,7 @@ export function MainLayout({ headerExtra = null, embedded = false, initialTab = 
   const { currentTab, settings, currentUser, dataLoading, globalSearch, setGlobalSearch, setCurrentTab } = useApp();
 
   const renderContent = () => {
-    switch (currentTab) {
+    switch (tabOf(currentTab)) {
       case 'dashboard':
         return <DashboardView />;
       case 'walkies':
@@ -38,10 +42,10 @@ export function MainLayout({ headerExtra = null, embedded = false, initialTab = 
         return <DepartmentsView />;
       case 'allocation':
         return <AllocationsView />;
+      case 'transfer':
+        return <TransferView />;
       case 'returns':
         return <ReturnsView />;
-      case 'maintenance':
-        return <MaintenanceView />;
       case 'history':
         return <HistoryView />;
       case 'settings':
@@ -58,30 +62,32 @@ export function MainLayout({ headerExtra = null, embedded = false, initialTab = 
   const isClient = currentUser?.role === 'Client';
   const isOperator = currentUser?.role === 'Operator';
   const isAdmin = currentUser?.role === 'Admin';
+  // Radios move: allocate → transfer → return; event requests have their own pipeline. Repairs are
+  // done on the radio itself in Walkie devices.
   const sectionItems = [
     { id: 'dashboard', label: 'Overview' },
     { id: 'walkies', label: 'Walkie devices' },
-    { id: 'departments', label: 'Departments' },
     ...(!isClient
       ? [
           { id: 'allocation', label: 'Allocations' },
+          { id: 'transfer', label: 'Transfer' },
           { id: 'returns', label: 'Returns' },
-          { id: 'maintenance', label: 'Maintenance' },
         ]
       : []),
-    { id: 'history', label: 'Activity history' },
     { id: 'requests', label: 'Event radio requests' },
+    { id: 'departments', label: 'Departments' },
+    { id: 'history', label: 'Activity history' },
     ...(isAdmin ? [{ id: 'users', label: 'Walkie users' }] : []),
   ];
   useEffect(() => {
-    if (initialTab && sectionItems.some(item => item.id === initialTab)) setCurrentTab(initialTab);
+    if (initialTab && sectionItems.some(item => item.id === tabOf(initialTab))) setCurrentTab(tabOf(initialTab));
   }, [initialTab, setCurrentTab]);
 
   if (embedded)
     return (
       <div className="walkie-embedded space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-mute">Radio assets, allocations, returns and maintenance</p>
+          <p className="text-xs text-mute">Radios, allocations, transfers, returns and repairs</p>
           <div className="w-full sm:w-72">
             <input
               type="search"
@@ -93,18 +99,8 @@ export function MainLayout({ headerExtra = null, embedded = false, initialTab = 
             />
           </div>
         </div>
-        <nav className="flex gap-1 overflow-x-auto border-b border-line" aria-label="Walkie sections">
-          {sectionItems.map(({ id, label }) => (
-            <button
-              key={id}
-              onClick={() => setCurrentTab(id)}
-              aria-current={currentTab === id ? 'page' : undefined}
-              className={`px-3 py-2.5 border-b-2 text-xs font-medium whitespace-nowrap ${currentTab === id ? 'border-blue-600 text-blue-500' : 'border-transparent text-mute hover:text-ink'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
+        {/* Same sliding tabs as the rest of the app; the section below slides in from the side it comes from. */}
+        <Tabs compact label="Walkie sections" value={tabOf(currentTab)} onChange={setCurrentTab} tabs={sectionItems} />
         {isOperator && (
           <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
             Operator access · administrative changes are restricted.
@@ -119,7 +115,9 @@ export function MainLayout({ headerExtra = null, embedded = false, initialTab = 
           {dataLoading ? (
             <div className="py-16 text-center text-sm text-mute">Syncing with your database…</div>
           ) : (
-            renderContent()
+            <Swap k={tabOf(currentTab)} indexOf={k => sectionItems.findIndex(item => item.id === k)}>
+              {renderContent()}
+            </Swap>
           )}
         </Suspense>
       </div>

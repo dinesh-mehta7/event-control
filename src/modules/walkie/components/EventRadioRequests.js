@@ -1,9 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, PackageCheck, Radio, RefreshCw, RotateCcw, Send, X } from 'lucide-react';
+import { Check, MapPin, PackageCheck, Radio, RefreshCw, RotateCcw, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabaseClient';
 import { useRequests } from '../../requests';
 import { Select } from '../../../components/Select';
+import { PillTabs } from '../../../components/PillTabs';
+import { btnGhost, btnPrimary, inputCls } from '../../../components/ui';
+import { useEventScope } from '../../../context/EventScopeContext';
+import { itDepartmentOf } from '../../../views/orgData';
 
 const statusLabels = {
   pending_approval: 'Waiting for approval',
@@ -26,32 +30,27 @@ const statusTone = {
 const safeCount = x => Math.max(0, Math.floor(Number(x) || 0));
 
 export default function EventRadioRequests() {
-  const {
-    currentUser,
-    departments,
-    walkies,
-    allocateWalkies,
-    availableChargers,
-    availableEarphones,
-    settings,
-    addToast,
-  } = useApp();
+  const { currentUser, departments, walkies, allocateWalkies, availableChargers, availableEarphones, addToast } =
+    useApp();
   const { requests: organizationRequests } = useRequests();
+  const eventScope = useEventScope();
   const orgId = currentUser?.organizationId;
   const canApprove = currentUser?.level === 'owner' || currentUser?.level === 'dept_head';
-  const canRequest =
-    currentUser?.role !== 'Client' && ['owner', 'dept_head', 'sub_dept_head'].includes(currentUser?.level);
   const canFulfil =
     ['Admin', 'Operator'].includes(currentUser?.role) &&
     (currentUser?.level === 'owner' ||
       (currentUser?.level === 'sub_dept_head' && currentUser?.subDepartment === 'walkie'));
   const deptId = currentUser?.departmentId || '';
-  const ownDept = departments.find(d => d.id === deptId);
-  const dark = settings.theme === 'dark';
+  const itDeptId = itDepartmentOf(departments)?.id;
   const [events, setEvents] = useState([]);
   const [requests, setRequests] = useState([]);
-  const [eventId, setEventId] = useState('');
-  const [form, setForm] = useState({ walkies: '1', chargers: '0', earphones: '0', collectFrom: '' });
+  // Starts on the event chosen in the header ("Working on"); '' = all events.
+  const eventId = eventScope.scopeFor('walkie'); // '' (Normal) = all events
+  const [stage, setStage] = useState(''); // '' = the first stage with work in it
+  useEffect(() => setStage(''), [eventId]); // a new event opens on its first busy stage
+  const [openReturn, setOpenReturn] = useState('');
+  const [returnPick, setReturnPick] = useState({}); // request id → radio ids ticked as handed back
+  const [pickups, setPickups] = useState({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState({});
@@ -79,7 +78,6 @@ export default function EventRadioRequests() {
     }
     setEvents(ev.data || []);
     setRequests(rq.data || []);
-    setEventId(current => current || ev.data?.[0]?.id || '');
     setError('');
   }, [orgId]);
 
@@ -139,36 +137,8 @@ export default function EventRadioRequests() {
     return [...map.values()];
   }, [visible]);
 
-  const submit = async e => {
-    e.preventDefault();
-    setBusy(true);
-    setError('');
-    if (!form.collectFrom.trim()) {
-      setBusy(false);
-      setError('Choose or enter the unit to collect the radios from.');
-      return;
-    }
-    const { error: err } = await supabase.rpc('event_radio_request_submit', {
-      p_event_id: eventId,
-      p_walkies: safeCount(form.walkies),
-      p_chargers: safeCount(form.chargers),
-      p_earphones: safeCount(form.earphones),
-      p_collect_from: form.collectFrom.trim(),
-    });
-    setBusy(false);
-    if (err) {
-      setError(
-        /event_radio_request_submit|p_collect_from|collect_from/i.test(err.message || '')
-          ? 'Walkie-Talkie collection units need supabase/migration_v82_event_radio_collection_unit.sql. Apply it, then reload this page.'
-          : err.message,
-      );
-      return;
-    }
-    setForm({ walkies: '1', chargers: '0', earphones: '0', collectFrom: '' });
-    addToast('Event radio request sent for approval.');
-    await load();
-  };
-
+  // Departments raise walkie requests from Requests → New request; this page is where IT and the
+  // Walkie team work them.
   const decide = async (r, approve) => {
     setBusy(true);
     setError('');
@@ -182,25 +152,24 @@ export default function EventRadioRequests() {
     else await load();
   };
 
-  const syncOne = async (r, nextSerial) => {
+  // One approved request: pick free radios, allocate them to the department for the request's event,
+  // then name them GP-<year>-<dept>-0001… and mark the request ready.
+  // `batch` carries what earlier requests of the same run already took: the radio list and accessory
+  // counts on screen are only refreshed after the run, so without it two departments would get the
+  // same radios and accessories would be over-issued.
+  const syncOne = async (r, nextSerial, batch) => {
     const dept = departments.find(d => d.id === r.department_id);
     if (!dept) throw new Error(`Department for request ${r.id} is missing.`);
     const available = walkies
-      .filter(w => w.status === 'Available')
+      .filter(w => w.status === 'Available' && !batch.taken.has(w.id))
       .sort((a, b) => (a.label || '').localeCompare(b.label || '', undefined, { numeric: true }));
     if (available.length < r.walkie_count)
-      throw new Error(`Only ${available.length} radios are available; ${r.walkie_count} are needed for ${dept.name}.`);
-    if (r.charger_count > availableChargers || r.earphone_count > availableEarphones)
-      throw new Error('There are not enough chargers or earphones in stock for this request.');
+      throw new Error(`Only ${available.length} radios are free; ${r.walkie_count} are needed for ${dept.name}.`);
+    if (r.charger_count > batch.chargers || r.earphone_count > batch.earphones)
+      throw new Error(
+        `Not enough accessories left for ${dept.name}: ${batch.chargers} chargers and ${batch.earphones} earphones free.`,
+      );
     const picked = available.slice(0, r.walkie_count);
-    const code = (dept.code || dept.name.replace(/[^a-z0-9]/gi, '').slice(0, 4) || 'DEPT').toUpperCase();
-    const year = new Date(events.find(e => e.id === r.event_id)?.starts_at || Date.now()).getFullYear();
-    const labels = picked.map((_, i) => `GP-${year}-${code}-${String(nextSerial + i).padStart(4, '0')}`);
-    const renamed = await Promise.all(
-      picked.map((w, i) => supabase.from('walkies').update({ label: labels[i], is_rented: true }).eq('id', w.id)),
-    );
-    const nameErr = renamed.find(result => result.error)?.error;
-    if (nameErr) throw nameErr;
     const allocation = await allocateWalkies(
       dept.id,
       picked.map(w => w.id),
@@ -210,13 +179,26 @@ export default function EventRadioRequests() {
       '',
       r.charger_count,
       r.earphone_count,
+      r.event_id,
     );
     if (!allocation) throw new Error(`Allocation failed for ${dept.name}. Check radio and accessory stock.`);
+    picked.forEach(w => batch.taken.add(w.id));
+    batch.chargers -= r.charger_count;
+    batch.earphones -= r.earphone_count;
     const { error: linkErr } = await supabase
       .from('allocations')
       .update({ event_radio_request_id: r.id })
       .eq('id', allocation.id);
     if (linkErr) throw linkErr;
+    // Named only once they really belong to the department.
+    const code = (dept.code || dept.name.replace(/[^a-z0-9]/gi, '').slice(0, 4) || 'DEPT').toUpperCase();
+    const year = new Date(events.find(e => e.id === r.event_id)?.starts_at || Date.now()).getFullYear();
+    const labels = picked.map((_, i) => `GP-${year}-${code}-${String(nextSerial + i).padStart(4, '0')}`);
+    const renamed = await Promise.all(
+      picked.map((w, i) => supabase.from('walkies').update({ label: labels[i], is_rented: true }).eq('id', w.id)),
+    );
+    const nameErr = renamed.find(result => result.error)?.error;
+    if (nameErr) throw nameErr;
     const { error: rpcErr } = await supabase.rpc('event_radio_request_allocate', {
       p_id: r.id,
       p_walkie_ids: picked.map(w => w.id),
@@ -229,9 +211,24 @@ export default function EventRadioRequests() {
     const approved = visible.filter(r => r.status === 'approved');
     if (!approved.length) return;
     if (!canFulfil) return;
+    // Check the whole run up front, so it does not stop halfway with some departments done.
+    const free = walkies.filter(w => w.status === 'Available').length;
+    const need = approved.reduce(
+      (s, r) => ({ w: s.w + r.walkie_count, c: s.c + r.charger_count, e: s.e + r.earphone_count }),
+      { w: 0, c: 0, e: 0 },
+    );
+    if (need.w > free || need.c > availableChargers || need.e > availableEarphones) {
+      setError(
+        `Not enough stock for all ${approved.length} requests: need ${need.w} radios (${free} free), ` +
+          `${need.c} chargers (${availableChargers} free), ${need.e} earphones (${availableEarphones} free).`,
+      );
+      return;
+    }
     setBusy(true);
     setError('');
     const counters = new Map();
+    const batch = { taken: new Set(), chargers: availableChargers, earphones: availableEarphones };
+    let done = 0;
     try {
       for (const r of approved) {
         const dept = departments.find(d => d.id === r.department_id);
@@ -246,15 +243,46 @@ export default function EventRadioRequests() {
           }),
         );
         const next = counters.has(counterKey) ? counters.get(counterKey) : existingMax + 1;
-        counters.set(counterKey, await syncOne(r, next));
+        counters.set(counterKey, await syncOne(r, next, batch));
+        done += 1;
       }
-      addToast('Approved requests were named and allocated. They are ready for handover.');
+      addToast(`${done} request${done === 1 ? '' : 's'} named and allocated. Ready to hand over.`);
       await load();
     } catch (e) {
-      setError(e.message || 'Could not finish allocation.');
+      setError(
+        `${done ? `${done} of ${approved.length} allocated, then stopped: ` : ''}${e.message || 'Could not finish allocation.'}`,
+      );
       await load();
     }
     setBusy(false);
+  };
+
+  // Where the department collects its radios: set by the Walkie team, shown to the requester.
+  const savePickup = async r => {
+    const point = (pickups[r.id] ?? r.collect_from ?? '').trim();
+    if (!point) {
+      setError('Enter where the department should collect the radios.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    const { error: err } = await supabase.rpc('event_radio_request_set_pickup', { p_id: r.id, p_point: point });
+    setBusy(false);
+    if (err)
+      setError(
+        /event_radio_request_set_pickup|schema cache/i.test(err.message || '')
+          ? 'Run supabase/migration_v112_event_walkie_request_sync.sql in the Supabase SQL Editor, then reload this page.'
+          : err.message,
+      );
+    else {
+      setPickups(v => {
+        const next = { ...v };
+        delete next[r.id];
+        return next;
+      });
+      addToast('Pickup point saved. The department can see it.');
+      await load();
+    }
   };
 
   const markDelivered = async r => {
@@ -269,11 +297,17 @@ export default function EventRadioRequests() {
     else await load();
   };
 
+  // Radios of this request still with the department (allocated to it), to tick on return.
+  const stillOut = r =>
+    (Array.isArray(r.allocated_walkie_ids) ? r.allocated_walkie_ids : []).filter(id =>
+      walkies.some(w => w.id === id && w.status === 'Allocated' && w.departmentId === r.department_id),
+    );
+  // Records exactly the radios ticked (not "the first N"), plus the accessories handed back.
   const submitReturn = async r => {
-    const qty = returnCounts[r.id] || { walkies: 0, chargers: 0, earphones: 0 };
-    const n = safeCount(qty.walkies);
-    if (!n) {
-      setError('Enter the number of walkies received back.');
+    const qty = returnCounts[r.id] || { chargers: 0, earphones: 0 };
+    const ids = [...(returnPick[r.id] || [])];
+    if (!ids.length) {
+      setError('Tick the radios the department handed back.');
       return;
     }
     if (!(feedback[r.id] || '').trim()) {
@@ -282,24 +316,10 @@ export default function EventRadioRequests() {
     }
     setBusy(true);
     setError('');
-    const allocated =
-      (
-        await supabase
-          .from('allocations')
-          .select('id,walkie_ids')
-          .eq('event_radio_request_id', r.id)
-          .eq('status', 'Active')
-      ).data || [];
-    const ids = allocated.flatMap(a => (Array.isArray(a.walkie_ids) ? a.walkie_ids : [])).slice(0, n);
-    if (ids.length !== n) {
-      setBusy(false);
-      setError('Could not match the returned radios to this request.');
-      return;
-    }
     const { error: retErr } = await supabase.rpc('event_radio_request_return', {
       p_id: r.id,
       p_walkie_ids: ids,
-      p_walkies: n,
+      p_walkies: ids.length,
       p_chargers: safeCount(qty.chargers),
       p_earphones: safeCount(qty.earphones),
       p_feedback: feedback[r.id] || '',
@@ -307,17 +327,17 @@ export default function EventRadioRequests() {
     setBusy(false);
     if (retErr) setError(retErr.message);
     else {
+      setReturnPick(v => ({ ...v, [r.id]: [] }));
+      setOpenReturn('');
       addToast('Return and feedback recorded.');
       await load();
     }
   };
 
-  const input = `w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-blue-500 ${dark ? 'bg-slate-950 border-slate-700 text-slate-100' : 'bg-white border-slate-200 text-slate-900'}`;
-  const panel = `rounded-xl border p-4 ${dark ? 'border-slate-800 bg-slate-900/70' : 'border-slate-200 bg-white'}`;
+  // ---- view --------------------------------------------------------------------------------------
   const event = events.find(e => e.id === eventId);
   const deliveryPct = summary.walkies ? Math.round((summary.delivered * 100) / summary.walkies) : 0;
   const returnPct = summary.delivered ? Math.round((summary.returned * 100) / summary.delivered) : 0;
-  const approvalsOpen = visible.some(r => r.status === 'pending_approval');
   const departmentRadioRequests = organizationRequests.filter(r => r.items.some(item => item.kind === 'radio'));
   const requestStatus = r => {
     if (r.status === 'pending_sub') return 'Waiting for department head';
@@ -325,202 +345,124 @@ export default function EventRadioRequests() {
     if (r.status === 'pending_owner') return 'Waiting for Super Admin';
     if (r.status === 'rejected') return 'Declined';
     if (r.status === 'cancelled') return 'Cancelled';
-    if (r.status === 'fulfilled') return 'Delivered';
-    if (r.status === 'approved') {
-      const lines = r.items.filter(item => item.kind === 'radio' && (item.approved ?? 0) > 0);
-      const ready =
-        lines.length > 0 &&
-        lines.every(
-          item =>
-            r.parts.filter(part => part.itemId === item.id).reduce((sum, part) => sum + part.qty, 0) >=
-            (item.approved ?? 0),
-        );
-      return ready ? 'Ready to pick up / deliver' : 'With Walkie team';
-    }
+    if (r.status === 'fulfilled') return 'Handed over';
+    if (r.status === 'approved') return 'With Walkie team';
     return 'Waiting for approval';
   };
+  // Each ticket sits in one stage; the team works stage by stage.
+  const stageOf = r =>
+    r.status === 'pending_approval'
+      ? 'approval'
+      : r.status === 'approved'
+        ? 'allocate'
+        : r.status === 'ready'
+          ? 'ready'
+          : ['delivered', 'partial_return'].includes(r.status)
+            ? 'out'
+            : 'done';
+  const STAGES = [
+    ['approval', 'To approve'],
+    ['allocate', 'To allocate'],
+    ['ready', 'Ready to hand over'],
+    ['out', 'With departments'],
+    ['done', 'Closed'],
+  ];
+  const stageCount = id => visible.filter(r => stageOf(r) === id).length;
+  const readyCount = stageCount('ready');
+  const readyWalkies = visible.filter(r => r.status === 'ready').reduce((sum, r) => sum + r.walkie_count, 0);
+  const firstBusy = (STAGES.find(([id]) => stageCount(id) > 0) || STAGES[0])[0];
+  const activeStage = stage || firstBusy;
+  const rows = visible.filter(r => stageOf(r) === activeStage);
+  const radioLabel = id => walkies.find(w => w.id === id)?.label || id;
+  const isOwner = currentUser?.level === 'owner';
+  const tile = 'rounded-xl border border-line bg-surface px-4 py-3';
+  const th = 'px-3 py-2.5 text-left font-medium';
+  const td = 'px-3 py-3 align-middle';
+  const smallInput = `${inputCls} !h-8 !py-0 text-xs`;
 
   return (
     <section className="space-y-5" aria-labelledby="event-radio-heading">
-      <header className="flex flex-wrap items-start justify-between gap-3">
+      {/* Header: what this page is, which event, refresh */}
+      <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <Radio className="h-5 w-5 text-blue-400" />
-            <h1 id="event-radio-heading" className="text-xl font-semibold">
-              Event walkie requests
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-blue-500/10 text-blue-400">
+              <Radio size={16} />
+            </span>
+            <h1 id="event-radio-heading" className="text-lg font-semibold text-ink">
+              Event walkies
             </h1>
           </div>
           <p className="mt-1 text-xs text-mute">
-            Requests stay separate for approval; approved quantities roll up into one event demand.
+            Departments ask from Requests → New request. IT approves, the Walkie team allocates, hands over and takes
+            them back.
           </p>
         </div>
-        <button
-          className="inline-flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-xs hover:bg-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
-          onClick={() => void load()}
-        >
-          <RefreshCw size={14} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {/* One event for the whole Walkie module: the header's "Working on". */}
+          <span className="rounded-full border border-line bg-raised/50 px-3 py-1.5 text-xs text-mute">
+            Event ·{' '}
+            <span className="font-semibold text-ink">{events.find(e => e.id === eventId)?.name || 'All events'}</span>
+            <span className="ml-1 text-faint">(change in “Working on”)</span>
+          </span>
+          <button className={btnGhost} onClick={() => void load()} aria-label="Refresh">
+            <RefreshCw size={14} />
+          </button>
+        </div>
       </header>
+
       {error && (
         <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
           {error}
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="text-xs text-mute" htmlFor="event-radio-event">
-          Event
-        </label>
-        <Select
-          id="event-radio-event"
-          className={`${input} max-w-md`}
-          value={eventId}
-          onChange={e => setEventId(e.target.value)}
-        >
-          <option value="">Choose an event</option>
-          {events.map(e => (
-            <option key={e.id} value={e.id}>
-              {e.name} · {new Date(e.starts_at).toLocaleDateString('en-IN')}
-            </option>
-          ))}
-        </Select>
-      </div>
-      <div className={`${panel} space-y-3`}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold">Department walkie requests</h2>
-            <p className="mt-1 text-xs text-mute">
-              Requests raised from Requests → New request. They stay here with their approval and Walkie team status.
-            </p>
-          </div>
-          <a href="#/requests/fulfil" className="text-xs font-medium text-blue-400 hover:underline">
-            Open request workflow
-          </a>
-        </div>
-        {departmentRadioRequests.length ? (
-          <div className="divide-y divide-line">
-            {departmentRadioRequests.map(r => {
-              const radioLines = r.items.filter(item => item.kind === 'radio');
-              const quantities = radioLines.map(item => `${item.requested} ${item.name}`).join(' · ');
-              return (
-                <a
-                  key={r.id}
-                  href={`#/requests/${r.id}`}
-                  className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-1 last:pb-1 hover:bg-raised/20"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">
-                      {r.title} <span className="ml-1 text-xs font-normal text-mute">{r.number}</span>
-                    </span>
-                    <span className="mt-1 block text-xs text-mute">
-                      {r.requesterName}
-                      {r.subDepartment ? ` · ${r.subDepartment}` : ''} · {quantities}
-                    </span>
-                  </span>
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[11.5px] ${r.status === 'approved' ? 'bg-blue-500/10 text-blue-300' : r.status === 'fulfilled' ? 'bg-emerald-500/10 text-emerald-300' : r.status === 'rejected' || r.status === 'cancelled' ? 'bg-red-500/10 text-red-300' : 'bg-amber-500/10 text-amber-300'}`}
-                  >
-                    {requestStatus(r)}
-                  </span>
-                </a>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="py-2 text-xs text-mute">No general walkie requests yet.</p>
-        )}
-      </div>
-      {ownDept && currentUser?.level !== 'owner' && canRequest && (
-        <form onSubmit={submit} className={panel}>
-          <h2 className="text-sm font-semibold">Request for {ownDept.name}</h2>
-          <p className="mt-1 text-xs text-mute">
-            No reason or extra items are required. The request goes to your department owner or Super Admin for
-            approval.
-          </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="text-xs text-mute">
-              From unit
-              <input
-                required
-                list="walkie-collection-units"
-                className={`${input} mt-1`}
-                placeholder="e.g. Main Control Room"
-                value={form.collectFrom}
-                onChange={e => setForm(v => ({ ...v, collectFrom: e.target.value }))}
-              />
-              <datalist id="walkie-collection-units">
-                <option value="Main Control Room" />
-                <option value="Walkie-Talkie Store" />
-                <option value="IT Office" />
-                <option value="Control Room" />
-              </datalist>
-            </label>
-            {[
-              ['walkies', 'Walkies', 1],
-              ['chargers', 'Chargers', 0],
-              ['earphones', 'Earphones', 0],
-            ].map(([key, label, min]) => (
-              <label key={key} className="text-xs text-mute">
-                {label}
-                <input
-                  className={`${input} mt-1`}
-                  type="number"
-                  min={min}
-                  step="1"
-                  value={form[key]}
-                  onChange={e => setForm(v => ({ ...v, [key]: e.target.value }))}
-                />
-              </label>
-            ))}
-          </div>
-          <button
-            disabled={busy || !eventId}
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
-          >
-            <Send size={14} />
-            Send request
-          </button>
-        </form>
-      )}
-      {!ownDept && currentUser?.level !== 'owner' && canRequest && (
-        <div className={panel}>
-          Your login is not assigned to a department yet. An administrator can assign it under Walkie users → Access
-          level.
-        </div>
-      )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          ['Requested walkies', summary.walkies],
-          ['Delivered', `${summary.delivered} · ${deliveryPct}%`],
-          ['Returned', `${summary.returned} · ${returnPct}%`],
-          ['Accessories', `${summary.chargers} chargers · ${summary.earphones} earphones`],
-        ].map(([label, value]) => (
-          <div key={label} className={panel}>
-            <div className="text-xs text-mute">{label}</div>
-            <div className="mt-1 text-lg font-semibold tabular-nums">{value}</div>
+      {/* Event at a glance */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className={tile}>
+          <div className="text-[10.5px] font-semibold uppercase tracking-wider text-faint">Requested</div>
+          <div className="mt-1 text-2xl font-semibold tabular-nums text-ink">{summary.walkies}</div>
+          <div className="text-[11.5px] text-mute">
+            walkies · {grouped.length} department{grouped.length === 1 ? '' : 's'}
           </div>
-        ))}
-      </div>
-      <div className={`${panel} space-y-3`}>
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Event progress</h2>
-          <span className="text-xs text-mute">{event?.name || 'Select an event'}</span>
         </div>
+        <div className={tile}>
+          <div className="text-[10.5px] font-semibold uppercase tracking-wider text-faint">Accessories</div>
+          <div className="mt-1 text-2xl font-semibold tabular-nums text-ink">
+            {summary.chargers} <span className="text-sm font-normal text-mute">chargers</span>
+          </div>
+          <div className="text-[11.5px] text-mute">{summary.earphones} earphones</div>
+        </div>
+        {/* Allocated and named, waiting for the department to collect: opens the Ready stage. */}
+        <button
+          type="button"
+          onClick={() => setStage('ready')}
+          className={`${tile} text-left transition-colors hover:border-violet-500/40 hover:bg-violet-500/5`}
+        >
+          <div className="text-[10.5px] font-semibold uppercase tracking-wider text-faint">Ready to hand over</div>
+          <div className="mt-1 text-2xl font-semibold tabular-nums text-violet-300">{readyWalkies}</div>
+          <div className="text-[11.5px] text-mute">
+            {readyCount
+              ? `walkies · ${readyCount} department${readyCount === 1 ? '' : 's'} to collect`
+              : 'nothing waiting'}
+          </div>
+        </button>
         {[
-          ['Delivery', summary.delivered, summary.walkies, deliveryPct],
-          ['Returns', summary.returned, summary.delivered, returnPct],
-        ].map(([label, n, total, pct]) => (
-          <div key={label}>
-            <div className="mb-1 flex justify-between text-xs">
-              <span>{label}</span>
-              <span className="tabular-nums">
-                {n}/{total} · {pct}%
-              </span>
+          ['Handed over', summary.delivered, summary.walkies, deliveryPct, 'bg-blue-500'],
+          ['Returned', summary.returned, summary.delivered, returnPct, 'bg-emerald-500'],
+        ].map(([label, n, total, pct, bar]) => (
+          <div key={label} className={tile}>
+            <div className="flex items-baseline justify-between">
+              <span className="text-[10.5px] font-semibold uppercase tracking-wider text-faint">{label}</span>
+              <span className="text-[11.5px] tabular-nums text-mute">{pct}%</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-700/50">
+            <div className="mt-1 text-2xl font-semibold tabular-nums text-ink">
+              {n}
+              <span className="text-sm font-normal text-mute"> / {total}</span>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-raised">
               <div
-                className="h-full rounded-full bg-blue-500 transition-[width] duration-200"
+                className={`h-full rounded-full ${bar} transition-[width] duration-300`}
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -528,205 +470,353 @@ export default function EventRadioRequests() {
         ))}
       </div>
 
-      <div className={panel}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold">Consolidated requirement</h2>
-            <p className="mt-1 text-xs text-mute">
-              Totals combine active requests for this event, while the tickets below remain separate. Sync after all
-              submitted requests are reviewed.
-            </p>
-          </div>
-          {canFulfil && (
+      {/* Tickets, stage by stage */}
+      <div className="overflow-hidden rounded-xl border border-line bg-surface">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-3 py-2.5">
+          <PillTabs
+            variant="segmented"
+            label="Ticket stage"
+            value={activeStage}
+            onChange={setStage}
+            className="inline-flex flex-wrap rounded-lg bg-raised/50 p-0.5"
+            itemClassName="px-3 py-1.5 text-xs"
+            tabs={STAGES.map(([id, label]) => ({ id, label: `${label} · ${stageCount(id)}` }))}
+          />
+          {activeStage === 'allocate' && canFulfil && (
             <button
-              disabled={busy || approvalsOpen || !visible.some(r => r.status === 'approved')}
+              disabled={busy || !rows.length}
               onClick={() => void syncAndAllocate()}
-              title={
-                approvalsOpen
-                  ? 'Review every submitted request before allocation.'
-                  : 'Generate radio labels and allocate approved quantities.'
-              }
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+              title="Name the radios (GP-year-dept-0001) and allocate every approved request in this list"
+              className={btnPrimary}
             >
               <PackageCheck size={14} />
-              Sync naming &amp; allocate
+              Name &amp; allocate all · {rows.length}
             </button>
           )}
         </div>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[520px] text-xs">
-            <thead className="text-left text-mute">
-              <tr>
-                <th className="py-2">Department</th>
-                <th className="py-2">Requests</th>
-                <th className="py-2">Walkies</th>
-                <th className="py-2">Chargers</th>
-                <th className="py-2">Earphones</th>
+
+        {rows.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-xs">
+              <thead>
+                <tr className="bg-raised/40 text-[10.5px] uppercase tracking-wide text-mute">
+                  {!eventId && <th className={th}>Event</th>}
+                  <th className={th}>Department</th>
+                  <th className={th}>Walkies</th>
+                  <th className={th}>Chargers</th>
+                  <th className={th}>Earphones</th>
+                  <th className={th}>Pickup point</th>
+                  <th className={th}>Status</th>
+                  <th className={`${th} text-right`}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => {
+                  const mayDecide =
+                    canApprove &&
+                    r.status === 'pending_approval' &&
+                    (isOwner || (currentUser?.level === 'dept_head' && !!deptId && deptId === itDeptId));
+                  const allocatedIds = Array.isArray(r.allocated_walkie_ids) ? r.allocated_walkie_ids : [];
+                  const qty = returnCounts[r.id] || { walkies: '', chargers: '', earphones: '' };
+                  const returning = canFulfil && openReturn === r.id;
+                  const pickupValue = pickups[r.id] ?? r.collect_from ?? '';
+                  const pickupDirty = pickupValue.trim() !== (r.collect_from || '');
+                  return (
+                    <React.Fragment key={r.id}>
+                      <tr className="border-t border-line/80 hover:bg-raised/20">
+                        {!eventId && (
+                          <td className={`${td} font-medium text-ink`}>
+                            {events.find(e => e.id === r.event_id)?.name || 'Event'}
+                          </td>
+                        )}
+                        <td className={td}>
+                          <div className="font-medium text-ink">{r.department_name}</div>
+                          <div className="mt-0.5 text-[10.5px] text-mute">
+                            {r.requester_name} ·{' '}
+                            {new Date(r.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                          </div>
+                        </td>
+                        <td className={td}>
+                          <span className="text-sm font-semibold tabular-nums text-ink">{r.walkie_count}</span>
+                          {allocatedIds.length > 0 && (
+                            <div
+                              className="mt-0.5 max-w-[11rem] truncate font-mono text-[10px] text-faint"
+                              title={allocatedIds.map(radioLabel).join(', ')}
+                            >
+                              {allocatedIds.slice(0, 2).map(radioLabel).join(', ')}
+                              {allocatedIds.length > 2 ? ` +${allocatedIds.length - 2}` : ''}
+                            </div>
+                          )}
+                        </td>
+                        <td className={`${td} tabular-nums text-ink-soft`}>{r.charger_count}</td>
+                        <td className={`${td} tabular-nums text-ink-soft`}>{r.earphone_count}</td>
+                        <td className={td}>
+                          {canFulfil && ['approved', 'ready'].includes(r.status) ? (
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                list="walkie-pickup-points"
+                                aria-label={`Pickup point for ${r.department_name}`}
+                                className={`${smallInput} !w-40`}
+                                placeholder="Set pickup point"
+                                value={pickupValue}
+                                onChange={e => setPickups(v => ({ ...v, [r.id]: e.target.value }))}
+                              />
+                              {pickupDirty && (
+                                <button
+                                  className="text-[11.5px] font-medium text-blue-300 hover:underline disabled:opacity-50"
+                                  disabled={busy}
+                                  onClick={() => void savePickup(r)}
+                                >
+                                  Save
+                                </button>
+                              )}
+                            </div>
+                          ) : r.collect_from ? (
+                            <span className="inline-flex items-center gap-1 text-violet-300">
+                              <MapPin size={12} />
+                              {r.collect_from}
+                            </span>
+                          ) : (
+                            <span className="text-faint">—</span>
+                          )}
+                        </td>
+                        <td className={td}>
+                          <span
+                            className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${statusTone[r.status]}`}
+                          >
+                            {statusLabels[r.status]}
+                          </span>
+                          {r.status === 'partial_return' && (
+                            <div className="mt-0.5 text-[10.5px] text-orange-300">
+                              {r.delivered_walkies - r.returned_walkies} still out
+                            </div>
+                          )}
+                        </td>
+                        <td className={`${td} text-right`}>
+                          {mayDecide ? (
+                            <div className="flex justify-end gap-1.5">
+                              <button className={btnGhost} disabled={busy} onClick={() => void decide(r, false)}>
+                                <X size={13} />
+                                Decline
+                              </button>
+                              <button className={btnPrimary} disabled={busy} onClick={() => void decide(r, true)}>
+                                <Check size={13} />
+                                Approve
+                              </button>
+                            </div>
+                          ) : canFulfil && r.status === 'ready' ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <input
+                                aria-label="Received by"
+                                className={`${smallInput} !w-36`}
+                                placeholder="Received by"
+                                value={signers[r.id] || ''}
+                                onChange={e => setSigners(s => ({ ...s, [r.id]: e.target.value }))}
+                              />
+                              <button className={btnPrimary} disabled={busy} onClick={() => void markDelivered(r)}>
+                                <PackageCheck size={13} />
+                                Hand over
+                              </button>
+                            </div>
+                          ) : canFulfil && ['delivered', 'partial_return'].includes(r.status) ? (
+                            <button className={btnGhost} onClick={() => setOpenReturn(returning ? '' : r.id)}>
+                              <RotateCcw size={13} />
+                              {returning ? 'Close' : 'Record return'}
+                            </button>
+                          ) : r.status === 'pending_approval' ? (
+                            <span className="text-[11.5px] text-mute">Waiting for IT</span>
+                          ) : r.status === 'approved' ? (
+                            <span className="text-[11.5px] text-mute">Use “Name &amp; allocate”</span>
+                          ) : r.return_feedback ? (
+                            <span className="line-clamp-2 text-[11.5px] text-mute" title={r.return_feedback}>
+                              “{r.return_feedback}”
+                            </span>
+                          ) : (
+                            <span className="text-faint">—</span>
+                          )}
+                        </td>
+                      </tr>
+                      {returning && (
+                        <tr className="bg-raised/20">
+                          <td colSpan={eventId ? 7 : 8} className="px-3 pb-4 pt-1">
+                            {/* Tick the radios actually handed back (not "the first N"). */}
+                            <div className="mb-2 rounded-lg border border-line bg-surface p-3">
+                              <div className="mb-2 flex items-center justify-between text-[11.5px] text-mute">
+                                <span>
+                                  Radios handed back · {(returnPick[r.id] || []).length} of {stillOut(r).length} ticked
+                                </span>
+                                <button
+                                  type="button"
+                                  className="font-medium text-blue-300 hover:underline"
+                                  onClick={() => setReturnPick(v => ({ ...v, [r.id]: stillOut(r) }))}
+                                >
+                                  Tick all
+                                </button>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {stillOut(r).map(id => {
+                                  const on = (returnPick[r.id] || []).includes(id);
+                                  return (
+                                    <button
+                                      key={id}
+                                      type="button"
+                                      aria-pressed={on}
+                                      onClick={() =>
+                                        setReturnPick(v => {
+                                          const cur = v[r.id] || [];
+                                          return { ...v, [r.id]: on ? cur.filter(x => x !== id) : [...cur, id] };
+                                        })
+                                      }
+                                      className={`rounded-md border px-2 py-1 font-mono text-[10.5px] transition-colors ${on ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-300' : 'border-line text-ink-soft hover:bg-raised'}`}
+                                    >
+                                      {on ? '✓ ' : ''}
+                                      {radioLabel(id)}
+                                    </button>
+                                  );
+                                })}
+                                {!stillOut(r).length && (
+                                  <span className="text-[11.5px] text-mute">
+                                    No radios of this request are still out.
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="grid gap-3 rounded-lg border border-line bg-surface p-3 sm:grid-cols-[repeat(2,minmax(0,8rem))_minmax(0,1fr)_auto] sm:items-end">
+                              {[
+                                ['chargers', 'Chargers back', r.delivered_chargers - r.returned_chargers],
+                                ['earphones', 'Earphones back', r.delivered_earphones - r.returned_earphones],
+                              ].map(([key, label, max]) => (
+                                <label key={key} className="text-[11.5px] text-mute">
+                                  {label} <span className="text-faint">(of {max})</span>
+                                  <input
+                                    className={`${smallInput} mt-1`}
+                                    type="number"
+                                    min="0"
+                                    max={max}
+                                    value={qty[key]}
+                                    onChange={e =>
+                                      setReturnCounts(v => ({ ...v, [r.id]: { ...qty, [key]: e.target.value } }))
+                                    }
+                                  />
+                                </label>
+                              ))}
+                              <label className="text-[11.5px] text-mute">
+                                Department feedback <span className="text-rose-400">*</span>
+                                <input
+                                  className={`${smallInput} mt-1`}
+                                  value={feedback[r.id] || ''}
+                                  onChange={e => setFeedback(s => ({ ...s, [r.id]: e.target.value }))}
+                                  placeholder="Condition, anything missing, how it went"
+                                />
+                              </label>
+                              <button
+                                disabled={busy || !(feedback[r.id] || '').trim()}
+                                onClick={() => void submitReturn(r)}
+                                className={btnPrimary}
+                              >
+                                <RotateCcw size={13} />
+                                Save return
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="px-4 py-10 text-center text-xs text-mute">
+            {visible.length ? 'Nothing in this stage.' : `No walkie requests for ${event?.name || 'this event'} yet.`}
+          </div>
+        )}
+      </div>
+
+      {/* Supporting information */}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="overflow-hidden rounded-xl border border-line bg-surface">
+          <div className="border-b border-line px-4 py-3">
+            <h2 className="text-sm font-semibold text-ink">Demand by department</h2>
+            <p className="mt-0.5 text-[11.5px] text-mute">Active requests for this event, declined ones left out.</p>
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-raised/40 text-[10.5px] uppercase tracking-wide text-mute">
+                <th className={th}>Department</th>
+                <th className={th}>Walkies</th>
+                <th className={th}>Chargers</th>
+                <th className={th}>Earphones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-line">
+            <tbody>
               {grouped.map(g => (
-                <tr key={g.department}>
-                  <td className="py-2 font-medium">{g.department}</td>
-                  <td>{g.tickets}</td>
-                  <td>{g.walkies}</td>
-                  <td>{g.chargers}</td>
-                  <td>{g.earphones}</td>
+                <tr key={g.department} className="border-t border-line/80">
+                  <td className={`${td} font-medium text-ink`}>{g.department}</td>
+                  <td className={`${td} tabular-nums`}>{g.walkies}</td>
+                  <td className={`${td} tabular-nums`}>{g.chargers}</td>
+                  <td className={`${td} tabular-nums`}>{g.earphones}</td>
                 </tr>
               ))}
               {!grouped.length && (
                 <tr>
-                  <td colSpan="5" className="py-6 text-center text-mute">
-                    No active requests for this event.
+                  <td colSpan="4" className="px-3 py-6 text-center text-mute">
+                    No active requests.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-      </div>
 
-      <div className={`${panel} overflow-hidden`}>
-        <h2 className="mb-3 text-sm font-semibold">Request tickets</h2>
-        <div className="space-y-3">
-          {visible.map(r => {
-            const isOwner = currentUser?.level === 'owner';
-            const mayDecide =
-              canApprove &&
-              r.status === 'pending_approval' &&
-              (isOwner || (currentUser?.level === 'dept_head' && deptId === r.department_id));
-            const canReturn = canFulfil && ['delivered', 'partial_return'].includes(r.status);
-            const qty = returnCounts[r.id] || { walkies: '', chargers: '', earphones: '' };
-            const allocatedIds = Array.isArray(r.allocated_walkie_ids) ? r.allocated_walkie_ids : [];
-            return (
-              <article key={r.id} className="rounded-lg border border-line bg-raised/30 p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <div className="text-sm font-medium">
-                      {r.department_name}
-                      <span className="ml-2 text-xs text-mute">{r.requester_name}</span>
-                    </div>
-                    <div className="mt-1 text-xs text-mute">
-                      {r.walkie_count} walkies · {r.charger_count} chargers · {r.earphone_count} earphones
-                    </div>
-                    <div className="mt-1 text-[11.5px] text-mute">
-                      Collect from · {r.collect_from || 'Not specified'}
-                    </div>
-                    <div className="mt-1 text-[11.5px] text-mute">
-                      {new Date(r.created_at).toLocaleString('en-IN')}
-                      {r.approval_note ? ` · ${r.approval_note}` : ''}
-                    </div>
-                  </div>
-                  <span className={`rounded-full px-2 py-1 text-[11.5px] ${statusTone[r.status]}`}>
-                    {statusLabels[r.status]}
-                  </span>
-                </div>
-                {mayDecide && (
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      disabled={busy}
-                      onClick={() => void decide(r, true)}
-                      className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs text-white disabled:opacity-50"
-                    >
-                      <Check size={13} />
-                      Approve
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => void decide(r, false)}
-                      className="inline-flex items-center gap-1 rounded-md border border-line px-2.5 py-1.5 text-xs hover:bg-raised disabled:opacity-50"
-                    >
-                      <X size={13} />
-                      Decline
-                    </button>
-                  </div>
-                )}
-                {canFulfil && r.status === 'ready' && (
-                  <div className="mt-3 flex flex-wrap items-end gap-2">
-                    <label className="text-xs text-mute">
-                      Received by
-                      <input
-                        className={`${input} mt-1 max-w-xs`}
-                        value={signers[r.id] || ''}
-                        onChange={e => setSigners(s => ({ ...s, [r.id]: e.target.value }))}
-                      />
-                    </label>
-                    <button
-                      disabled={busy}
-                      onClick={() => void markDelivered(r)}
-                      className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-2 text-xs text-white disabled:opacity-50"
-                    >
-                      <PackageCheck size={13} />
-                      Mark delivered
-                    </button>
-                    <span className="text-[11.5px] text-mute">
-                      {allocatedIds.length} named radios: {allocatedIds.slice(0, 3).join(', ')}
-                      {allocatedIds.length > 3 ? '…' : ''}
+        <div className="overflow-hidden rounded-xl border border-line bg-surface">
+          <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
+            <div>
+              <h2 className="text-sm font-semibold text-ink">Radios inside item requests</h2>
+              <p className="mt-0.5 text-[11.5px] text-mute">
+                Item requests that also ask for walkie-talkies. Handed over from the request itself.
+              </p>
+            </div>
+          </div>
+          {departmentRadioRequests.length ? (
+            <ul className="divide-y divide-line/80">
+              {departmentRadioRequests.map(r => (
+                <li key={r.id}>
+                  <a
+                    href={`#/requests/${r.id}`}
+                    className="flex items-center justify-between gap-3 px-4 py-2.5 text-xs hover:bg-raised/30"
+                  >
+                    <span className="min-w-0">
+                      <span className="font-mono text-mute">{r.number}</span>{' '}
+                      <span className="font-medium text-ink">{r.title}</span>
+                      <span className="block truncate text-[10.5px] text-mute">
+                        {r.fromDepartmentName || r.requesterName} ·{' '}
+                        {r.items
+                          .filter(item => item.kind === 'radio')
+                          .map(item => `${item.requested} ${item.name}`)
+                          .join(' · ')}
+                      </span>
                     </span>
-                  </div>
-                )}
-                {canReturn && (
-                  <div className="mt-3 grid gap-2 sm:grid-cols-4">
-                    <label className="text-[11.5px] text-mute">
-                      Walkies received
-                      <input
-                        className={`${input} mt-1`}
-                        type="number"
-                        min="0"
-                        max={r.delivered_walkies - r.returned_walkies}
-                        value={qty.walkies}
-                        onChange={e => setReturnCounts(v => ({ ...v, [r.id]: { ...qty, walkies: e.target.value } }))}
-                      />
-                    </label>
-                    <label className="text-[11.5px] text-mute">
-                      Chargers
-                      <input
-                        className={`${input} mt-1`}
-                        type="number"
-                        min="0"
-                        max={r.delivered_chargers - r.returned_chargers}
-                        value={qty.chargers}
-                        onChange={e => setReturnCounts(v => ({ ...v, [r.id]: { ...qty, chargers: e.target.value } }))}
-                      />
-                    </label>
-                    <label className="text-[11.5px] text-mute">
-                      Earphones
-                      <input
-                        className={`${input} mt-1`}
-                        type="number"
-                        min="0"
-                        max={r.delivered_earphones - r.returned_earphones}
-                        value={qty.earphones}
-                        onChange={e => setReturnCounts(v => ({ ...v, [r.id]: { ...qty, earphones: e.target.value } }))}
-                      />
-                    </label>
-                    <button
-                      disabled={busy || !(feedback[r.id] || '').trim()}
-                      onClick={() => void submitReturn(r)}
-                      className="mt-auto inline-flex items-center justify-center gap-1 rounded-md bg-emerald-600 px-2.5 py-2 text-xs text-white disabled:opacity-50"
-                    >
-                      <RotateCcw size={13} />
-                      Record return
-                    </button>
-                    <label className="text-[11.5px] text-mute sm:col-span-4">
-                      Department feedback <span className="text-rose-400">*</span>
-                      <textarea
-                        required
-                        className={`${input} mt-1`}
-                        rows="2"
-                        value={feedback[r.id] || ''}
-                        onChange={e => setFeedback(s => ({ ...s, [r.id]: e.target.value }))}
-                        placeholder="Ask the department for return feedback: condition, missing items, or experience"
-                      />
-                    </label>
-                  </div>
-                )}
-              </article>
-            );
-          })}
-          {!visible.length && <div className="py-8 text-center text-xs text-mute">No requests for this event yet.</div>}
+                    <span className="shrink-0 rounded-full bg-raised px-2 py-0.5 text-[10.5px] text-ink-soft">
+                      {requestStatus(r)}
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-4 py-6 text-center text-xs text-mute">None.</p>
+          )}
         </div>
       </div>
+
+      <datalist id="walkie-pickup-points">
+        <option value="Main Control Room" />
+        <option value="Walkie-Talkie Store" />
+        <option value="IT Office" />
+        <option value="Control Room" />
+      </datalist>
     </section>
   );
 }

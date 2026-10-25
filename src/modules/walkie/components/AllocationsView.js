@@ -25,7 +25,7 @@ export default function AllocationsView() {
     availableChargers,
     availableEarphones,
     allocateByCount,
-    transferWalkie,
+    setCurrentTab,
     settings,
     currentUser,
     addToast,
@@ -51,14 +51,6 @@ export default function AllocationsView() {
   // Bulk-by-number State
   const [bulkModel, setBulkModel] = useState('');
   const [bulkCount, setBulkCount] = useState(1);
-
-  // Transfer Form States
-  const [transferWalkieId, setTransferWalkieId] = useState('');
-  const [transferTargetDept, setTransferTargetDept] = useState('');
-  const [transferRemarks, setTransferRemarks] = useState('');
-  const [transferSearch, setTransferSearch] = useState('');
-  const [transferChargers, setTransferChargers] = useState(0);
-  const [transferEarphones, setTransferEarphones] = useState(0);
 
   // Print Slip State
   const [showSlip, setShowSlip] = useState(false);
@@ -87,42 +79,6 @@ export default function AllocationsView() {
         w.model.toLowerCase().includes(term),
     );
   }, [sortedAvailableWalkies, pickSearch]);
-
-  const filteredTransferWalkies = useMemo(() => {
-    const term = transferSearch.toLowerCase();
-    return allocatedWalkies.filter(w => {
-      const currentDept = departments.find(d => d.id === w.departmentId);
-      return (
-        w.id.toLowerCase().includes(term) ||
-        w.label.toLowerCase().includes(term) ||
-        (currentDept?.name || '').toLowerCase().includes(term)
-      );
-    });
-  }, [allocatedWalkies, departments, transferSearch]);
-
-  // The allocation batch the selected radio currently belongs to — this is
-  // where transferred chargers / earphones are taken from.
-  const transferSourceAlloc = useMemo(
-    () =>
-      transferWalkieId ? allocations.find(a => a.status === 'Active' && a.walkieIds.includes(transferWalkieId)) : null,
-    [allocations, transferWalkieId],
-  );
-  const heldChargers = transferSourceAlloc?.chargerCount || 0;
-  const heldEarphones = transferSourceAlloc?.earphoneCount || 0;
-  const isLastInBatch = !!transferSourceAlloc && transferSourceAlloc.walkieIds.length === 1;
-  const leftoverChargers = Math.max(0, heldChargers - (Number(transferChargers) || 0));
-  const leftoverEarphones = Math.max(0, heldEarphones - (Number(transferEarphones) || 0));
-  const transferAccessoriesValid =
-    (Number(transferChargers) || 0) >= 0 &&
-    (Number(transferChargers) || 0) <= heldChargers &&
-    (Number(transferEarphones) || 0) >= 0 &&
-    (Number(transferEarphones) || 0) <= heldEarphones;
-
-  const selectTransferWalkie = id => {
-    setTransferWalkieId(id);
-    setTransferChargers(0);
-    setTransferEarphones(0);
-  };
 
   const resetSharedFields = () => {
     setSelectedWalkies([]);
@@ -173,28 +129,6 @@ export default function AllocationsView() {
       setLastAllocatedRecord(record);
       setShowSlip(true);
       resetSharedFields();
-    }
-  };
-
-  const handleTransferSubmit = async e => {
-    e.preventDefault();
-    if (isClient) {
-      addToast('Access Denied: Clients cannot transfer radios.', 'error');
-      return;
-    }
-    const success = await transferWalkie(
-      transferWalkieId,
-      transferTargetDept,
-      transferRemarks,
-      Number(transferChargers) || 0,
-      Number(transferEarphones) || 0,
-    );
-    if (success) {
-      setTransferWalkieId('');
-      setTransferTargetDept('');
-      setTransferRemarks('');
-      setTransferChargers(0);
-      setTransferEarphones(0);
     }
   };
 
@@ -252,7 +186,7 @@ export default function AllocationsView() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Allocate & Dispatch Radios</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Assign walkie talkies to a department individually or in bulk by quantity, or transfer active units.
+          Assign walkie talkies to a department individually or in bulk by quantity.
         </p>
       </div>
 
@@ -572,156 +506,27 @@ export default function AllocationsView() {
           </div>
         </div>
 
-        {/* Transfer Radios Panel */}
+        {/* Radios out in the field; transferring moved to its own tab (Transfer). */}
         <div
           className={`p-6 rounded-xl border flex flex-col justify-between
           ${isDark ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}
         >
           <div>
-            <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-600">
-              <ArrowRightLeft className="w-5 h-5" />
-              Transfer Active Radio
+            <h2 className="mb-2 flex items-center gap-2 text-lg font-bold text-blue-600">
+              <ArrowRightLeft className="h-5 w-5" />
+              Move a radio to another department?
             </h2>
-            <p className="text-xs text-slate-400 mb-4">
-              Shift an active walkie talkie — and, if needed, some of its chargers and earphones — directly to another
-              department without returning it first.
+            <p className="mb-4 text-xs text-slate-400">
+              Transfers now have their own tab, with the radio's real batch, accessories and event request shown.
             </p>
-
-            <form onSubmit={handleTransferSubmit} className="space-y-4">
-              <div>
-                <label className={labelCls}>Select Active Walkie</label>
-                <div className="relative mb-2">
-                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search active radios..."
-                    value={transferSearch}
-                    onChange={e => setTransferSearch(e.target.value)}
-                    disabled={isClient}
-                    className={`w-full pl-8 pr-3 py-2 text-sm rounded-lg border outline-none ${isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-slate-50 border-slate-200 text-slate-700'}`}
-                  />
-                </div>
-                <div className="max-h-44 overflow-y-auto border rounded-xl p-2 space-y-2 dark:border-slate-800">
-                  {filteredTransferWalkies.length === 0 ? (
-                    <p className="text-xs text-slate-400 text-center py-3">
-                      {transferSearch
-                        ? `No active radios match "${transferSearch}"`
-                        : 'No active radios available for transfer'}
-                    </p>
-                  ) : (
-                    filteredTransferWalkies.map(w => {
-                      const currentDept = departments.find(d => d.id === w.departmentId);
-                      const isSelected = transferWalkieId === w.id;
-                      return (
-                        <button
-                          key={w.id}
-                          type="button"
-                          disabled={isClient}
-                          onClick={() => selectTransferWalkie(w.id)}
-                          className={`w-full text-left p-2.5 rounded-lg border transition-colors ${
-                            isSelected
-                              ? 'border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-400'
-                              : 'border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300'
-                          }`}
-                        >
-                          <div className="font-semibold text-sm">{getWalkieDisplayName(w)}</div>
-                          <div className="text-xs text-slate-400 mt-0.5">
-                            {currentDept ? currentDept.name : 'Unknown'}
-                            {w.channel ? ` • CH ${w.channel}` : ''}
-                          </div>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label className={labelCls}>Target Department</label>
-                <Select
-                  required
-                  disabled={isClient}
-                  value={transferTargetDept}
-                  onChange={e => setTransferTargetDept(e.target.value)}
-                  className={`${inputCls} ${isDark ? 'text-slate-100' : ''}`}
-                >
-                  <option value="">-- Select Target Department --</option>
-                  {departments.map(d => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                      {d.channelNumber ? ` — Channel ${d.channelNumber}` : ''}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-
-              <div>
-                <label className={labelCls}>Accessories to move along (optional)</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="number"
-                    min="0"
-                    max={heldChargers}
-                    disabled={isClient || !transferWalkieId}
-                    value={transferChargers}
-                    onChange={e => setTransferChargers(e.target.value)}
-                    className={inputCls}
-                    placeholder="Chargers"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    max={heldEarphones}
-                    disabled={isClient || !transferWalkieId}
-                    value={transferEarphones}
-                    onChange={e => setTransferEarphones(e.target.value)}
-                    className={inputCls}
-                    placeholder="Earphones"
-                  />
-                </div>
-                <p className="text-xs text-slate-400 mt-1">
-                  {transferWalkieId
-                    ? `This radio's batch holds ${heldChargers} charger${heldChargers === 1 ? '' : 's'} · ${heldEarphones} earphone${heldEarphones === 1 ? '' : 's'}. They are taken from that batch and handed to the target department.`
-                    : 'Select a radio to see how many chargers and earphones its batch holds.'}
-                </p>
-                {transferWalkieId && !transferAccessoriesValid && (
-                  <p className="text-xs text-rose-500 mt-1">
-                    You can move at most {heldChargers} chargers and {heldEarphones} earphones.
-                  </p>
-                )}
-                {transferWalkieId &&
-                  isLastInBatch &&
-                  (leftoverChargers > 0 || leftoverEarphones > 0) &&
-                  transferAccessoriesValid && (
-                    <p className="text-xs text-amber-500 mt-1">
-                      This is the last radio in its batch — the {leftoverChargers} charger(s) and {leftoverEarphones}{' '}
-                      earphone(s) not moved will go back to stock.
-                    </p>
-                  )}
-              </div>
-
-              <div>
-                <label className={labelCls}>Transfer Reason / Remarks</label>
-                <input
-                  type="text"
-                  required
-                  disabled={isClient}
-                  placeholder="e.g. Reinforcing Security shift due to high crowd"
-                  value={transferRemarks}
-                  onChange={e => setTransferRemarks(e.target.value)}
-                  className={inputCls}
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={!transferWalkieId || !transferTargetDept || isClient || !transferAccessoriesValid}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/20 disabled:opacity-50 disabled:shadow-none transition-all text-sm flex items-center justify-center gap-2"
-              >
-                <ArrowRightLeft className="w-4 h-4" />
-                Execute Transfer
-              </button>
-            </form>
+            <button
+              type="button"
+              onClick={() => setCurrentTab('transfer')}
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+            >
+              <ArrowRightLeft className="h-4 w-4" />
+              Open Transfer
+            </button>
           </div>
 
           {/* Currently Allocated Snapshot */}

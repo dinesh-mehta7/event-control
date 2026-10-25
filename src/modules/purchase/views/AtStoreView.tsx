@@ -3,6 +3,7 @@ import { PackageCheck } from 'lucide-react';
 import { cx } from '../../accommodation/ui';
 import { useRequests } from '../../requests/RequestsContext';
 import { purchaseAtStore } from '../../requests/types';
+import { DeptRoute } from '../../requests/parts';
 import { usePurchase } from '../PurchaseContext';
 import { localDate } from '../../../lib/format';
 import { Empty, Section, day, good } from './shared';
@@ -60,6 +61,7 @@ export const AtStoreView: React.FC = () => {
                     <td className="px-3 py-2.5">
                       <span className="font-mono font-bold text-blue-300">{r.number}</span>
                       <span className="block max-w-[14rem] truncate text-mute">{r.title}</span>
+                      <DeptRoute r={r} className="text-[10.5px] text-faint" />
                     </td>
                     <td className="px-3 py-2.5 font-medium text-ink">{item!.name}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">
