@@ -37,6 +37,19 @@ export const approvedBySuperAdmin = (r: Pick<Req, 'status'> & Partial<Pick<Req, 
   return lastEscalation >= 0 && !events.slice(lastEscalation + 1).some(e => e.kind === 'sent_back');
 };
 
+// A send-back starts a second Department Head review cycle. Keep it visible in
+// progress until that cycle is escalated again or reaches a final decision.
+export const departmentHeadReviewAfterSendBack = (
+  r: Pick<Req, 'status'> & Partial<Pick<Req, 'events'>>,
+) => {
+  const events = [...(r.events || [])].sort((a, b) => a.at.localeCompare(b.at));
+  const lastEscalation = events.map(e => e.kind).lastIndexOf('escalated');
+  const lastSendBack = events.map(e => e.kind).lastIndexOf('sent_back');
+  if (lastSendBack < 0 || lastSendBack < lastEscalation) return { returned: false, reapproved: false };
+  const reapproved = events.slice(lastSendBack + 1).some(e => e.kind === 'approved');
+  return { returned: true, reapproved: reapproved && r.status !== 'pending_it' };
+};
+
 // The Department Head's review includes the arrangement, so there is no separate Arranged step.
 export const Stepper: React.FC<{
   r: Pick<Req, 'status' | 'items' | 'parts'> & Partial<Req>;
@@ -45,6 +58,7 @@ export const Stepper: React.FC<{
   const dead = r.status === 'rejected' || r.status === 'cancelled';
   const hasEscalation = r.status === 'pending_owner' || !!r.events?.some(e => e.kind === 'escalated');
   const superApproved = approvedBySuperAdmin(r);
+  const afterSendBack = departmentHeadReviewAfterSendBack(r);
   const purchaseParts = r.parts.filter(part => part.source === 'purchase');
   const hasPurchase = purchaseParts.length > 0;
   const ordered =
@@ -58,17 +72,35 @@ export const Stepper: React.FC<{
   const atStore =
     hasPurchase &&
     purchaseParts.every(part => part.status === 'done' || purchaseAtStore(r as Req, part, orders) >= part.qty);
-  const steps: { label: string; state: 'done' | 'current' | 'idle' }[] = [
+  const steps: { label: string; state: 'done' | 'current' | 'idle' | 'returned' }[] = [
     { label: 'Requested', state: !dead && r.status !== 'pending_sub' ? 'done' : 'idle' },
-    { label: 'Department Head', state: r.status === 'pending_it' ? 'current' : approved ? 'done' : 'idle' },
+    {
+      label: 'Department Head',
+      state: afterSendBack.returned ? 'done' : r.status === 'pending_it' ? 'current' : approved ? 'done' : 'idle',
+    },
     ...(hasEscalation
       ? [
           {
-            label: 'Super Admin',
+            label: afterSendBack.returned ? 'Super Admin · sent back' : 'Super Admin',
             state:
               r.status === 'pending_owner'
                 ? ('current' as const)
+                : afterSendBack.returned
+                  ? ('returned' as const)
                 : superApproved
+                  ? ('done' as const)
+                  : ('idle' as const),
+          },
+        ]
+      : []),
+    ...(afterSendBack.returned
+      ? [
+          {
+            label: 'Department Head · re-review',
+            state:
+              r.status === 'pending_it'
+                ? ('current' as const)
+                : afterSendBack.reapproved
                   ? ('done' as const)
                   : ('idle' as const),
           },
@@ -112,6 +144,7 @@ export const Stepper: React.FC<{
       {steps.map((s, i) => {
         const done = !dead && s.state === 'done';
         const cur = !dead && s.state === 'current';
+        const returned = !dead && s.state === 'returned';
         return (
           <li key={s.label} className="min-w-0 text-center">
             <div className="relative flex h-7 items-center justify-center">
@@ -122,13 +155,13 @@ export const Stepper: React.FC<{
                 />
               )}
               <span
-                className={`relative z-10 grid h-6 w-6 place-items-center rounded-full border text-[11.5px] font-semibold transition-[background-color,border-color,color,box-shadow,transform] duration-300 ease-out ${done ? 'scale-100 border-blue-500 bg-blue-600 text-white shadow-none' : cur ? 'scale-105 border-blue-400 bg-blue-500/15 text-blue-300 ring-4 ring-blue-500/10' : 'border-line-strong bg-surface text-faint'}`}
+                className={`relative z-10 grid h-6 w-6 place-items-center rounded-full border text-[11.5px] font-semibold transition-[background-color,border-color,color,box-shadow,transform] duration-300 ease-out ${done ? 'scale-100 border-blue-500 bg-blue-600 text-white shadow-none' : cur ? 'scale-105 border-blue-400 bg-blue-500/15 text-blue-300 ring-4 ring-blue-500/10' : returned ? 'border-amber-500 bg-amber-500/15 text-amber-300' : 'border-line-strong bg-surface text-faint'}`}
               >
-                {done ? <Check size={13} strokeWidth={2.5} /> : i + 1}
+                {done ? <Check size={13} strokeWidth={2.5} /> : returned ? '↩' : i + 1}
               </span>
             </div>
             <span
-              className={`mt-1.5 block px-1 text-[11.5px] leading-tight transition-colors duration-300 ${done ? 'font-medium text-blue-300' : cur ? 'font-semibold text-ink' : 'text-faint'}`}
+              className={`mt-1.5 block px-1 text-[11.5px] leading-tight transition-colors duration-300 ${done ? 'font-medium text-blue-300' : cur ? 'font-semibold text-ink' : returned ? 'font-medium text-amber-300' : 'text-faint'}`}
             >
               {s.label}
             </span>

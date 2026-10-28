@@ -334,9 +334,9 @@ export default function DepartmentsView() {
 
       {/* Add Department Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
           <div
-            className={`w-full max-w-md rounded-xl shadow-2xl p-6 transition-all ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}
+            className={`my-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-xl p-6 shadow-2xl transition-all ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}
           >
             <h3 className="text-lg font-bold mb-4">Add New Department</h3>
             <form onSubmit={handleAddSubmit} className="space-y-4">
@@ -402,9 +402,9 @@ export default function DepartmentsView() {
 
       {/* Edit Department Modal */}
       {showEditModal && editingDept && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
           <div
-            className={`w-full max-w-md rounded-xl shadow-2xl p-6 transition-all ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}
+            className={`my-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-xl p-6 shadow-2xl transition-all ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}
           >
             <h3 className="text-lg font-bold mb-4">
               {mayManageDepartment ? 'Edit Department Details' : 'Set Department Channel'}
@@ -595,9 +595,9 @@ export default function DepartmentsView() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && deptToDelete && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4">
           <div
-            className={`w-full max-w-md rounded-xl shadow-2xl p-6 transition-all ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}
+            className={`my-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-xl p-6 shadow-2xl transition-all ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}
           >
             <div className="flex items-center gap-3 text-amber-500 mb-4">
               <AlertTriangle className="w-8 h-8 shrink-0" />

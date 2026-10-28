@@ -28,6 +28,7 @@ import {
   ListTodo,
   Clock3,
   Headset,
+  Radio,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { DEPTS } from '../views/orgData';
@@ -484,7 +485,10 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
                       </div>
                     </div>
                   </section>
-                  {(operationalKeys.includes('inventory') || orgKeys.includes('requests') || canOpenProcurement) && (
+                  {(operationalKeys.includes('inventory') ||
+                    orgKeys.includes('requests') ||
+                    orgKeys.includes('my-walkies') ||
+                    canOpenProcurement) && (
                     <section className="mt-1" {...hoverProps('stocks')}>
                       <button
                         type="button"
@@ -492,7 +496,7 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
                         aria-label="Stocks and Approvals"
                         aria-expanded={stocksOpen}
                         onClick={() => setStocksOpen(value => !value)}
-                        className={head(['inventory', 'requests', 'purchase'].includes(key))}
+                        className={head(['inventory', 'requests', 'my-walkies', 'purchase'].includes(key))}
                       >
                         <Boxes size={16} className="shrink-0" />
                         <span className={`flex-1 truncate text-left ${collapsed ? 'md:hidden' : ''}`}>
@@ -513,6 +517,7 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
                           {orgKeys.includes('requests') && (
                             <Item id="requests" label="Requests" Icon={ClipboardList} badge={actionCount} />
                           )}
+                          {orgKeys.includes('my-walkies') && <Item id="my-walkies" label="Walkies" Icon={Radio} />}
                           {canOpenProcurement && <Item id="purchase" label="Procurement" Icon={ShoppingCart} />}
                         </div>
                       </div>
@@ -739,11 +744,7 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
           </div>
         </header>
         <main ref={mainRef} className="flex-1 overflow-y-auto [scrollbar-gutter:stable] p-4 sm:p-6">
-          <Swap
-            k={pageKey}
-            indexOf={navIndex}
-            className="w-full max-w-[1600px] mx-auto"
-          >
+          <Swap k={pageKey} indexOf={navIndex} className="w-full max-w-[1600px] mx-auto">
             <ErrorBoundary page key={pageKey} resetKey={`${key}/${tab || ''}`}>
               {view}
             </ErrorBoundary>

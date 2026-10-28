@@ -10,6 +10,8 @@ export interface DeliveryTask {
   assignedTo: string;
   fulfilmentId: string;
 }
+
+let deliveryTaskSubscriptionId = 0;
 export const TASK_STATUS: Record<string, [string, string]> = {
   todo: ['To do', 'bg-raised text-ink-soft'],
   in_progress: ['In progress', 'bg-amber-500/15 text-amber-300'],
@@ -47,8 +49,11 @@ export function useDeliveryTasks(r: Req): Record<string, DeliveryTask> {
       setTasks(out);
     };
     void load();
+    // Cleanup removes channels asynchronously. A refreshed request can mount a
+    // new effect before that removal finishes, so each subscription needs its
+    // own topic instead of reusing the request ID alone.
     const ch = supabase
-      .channel(`request-tasks-${r.id}`)
+      .channel(`request-tasks-${r.id}-${++deliveryTaskSubscriptionId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'manpower_tasks' }, () => void load())
       .subscribe();
     return () => {

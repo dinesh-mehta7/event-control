@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Walkie } from '../modules/walkie';
 import { Home } from '../views/Home';
+import { MyWalkies } from '../views/MyWalkies';
 import { EventPlanning } from '../views/EventPlanning';
 import { MeetingsEmergency } from '../views/Pages';
 import { UserManagementView } from '../components/owner/UserManagementView';
@@ -78,6 +79,13 @@ export const ORG_PAGES: Record<string, OrgPage> = {
     icon: ClipboardList,
     roles: ['owner', 'dept_head'],
     render: t => <RequestsApp tab={t} />,
+  },
+  // Every department's own radios: holders and problem reports (the Walkie team runs the Walkie module).
+  'my-walkies': {
+    label: 'Walkies',
+    icon: Radio,
+    roles: ['owner', 'dept_head', 'sub_dept_head', 'staff'],
+    render: () => <MyWalkies />,
   },
   purchase: {
     label: 'Procurement',

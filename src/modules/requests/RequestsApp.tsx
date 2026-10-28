@@ -12,7 +12,13 @@ import { NewRequest } from './NewRequest';
 import { RequestDetail } from './RequestDetail';
 import { EventWalkieTickets, useEventWalkies } from './EventWalkieTickets';
 import type { WalkieMode } from './EventWalkieTickets';
-import { DeptRoute, StatusBadge, UrgentBadge, approvedBySuperAdmin } from './parts';
+import {
+  DeptRoute,
+  StatusBadge,
+  UrgentBadge,
+  approvedBySuperAdmin,
+  departmentHeadReviewAfterSendBack,
+} from './parts';
 import { exportRequestsXlsx } from './exportXlsx';
 import { fmtDate, isOverdue, requestStage } from './types';
 import type { NewLine, Req } from './types';
@@ -28,18 +34,34 @@ const Row: React.FC<{ r: Req }> = ({ r }) => {
     : null;
   const escalated = r.events.some(e => e.kind === 'escalated');
   const superApproved = approvedBySuperAdmin(r);
+  const afterSendBack = departmentHeadReviewAfterSendBack(r);
   const chain = [
     {
       label: 'Dept Head',
       state:
-        r.status === 'pending_it'
-          ? 'current'
-          : ['pending_owner', 'approved', 'fulfilled'].includes(r.status)
+        afterSendBack.returned
+          ? 'done'
+          : r.status === 'pending_it'
+            ? 'current'
+            : ['pending_owner', 'approved', 'fulfilled'].includes(r.status)
             ? 'done'
             : 'idle',
     },
     ...(escalated || r.status === 'pending_owner' || superApproved
-      ? [{ label: 'Super Admin', state: r.status === 'pending_owner' ? 'current' : superApproved ? 'done' : 'idle' }]
+      ? [
+          {
+            label: afterSendBack.returned ? 'Sent back' : 'Super Admin',
+            state: r.status === 'pending_owner' ? 'current' : afterSendBack.returned ? 'returned' : superApproved ? 'done' : 'idle',
+          },
+        ]
+      : []),
+    ...(afterSendBack.returned
+      ? [
+          {
+            label: 'Dept Head again',
+            state: r.status === 'pending_it' ? 'current' : afterSendBack.reapproved ? 'done' : 'idle',
+          },
+        ]
       : []),
   ];
   const open = () => go(r.id);
@@ -72,7 +94,7 @@ const Row: React.FC<{ r: Req }> = ({ r }) => {
           {chain.map(step => (
             <span
               key={step.label}
-              className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${step.state === 'done' ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300' : step.state === 'current' ? 'border-blue-500 bg-blue-500/15 text-blue-300' : 'border-line text-faint'}`}
+              className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${step.state === 'done' ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300' : step.state === 'current' ? 'border-blue-500 bg-blue-500/15 text-blue-300' : step.state === 'returned' ? 'border-amber-500/50 bg-amber-500/10 text-amber-300' : 'border-line text-faint'}`}
             >
               {step.label}
             </span>

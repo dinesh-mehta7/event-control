@@ -20,6 +20,7 @@ import {
   CircleCheck,
 } from 'lucide-react';
 import { btnGhost, btnPrimary, inputCls } from '../../../components/ui';
+import { supabase } from '../lib/supabaseClient';
 import { Select } from '../../../components/Select';
 
 const STATUS_STYLES = {
@@ -59,11 +60,56 @@ export default function WalkiesView() {
   const [repairWalkie, setRepairWalkie] = useState(null);
   const [repairForm, setRepairForm] = useState({ issue: '', technician: '' });
   const [repairBusy, setRepairBusy] = useState(false);
+  // Problems departments reported from their Walkies page (open ones), answered here.
+  const [reports, setReports] = useState([]);
+  const orgId = currentUser?.organizationId;
+  const loadReports = async () => {
+    if (!orgId) return;
+    const { data, error } = await supabase
+      .from('walkie_issues')
+      .select('*')
+      .eq('organization_id', orgId)
+      .eq('status', 'open')
+      .order('created_at', { ascending: true });
+    if (!error) setReports(data || []);
+  };
+  useEffect(() => {
+    void loadReports();
+    if (!orgId) return;
+    const ch = supabase
+      .channel(`walkie-reports-${orgId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'walkie_issues', filter: `organization_id=eq.${orgId}` },
+        () => void loadReports(),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [orgId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const answerReport = async (report, status, note = '') => {
+    const { error } = await supabase.rpc('walkie_issue_update', { p_id: report.id, p_status: status, p_note: note });
+    if (error) {
+      addToast(
+        /walkie_issue_update|schema cache/i.test(error.message || '')
+          ? 'Run supabase/migration_v118_department_walkies.sql in the Supabase SQL Editor, then reload.'
+          : error.message,
+        'error',
+      );
+      return false;
+    }
+    void loadReports();
+    return true;
+  };
+
   const submitRepair = async e => {
     e.preventDefault();
     if (!repairWalkie || !repairForm.issue.trim()) return;
     setRepairBusy(true);
     const ok = await sendToMaintenance(repairWalkie.id, repairForm.issue.trim(), repairForm.technician.trim());
+    // Opened from a department's report: that report moves to "In repair" and the reporter is told.
+    if (ok && repairForm.reportId) await answerReport({ id: repairForm.reportId }, 'in_repair', 'Taken for repair');
     setRepairBusy(false);
     if (ok) {
       setRepairWalkie(null);
@@ -465,6 +511,66 @@ export default function WalkiesView() {
         </div>
       </section>
 
+      {/* Problems departments reported: send to repair (returns the radio), resolve or dismiss. */}
+      {reports.length > 0 && (
+        <section className="rounded-xl border border-rose-500/25 bg-rose-500/5 px-4 py-3">
+          <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-rose-300">
+            Reported by departments · {reports.length}
+          </h3>
+          <ul className="space-y-1.5">
+            {reports.map(rep => {
+              const w = walkies.find(x => x.id === rep.walkie_id);
+              const kind = rep.kind === 'repair' ? 'Needs repair' : rep.kind === 'lost' ? 'Lost / damaged' : 'Issue';
+              return (
+                <li
+                  key={rep.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-[11.5px]"
+                >
+                  <span className="min-w-0">
+                    <span className="font-semibold text-ink">{w?.label || rep.walkie_id}</span>
+                    <span className="text-mute">
+                      {' '}
+                      · {kind} · {departments.find(d => d.id === rep.department_id)?.name || 'Department'} · “
+                      {rep.issue}” — {rep.reported_by_name || 'someone'}
+                    </span>
+                  </span>
+                  {!isClient && (
+                    <span className="flex shrink-0 gap-1.5">
+                      {w && w.status !== 'Under Maintenance' && (
+                        <button
+                          type="button"
+                          className="rounded-md px-2 py-1 font-semibold text-amber-300 hover:bg-amber-500/10"
+                          onClick={() => {
+                            setRepairWalkie(w);
+                            setRepairForm({ issue: rep.issue, technician: '', reportId: rep.id });
+                          }}
+                        >
+                          Send to repair
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="rounded-md px-2 py-1 font-semibold text-emerald-300 hover:bg-emerald-500/10"
+                        onClick={() => void answerReport(rep, 'resolved', 'Sorted out')}
+                      >
+                        Resolved
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-md px-2 py-1 text-mute hover:bg-raised"
+                        onClick={() => void answerReport(rep, 'dismissed')}
+                      >
+                        Dismiss
+                      </button>
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       {/* Radios in repair right now, with the issue and who has them. */}
       {openRepairs.length > 0 && (
         <section className="rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3">
@@ -609,7 +715,8 @@ export default function WalkiesView() {
                       )}
                     </td>
                     <td className="max-w-40 truncate px-3 py-3 text-ink-soft" title={walkie.assignedPerson?.name}>
-                      {walkie.assignedPerson?.name || 'Unassigned'}
+                      {walkie.assignedPerson?.name ||
+                        (walkie.status === 'Allocated' ? 'Not set by department yet' : '—')}
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex justify-end gap-1">
@@ -640,15 +747,6 @@ export default function WalkiesView() {
                               <Wrench className="h-4 w-4" />
                             </button>
                           ))}
-                        <button
-                          type="button"
-                          onClick={() => openAssignModal(walkie)}
-                          className="rounded-md p-2 text-blue-400 hover:bg-raised"
-                          title={isClient ? 'Locked' : 'Assign to person'}
-                          aria-label={`Assign ${walkie.id}`}
-                        >
-                          {isClient ? <Lock className="h-4 w-4" /> : <UserCog className="h-4 w-4" />}
-                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -723,7 +821,7 @@ export default function WalkiesView() {
 
       {/* Add Walkie Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/60 p-4 [&>*]:my-auto">
           <div
             className={`w-full max-w-md rounded-xl shadow-2xl p-6 transition-all ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}
           >
@@ -800,7 +898,7 @@ export default function WalkiesView() {
 
       {/* Bulk Add Modal */}
       {showBulkModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/60 p-4 [&>*]:my-auto">
           <div
             className={`w-full max-w-md rounded-xl shadow-2xl p-6 transition-all ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}
           >
@@ -890,7 +988,7 @@ export default function WalkiesView() {
 
       {/* Edit Walkie Modal */}
       {showEditModal && editingWalkie && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/60 p-4 [&>*]:my-auto">
           <div
             className={`w-full max-w-md rounded-xl shadow-2xl p-6 transition-all ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}
           >
@@ -959,7 +1057,7 @@ export default function WalkiesView() {
       {/* Send to repair */}
       {repairWalkie && (
         <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+          className="fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/60 p-4 [&>*]:my-auto"
           role="dialog"
           aria-modal="true"
           aria-label="Send radio to repair"
@@ -1016,7 +1114,7 @@ export default function WalkiesView() {
 
       {/* Assign to Person Modal */}
       {showAssignModal && assigningWalkie && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/60 p-4 [&>*]:my-auto">
           <div
             className={`w-full max-w-md rounded-xl shadow-2xl p-6 transition-all ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}
           >

@@ -286,7 +286,7 @@ export default function ReturnsView() {
 
       {/* Confirmation Modal */}
       {showConfirm && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/60 p-4 [&>*]:my-auto">
           <div
             className={`w-full max-w-md rounded-xl shadow-2xl p-6 transition-all ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}
           >
@@ -339,7 +339,7 @@ export default function ReturnsView() {
 
       {/* WhatsApp Send Panel */}
       {whatsappPanel && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/60 p-4 [&>*]:my-auto">
           <div
             className={`w-full max-w-md rounded-xl shadow-2xl p-6 ${isDark ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-800'}`}
           >
