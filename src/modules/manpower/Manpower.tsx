@@ -1477,6 +1477,8 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
               <label className="text-[10.5px] font-medium text-mute">
                 Event
                 <Select
+                  openOnHover={false}
+                  smoothMotion
                   value={taskEventFilter}
                   onChange={e => setTaskEventFilter(e.target.value)}
                   className={cx(inputCls(D), 'mt-1 h-9 w-full')}
@@ -1492,6 +1494,8 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
               <label className="text-[10.5px] font-medium text-mute">
                 Sub-department
                 <Select
+                  openOnHover={false}
+                  smoothMotion
                   disabled={!!lockedTaskDept}
                   value={lockedTaskDept || taskDepartmentFilter}
                   onChange={e => setTaskDepartmentFilter(e.target.value)}

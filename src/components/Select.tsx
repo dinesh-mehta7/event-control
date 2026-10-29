@@ -31,7 +31,10 @@ const readOptions = (children: React.ReactNode, group?: string, out: Opt[] = [])
   return out;
 };
 
-type Props = Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'multiple'>;
+type Props = Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'multiple'> & {
+  openOnHover?: boolean;
+  smoothMotion?: boolean;
+};
 
 // Plain text of an option label, for type-to-jump.
 const textOf = (node: React.ReactNode): string =>
@@ -54,6 +57,8 @@ export const Select: React.FC<Props> = ({
   name,
   id,
   style,
+  openOnHover = true,
+  smoothMotion = false,
   title,
   'aria-label': ariaLabel,
   'aria-labelledby': ariaLabelledby,
@@ -65,8 +70,8 @@ export const Select: React.FC<Props> = ({
   // Same as React's native select: with no matching option, the first enabled option shows.
   const selected = options.find(o => o.value === current) ?? options.find(o => !o.disabled);
   const native = useRef<HTMLSelectElement>(null);
-  const { open, setOpen, ref, panelRef, hover, trigger } = useHoverMenu<HTMLButtonElement>();
-  const present = useAnimatedPresence(open);
+  const { open, setOpen, ref, panelRef, hover, trigger } = useHoverMenu<HTMLButtonElement>(150, openOnHover);
+  const present = useAnimatedPresence(open, smoothMotion ? 280 : 200);
   const [pos, setPos] = useState<React.CSSProperties>({});
   const [forceDark, setForceDark] = useState(false);
 
@@ -191,7 +196,7 @@ export const Select: React.FC<Props> = ({
           <span className="min-w-0 flex-1 truncate">{selected?.label ?? ''}</span>
           <ChevronDown
             size={14}
-            className={`shrink-0 opacity-60 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+            className={`shrink-0 opacity-60 transition-transform ${smoothMotion ? 'duration-[280ms] ease-[cubic-bezier(0.22,1,0.36,1)]' : 'duration-200'} ${open ? 'rotate-180' : ''}`}
           />
         </span>
       </button>
@@ -220,7 +225,7 @@ export const Select: React.FC<Props> = ({
             {...hover}
             onKeyDown={onListKey}
             style={pos}
-            className={`${forceDark ? 'dark ' : ''}fixed z-[200] overflow-y-auto rounded-xl border border-line bg-surface p-1.5 text-ink shadow-2xl transition-[opacity,transform] duration-200 ease-out ${
+            className={`${forceDark ? 'dark ' : ''}fixed z-[200] overflow-y-auto rounded-xl border border-line bg-surface p-1.5 text-ink shadow-2xl transition-[opacity,transform] ${smoothMotion ? 'duration-[280ms] ease-[cubic-bezier(0.22,1,0.36,1)]' : 'duration-200 ease-out'} ${
               open ? 'translate-y-0 scale-100 opacity-100' : 'pointer-events-none -translate-y-1 scale-95 opacity-0'
             }`}
           >

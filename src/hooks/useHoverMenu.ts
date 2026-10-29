@@ -6,7 +6,7 @@ import type React from 'react';
 // while still hovering), touch and keyboard toggle it.
 // The short close delay lets the pointer cross the gap between button and panel.
 // Click outside (anything not inside `ref` or `panelRef`) or Esc closes it.
-export function useHoverMenu<T extends HTMLElement = HTMLDivElement>(closeDelay = 150) {
+export function useHoverMenu<T extends HTMLElement = HTMLDivElement>(closeDelay = 150, openOnHover = true) {
   const [open, setOpen] = useState(false);
   const ref = useRef<T>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -29,7 +29,7 @@ export function useHoverMenu<T extends HTMLElement = HTMLDivElement>(closeDelay 
       document.removeEventListener('keydown', esc);
     };
   }, [open]);
-  const hover = {
+  const hover = openOnHover ? {
     onPointerEnter: (e: React.PointerEvent) => {
       if (e.pointerType !== 'mouse') return;
       window.clearTimeout(closeTimer.current);
@@ -39,13 +39,13 @@ export function useHoverMenu<T extends HTMLElement = HTMLDivElement>(closeDelay 
       if (e.pointerType !== 'mouse') return;
       closeTimer.current = window.setTimeout(() => setOpen(false), closeDelay);
     },
-  };
+  } : {};
   const trigger = {
     onPointerDown: (e: React.PointerEvent) => {
       lastPointer.current = e.pointerType;
     },
     onClick: () => {
-      if (lastPointer.current === 'mouse') setOpen(true);
+      if (lastPointer.current === 'mouse' && openOnHover) setOpen(true);
       else setOpen(o => !o);
       lastPointer.current = '';
     },
