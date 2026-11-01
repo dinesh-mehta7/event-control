@@ -99,7 +99,14 @@ export const UserManagementView: React.FC<{ initialTab?: string }> = ({ initialT
               </Select>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full table-fixed text-sm">
+                <colgroup>
+                  <col style={{ width: '21%' }} />
+                  <col style={{ width: '22%' }} />
+                  <col style={{ width: '18%' }} />
+                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '25%' }} />
+                </colgroup>
                 <thead>
                   <tr className="bg-canvas">
                     <th className={th}>Person</th>

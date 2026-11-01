@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 import { DEPTS } from '../../views/orgData';
 import { STATUS_LABEL } from './types';
 import type { Availability } from './RequestsContext';
@@ -28,9 +28,6 @@ const demandRows = (reqs: Req[]) =>
       'To purchase': r.parts
         .filter(p => p.itemId === i.id && p.source === 'purchase')
         .reduce((sum, p) => sum + p.qty, 0),
-      'From Walkie pool': r.parts
-        .filter(p => p.itemId === i.id && p.source === 'walkie')
-        .reduce((sum, p) => sum + p.qty, 0),
       'Item budget': i.budgetRate ?? '',
       'Line budget':
         i.budgetAmount != null && (r.status === 'approved' || r.status === 'fulfilled') ? i.budgetAmount : '',
@@ -57,7 +54,6 @@ const DEMAND_COLUMNS = [
   'Requester choice',
   'From inventory',
   'To purchase',
-  'From Walkie pool',
   'Item budget',
   'Line budget',
   'Miscellaneous items',
@@ -107,10 +103,20 @@ const departmentRows = (reqs: Req[]) => {
     });
   });
   const ws = XLSX.utils.aoa_to_sheet(rows.length ? rows : [['No requests in this list.']]);
-  ws['!cols'] = [11, 20, 24, 22, 30, 8, 10, 10, 18, 14, 14, 16, 14, 14, 24, 18, 30, 30, 20, 12, 10, 14].map(w => ({
+  ws['!cols'] = [11, 20, 24, 22, 30, 8, 10, 10, 18, 14, 14, 14, 14, 24, 18, 30, 30, 20, 12, 10, 14].map(w => ({
     wch: w,
   }));
   ws['!merges'] = merges;
+  merges.forEach(({ s }) => {
+    const heading = ws[XLSX.utils.encode_cell(s)];
+    if (heading) {
+      heading.s = {
+        fill: { patternType: 'solid', fgColor: { rgb: 'FFFFB547' } },
+        font: { bold: true, color: { rgb: 'FF191919' }, sz: 12 },
+        alignment: { horizontal: 'center', vertical: 'center' },
+      };
+    }
+  });
   return ws;
 };
 
@@ -197,22 +203,25 @@ export const exportRequestsXlsx = (
   orders: Record<string, OrderInfo>,
   avail: Record<string, Availability>,
   fileName: string,
+  view: 'department' | 'demands' | 'purchase' | 'all' = 'department',
 ) => {
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, departmentRows(reqs), 'By department');
-  XLSX.utils.book_append_sheet(
-    wb,
-    sheet(
-      demandRows(reqs),
-      [11, 20, 24, 22, 30, 8, 10, 10, 18, 14, 14, 16, 14, 14, 24, 18, 30, 30, 20, 12, 10, 14],
-      'No requests in this list.',
-    ),
-    'Demands',
-  );
-  XLSX.utils.book_append_sheet(
-    wb,
-    sheet(purchaseRows(reqs, orders, avail), [30, 8, 8, 12, 28, 22, 16, 12, 18, 14], 'Nothing to purchase right now.'),
-    'To purchase',
-  );
+  if (view === 'department' || view === 'all') XLSX.utils.book_append_sheet(wb, departmentRows(reqs), 'By department');
+  if (view === 'demands' || view === 'all')
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheet(
+        demandRows(reqs),
+        [11, 20, 24, 22, 30, 8, 10, 10, 18, 14, 14, 14, 14, 24, 18, 30, 30, 20, 12, 10, 14],
+        'No requests in this list.',
+      ),
+      'Demands',
+    );
+  if (view === 'purchase' || view === 'all')
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheet(purchaseRows(reqs, orders, avail), [30, 8, 8, 12, 28, 22, 16, 12, 18, 14], 'Nothing to purchase right now.'),
+      'To purchase',
+    );
   XLSX.writeFile(wb, `${fileName}-${new Date().toISOString().slice(0, 10)}.xlsx`);
 };

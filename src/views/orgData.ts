@@ -75,15 +75,14 @@ export const applyCustomSubDepartments = (rows: CustomSubDepartment[]) => {
   });
 };
 
-// Sub-departments that only the IT department (departments.it_services) has.
-export const IT_SERVICE_SUBS = ['cctv', 'wifi', 'walkie', 'control'];
-// The sub-departments a person in this department can be given (visible ones only): the general
-// built-ins, the IT services for the IT department, and that department's own custom ones.
+// Built-in sub-departments belong to Information Technology, never to every department.
+export const IT_SERVICE_SUBS = Object.keys(BUILT_IN_DEPTS);
+// Each department can use its own custom sub-departments; IT also has the built-in set.
 export const subDepartmentsFor = (department?: { id?: string; itServices?: boolean } | null): SubDepartmentId[] =>
   (Object.keys(DEPTS) as SubDepartmentId[]).filter(k =>
     IT_SERVICE_SUBS.includes(k)
       ? !!department?.itServices
-      : isBuiltInSub(k) || !SUB_OWNER[k] || SUB_OWNER[k] === department?.id,
+      : !SUB_OWNER[k] || SUB_OWNER[k] === department?.id,
   );
 // The department that runs the IT services (departments.it_services), from the walkie departments list.
 export const itDepartmentOf = <T extends { itServices?: boolean }>(departments: T[]): T | undefined =>

@@ -428,8 +428,8 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
       : r.requesterId === me.id;
   const mine = requests.filter(r => fromMyDepartment(r) && matches(r, filter));
   const canExport = me.isExec || me.team === 'inventory' || me.team === 'purchase';
-  const exportList = async (rows: Req[], name: string) =>
-    exportRequestsXlsx(rows, orders, await loadAvailability(), name);
+  const exportList = async (rows: Req[], name: string, view: 'department' | 'demands' | 'purchase' | 'all' = 'department') =>
+    exportRequestsXlsx(rows, orders, await loadAvailability(), name, view);
   const downloadAll = async () => {
     setDownloadingAll(true);
     try {
@@ -680,18 +680,36 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
           <div className="space-y-4">
             <List rows={toArrange} empty="Nothing is waiting for your decision." />
             {canExport && (
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
                 <button
                   className={btnGhost}
-                  onClick={() =>
-                    exportList(
-                      requests.filter(r => r.status === 'approved'),
-                      'approved-requests',
-                    )
-                  }
+                  disabled={downloadingCurrent}
+                  onClick={async () => {
+                    setDownloadingCurrent(true);
+                    try {
+                      await exportList(requests.filter(r => r.status === 'approved'), 'approved-demands', 'demands');
+                    } finally {
+                      setDownloadingCurrent(false);
+                    }
+                  }}
                 >
                   <FileSpreadsheet size={14} />
-                  Excel: demands and what to purchase
+                  Excel: demands
+                </button>
+                <button
+                  className={btnGhost}
+                  disabled={downloadingCurrent}
+                  onClick={async () => {
+                    setDownloadingCurrent(true);
+                    try {
+                      await exportList(requests.filter(r => r.status === 'approved'), 'approved-to-purchase', 'purchase');
+                    } finally {
+                      setDownloadingCurrent(false);
+                    }
+                  }}
+                >
+                  <FileSpreadsheet size={14} />
+                  Excel: to purchase
                 </button>
               </div>
             )}

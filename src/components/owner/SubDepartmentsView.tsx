@@ -8,10 +8,9 @@ import { useApp as useWalkie } from '../../modules/walkie/context/AppContext';
 import { btnGhost, btnPrimary, inputCls } from '../ui';
 import { Select } from '../Select';
 
-// Administration → Sub-departments. Each department adds its own sub-departments (its "services"); the
-// Super Admin can add to any department, a Department Head to their own. Built-in ones are shared by every
-// department (CCTV / WiFi / Walkie / Control Rooms only by the IT department); only the Super Admin renames
-// or hides them, and they can be reset but not deleted.
+// Administration → Sub-departments. Custom sub-departments belong to one department; all built-ins belong
+// to IT. The Super Admin can add to any department, a Department Head to their own. Only the Super Admin
+// renames or hides built-ins, and they can be reset but not deleted.
 export const SubDepartmentsView: React.FC = () => {
   const perms = usePermissions();
   const { members } = useAccess();
@@ -294,7 +293,7 @@ export const SubDepartmentsView: React.FC = () => {
 
       <section className="overflow-hidden rounded-xl border border-line bg-surface">
         <h3 className={heading}>
-          Built-in ({Object.keys(BUILT_IN_DEPTS).length}) · every department · only the Super Admin renames or hides
+          Built-in ({Object.keys(BUILT_IN_DEPTS).length}) · {itName} only · only the Super Admin renames or hides
           these
         </h3>
         {Object.keys(BUILT_IN_DEPTS).map(k => renderRow(k, true))}

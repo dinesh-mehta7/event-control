@@ -24,6 +24,13 @@ export const ROLE_TONE: Record<string, string> = {
 export const permanentStaffLabel = (departmentName?: string | null) =>
   departmentName ? `${departmentName} Permanent Staff` : 'Permanent Staff';
 export const subDeptLabel = (sub?: string | null) => (sub ? DEPTS[sub as keyof typeof DEPTS] || sub : '');
+export const formatDepartmentName = (name?: string | null) =>
+  (name || '')
+    .toLocaleLowerCase()
+    .replace(/(^|[\s/&-])([a-z])/g, (_match, separator, letter) => `${separator}${letter.toLocaleUpperCase()}`)
+    .replace(/\bIt\b/g, 'IT')
+    .replace(/\bCctv\b/g, 'CCTV')
+    .replace(/\bWifi\b/g, 'WiFi');
 
 // "Department Head · IT COMMUNICATIONS", "Sub-department Head · CCTV · IT COMMUNICATIONS", "Super Admin".
 export const roleLabel = (level?: string | null, sub?: string | null, departmentName?: string | null) => {

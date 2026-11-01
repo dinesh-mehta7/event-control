@@ -74,9 +74,14 @@ export const Select: React.FC<Props> = ({
   const present = useAnimatedPresence(open, smoothMotion ? 280 : 200);
   const [pos, setPos] = useState<React.CSSProperties>({});
   const [forceDark, setForceDark] = useState(false);
+  const [search, setSearch] = useState('');
+  const filteredOptions = search.trim()
+    ? options.filter(o => textOf(o.label).toLowerCase().includes(search.trim().toLowerCase()))
+    : options;
 
   const choose = (v: string) => {
     setOpen(false);
+    setSearch('');
     if (v === current) return;
     setInner(v);
     const el = native.current;
@@ -130,6 +135,17 @@ export const Select: React.FC<Props> = ({
     return options.find(o => !o.disabled && textOf(o.label).trim().toLowerCase().startsWith(typed.current.text)) ?? null;
   };
   const onListKey = (e: React.KeyboardEvent) => {
+    if ((e.target as HTMLElement).tagName === 'INPUT') {
+      if (e.key === 'Escape' || e.key === 'Tab') {
+        setOpen(false);
+        ref.current?.focus();
+        if (e.key === 'Escape') e.preventDefault();
+      } else if (e.key === 'Enter' && filteredOptions.filter(o => !o.disabled).length === 1) {
+        e.preventDefault();
+        choose(filteredOptions.find(o => !o.disabled)!.value);
+      }
+      return;
+    }
     const hit = !e.ctrlKey && !e.metaKey && !e.altKey ? findTyped(e.key) : null;
     if (hit) {
       e.preventDefault();
@@ -229,7 +245,23 @@ export const Select: React.FC<Props> = ({
               open ? 'translate-y-0 scale-100 opacity-100' : 'pointer-events-none -translate-y-1 scale-95 opacity-0'
             }`}
           >
-            {options.map(o => {
+            <input
+              type="search"
+              aria-label={`Search ${ariaLabel || 'options'}`}
+              placeholder="Type to search…"
+              value={search}
+              onChange={e => {
+                const query = e.target.value;
+                setSearch(query);
+                const exact = options.filter(o => !o.disabled && textOf(o.label).trim().toLowerCase() === query.trim().toLowerCase());
+                if (query.trim() && exact.length === 1) choose(exact[0].value);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Escape' || e.key === 'Tab' || e.key === 'Enter') onListKey(e);
+              }}
+              className="mb-1 w-full rounded-lg border border-line bg-field px-2.5 py-2 text-xs text-ink outline-none placeholder:text-faint focus:border-blue-500"
+            />
+            {filteredOptions.map(o => {
               const heading = o.group !== lastGroup && o.group ? o.group : null;
               lastGroup = o.group;
               const on = o.value === current;
@@ -255,6 +287,7 @@ export const Select: React.FC<Props> = ({
                 </React.Fragment>
               );
             })}
+            {filteredOptions.length === 0 && <div className="px-2.5 py-3 text-xs text-mute">No matching options</div>}
           </div>,
           document.body,
         )}

@@ -16,13 +16,14 @@ export const StatusBadge: React.FC<{ status: ReqStatus; closed?: boolean; stage?
 );
 export const UrgentBadge: React.FC = () => <Pill c="bg-red-500/15 text-red-300">Urgent</Pill>;
 
-// Both departments of a request, everywhere it is listed: the requester's (from) → the one it was made to.
+// Both sides of the route, everywhere it is listed. The Super Admin has no home department,
+// so a missing source department identifies requests raised from the organization level.
 export const DeptRoute: React.FC<{ r: Pick<Req, 'fromDepartmentName' | 'departmentName'>; className?: string }> = ({
   r,
   className = '',
 }) => (
   <span className={`inline-flex flex-wrap items-center gap-x-1 ${className}`}>
-    <span title="From">{r.fromDepartmentName || '—'}</span>
+    <span title="From">{r.fromDepartmentName || 'Super Admin'}</span>
     <ArrowRight size={11} className="shrink-0 text-faint" aria-label="to" />
     <span title="To">{r.departmentName || '—'}</span>
   </span>
@@ -200,7 +201,10 @@ export const ItemsTable: React.FC<{ r: Req; orders: Record<string, OrderInfo> }>
             const st = lineStatus(r, i, orders);
             return (
               <tr key={i.id} className="align-middle">
-                <td className="px-3 py-2.5 whitespace-nowrap text-ink font-medium">{i.name}</td>
+                <td className="px-3 py-2.5 text-ink font-medium">
+                  <div>{i.name}</div>
+                  {i.note && <div className="mt-0.5 whitespace-pre-wrap text-xs font-normal text-mute">{i.note}</div>}
+                </td>
                 <td className="px-3 py-2.5 text-left tabular-nums text-ink-soft whitespace-nowrap">
                   {i.requested} {i.unit}
                 </td>

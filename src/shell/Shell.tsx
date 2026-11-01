@@ -42,7 +42,7 @@ import { CCTVControlRoomApp } from '../components/apps/CCTVControlRoomApp';
 import { InventoryApp } from '../modules/inventory';
 import { Accommodation, LiveMealChip } from '../modules/accommodation';
 import { AddingToDepartment } from './AddingToDepartment';
-import { permanentStaffLabel } from '../lib/roles';
+import { ROLE_LABEL, formatDepartmentName, permanentStaffLabel, subDeptLabel } from '../lib/roles';
 import { ManpowerApp } from '../modules/manpower';
 import { AttendancePage } from '../modules/manpower/AttendancePage';
 import { useRequests } from '../modules/requests';
@@ -66,6 +66,14 @@ const useTheme = () => {
 
 export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
   const { currentUser: u, canAccessApp } = useApp();
+  const roleText = ROLE_LABEL[u.role] || 'No role yet';
+  const departmentText = formatDepartmentName(u.departmentName);
+  const roleScope =
+    u.role === 'dept_head'
+      ? departmentText
+      : u.role === 'sub_dept_head' || u.role === 'staff'
+        ? [subDeptLabel(u.subDepartmentId), departmentText].filter(Boolean).join(' · ')
+        : '';
   const perms = usePermissions();
   const { actionCount } = useRequests();
   const { isDark } = useTheme();
@@ -714,11 +722,13 @@ export const Shell: React.FC<{ out: () => void }> = ({ out }) => {
               </a>
             )}
             <div className="min-w-0">
-              <div
-                className="hidden sm:block truncate text-[10.5px] font-semibold uppercase tracking-wider text-faint"
-                title={u.designation}
-              >
-                {u.designation}
+              <div className="hidden min-w-0 items-center gap-1.5 overflow-hidden sm:flex" title={[roleText, roleScope].filter(Boolean).join(' · ')}>
+                <span className="shrink-0 text-[10.5px] font-semibold text-mute">{roleText}</span>
+                {roleScope && (
+                  <span className="max-w-[14rem] truncate rounded-md bg-raised px-1.5 py-0.5 text-[9.5px] font-medium text-faint">
+                    {roleScope}
+                  </span>
+                )}
               </div>
               <h1 className="page-title text-base font-semibold text-ink truncate">{title}</h1>
             </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, Send, CalendarDays } from 'lucide-react';
+import { Plus, Trash2, Send } from 'lucide-react';
 import { Field, btnPrimary, inputCls } from '../../components/ui';
 import { btnGhost } from '../../components/ui';
 import { useRequests } from './RequestsContext';
@@ -10,6 +10,7 @@ import { DepartmentSelect } from '../../components/DepartmentSelect';
 import { homeDepartmentOf } from '../../views/orgData';
 import { Select } from '../../components/Select';
 import { useEventScope } from '../../context/EventScopeContext';
+import { NeededByDatePicker } from '../../components/NeededByDatePicker';
 
 const UNITS = ['pcs', 'box', 'roll', 'meter', 'set', 'pair', 'kg', 'litre', 'packet'];
 const blank = (): NewLine => ({
@@ -29,7 +30,6 @@ export const NewRequest: React.FC<{
   copyFrom?: { title: string; purpose: string; deliverTo: string; lines: NewLine[] } | null;
 }> = ({ onDone, copyFrom }) => {
   const formRef = useRef<HTMLDivElement>(null);
-  const datePickerRef = useRef<HTMLInputElement>(null);
   const { submit, me, catalogue } = useRequests();
   const walkieApp: any = useWalkie();
   const { currentUser, departments } = walkieApp;
@@ -44,10 +44,20 @@ export const NewRequest: React.FC<{
   const [purpose, setPurpose] = useState(copyFrom?.purpose || '');
   const [deliverTo, setDeliverTo] = useState(copyFrom?.deliverTo || '');
   // From: the person's own department (their profile), not editable. To: chosen; that department's head
-  // confirms it and it is fulfilled from that department's stock. Defaults to the person's own department.
+  // confirms it and it is fulfilled from that department's stock. Remember the last successful destination.
   const isOwner = currentUser?.level === 'owner';
   const homeDepartment: string = homeDepartmentOf(currentUser);
-  const [departmentId, setDepartmentId] = useState(homeDepartment);
+  const lastRequestDepartmentKey = currentUser?.organizationId && currentUser?.id
+    ? `event-command:last-request-department:${currentUser.organizationId}:${currentUser.id}`
+    : '';
+  const [departmentId, setDepartmentId] = useState(() => {
+    if (typeof window === 'undefined' || !lastRequestDepartmentKey) return homeDepartment;
+    try {
+      return localStorage.getItem(lastRequestDepartmentKey) || homeDepartment;
+    } catch {
+      return homeDepartment;
+    }
+  });
   const [neededBy, setNeededBy] = useState('');
   const [neededByText, setNeededByText] = useState('');
   const [urgent, setUrgent] = useState(false);
@@ -89,9 +99,13 @@ export const NewRequest: React.FC<{
   useEffect(() => {
     if (!departmentId && homeDepartment && departments.some(d => d.id === homeDepartment))
       setDepartmentId(homeDepartment);
-    else if (departmentId && !departments.some(d => d.id === departmentId))
+    else if (departmentId && departments.length && !departments.some(d => d.id === departmentId)) {
+      try {
+        if (lastRequestDepartmentKey) localStorage.removeItem(lastRequestDepartmentKey);
+      } catch {}
       setDepartmentId(homeDepartment && departments.some(d => d.id === homeDepartment) ? homeDepartment : '');
-  }, [departmentId, departments, homeDepartment]);
+    }
+  }, [departmentId, departments, homeDepartment, lastRequestDepartmentKey]);
   useEffect(() => {
     if (!orgId) return;
     supabase
@@ -189,6 +203,9 @@ export const NewRequest: React.FC<{
     });
     setBusy(false);
     if (r.error || !r.id) return setErr(r.error || 'Could not send the request.');
+    try {
+      if (lastRequestDepartmentKey) localStorage.setItem(lastRequestDepartmentKey, departmentId);
+    } catch {}
     onDone(r.id);
   };
 
@@ -313,37 +330,13 @@ export const NewRequest: React.FC<{
                   }}
                   placeholder="DD/MM/YYYY"
                 />
-                <button
-                  type="button"
-                  aria-label="Choose needed-by date from calendar"
-                  title="Choose date from calendar"
-                  onClick={() => {
-                    const picker = datePickerRef.current;
-                    if (!picker) return;
-                    try {
-                      if (picker.showPicker) picker.showPicker();
-                      else picker.click();
-                    } catch {
-                      picker.focus();
-                    }
-                  }}
-                  className="absolute inset-y-0 right-0 grid w-10 place-items-center rounded-r-lg text-mute transition-colors hover:bg-raised hover:text-ink"
-                >
-                  <CalendarDays size={16} />
-                </button>
-                <input
-                  ref={datePickerRef}
-                  type="date"
-                  min={today}
+                <NeededByDatePicker
                   value={neededBy}
-                  tabIndex={-1}
-                  aria-label="Needed by date calendar"
-                  onChange={e => {
-                    const iso = e.target.value;
+                  minDate={today}
+                  onChange={iso => {
                     setNeededBy(iso);
                     setNeededByText(iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
                   }}
-                  className="pointer-events-none absolute right-0 top-0 h-10 w-10 opacity-0"
                 />
               </div>
             </Field>

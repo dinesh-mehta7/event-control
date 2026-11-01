@@ -813,6 +813,96 @@ textarea {
   }
 }
 
+@keyframes member-row-edit-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.member-row-edit-enter {
+  animation: member-row-edit-enter 180ms ease-out both;
+}
+.member-row-edit-panel {
+  animation: member-row-edit-panel-enter 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.member-row-edit-leave {
+  animation: member-row-edit-out 170ms ease-in both;
+}
+.member-row-edit-panel-leave {
+  animation: member-row-edit-panel-out 170ms ease-in both;
+}
+@keyframes member-row-edit-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateX(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes member-row-edit-out {
+  to {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+@keyframes member-row-edit-panel-out {
+  to {
+    opacity: 0;
+    transform: translateX(6px);
+  }
+}
+@keyframes member-row-saved {
+  from {
+    background-color: rgb(99 102 241 / 14%);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.member-row-saved {
+  animation: member-row-saved 700ms ease-out both;
+}
+@keyframes needed-by-calendar-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.needed-by-calendar-enter {
+  transform-origin: top left;
+  animation: needed-by-calendar-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes needed-by-calendar-leave {
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+.needed-by-calendar-leave {
+  animation: needed-by-calendar-leave 170ms ease-in both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .member-row-edit-enter,
+  .member-row-edit-panel,
+  .member-row-edit-leave,
+  .member-row-edit-panel-leave,
+  .member-row-saved,
+  .needed-by-calendar-enter,
+  .needed-by-calendar-leave {
+    animation: none;
+  }
+}
+
 /* ── Radio allocation slip: a printable document (AllocationSlip.js) ──────────
    The sheet keeps fixed paper colours in every theme, like a real document. */
 .slip-paper {

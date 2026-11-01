@@ -254,7 +254,7 @@ export const SewadarForm: React.FC<{
             )}
           </label>
           {field('serialNo', 'Sr. No.')}
-          {field('batchNo', 'Badge no.')}
+          {field('batchNo', 'Batch ID')}
           {field('relation', 'Relation')}
           {field('relationName', 'Relation name')}
           {field('phone', 'Mobile', 'tel')}

@@ -56,6 +56,8 @@ const mapMember = (p: any): Member => ({
 
 const dbMessage = (e: any): string => {
   const m: string = e?.message || 'Something went wrong.';
+  if (/set_org_member_active/i.test(m))
+    return 'Run supabase/migration_v121_manage_member_active_state.sql in the Supabase SQL Editor first.';
   if (/could not find the function|schema cache|does not exist/i.test(m))
     return 'Run supabase/migration_v31_meeting_audience_groups.sql in the Supabase SQL Editor first.';
   return m;
@@ -66,6 +68,7 @@ interface Ctx {
   requests: Member[];
   codes: JoinCode[];
   isOwner: boolean;
+  currentUserId: string | null;
   loading: boolean;
   sewadarMembers: SewadarAccountLink[];
   review: (
@@ -78,6 +81,7 @@ interface Ctx {
   linkSewadar: (userId: string, memberId: string | null) => Promise<string | null>;
   regenerate: (sub: SubDepartmentId, departmentId: string) => Promise<string | null>;
   deleteMember: (userId: string) => Promise<{ error: string | null; result?: 'deleted' | 'disabled' }>;
+  setMemberActive: (userId: string, active: boolean) => Promise<string | null>;
   requestAccess: (code: string) => Promise<string | null>;
   refresh: () => Promise<void>;
 }
@@ -211,6 +215,16 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [refresh],
   );
 
+  const setMemberActive = useCallback(
+    async (userId: string, active: boolean) => {
+      const { error } = await supabase.rpc('set_org_member_active', { p_user: userId, p_active: active });
+      if (error) return dbMessage(error);
+      await refresh();
+      return null;
+    },
+    [refresh],
+  );
+
   const requestAccess = useCallback(async (code: string) => {
     const { error } = await supabase.rpc('request_department_access', { p_code: code });
     return error ? dbMessage(error) : null;
@@ -225,12 +239,14 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       requests,
       codes,
       isOwner,
+      currentUserId: uid || null,
       loading,
       sewadarMembers,
       review,
       linkSewadar,
       regenerate,
       deleteMember,
+      setMemberActive,
       requestAccess,
       refresh,
     }),
@@ -239,12 +255,14 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       requests,
       codes,
       isOwner,
+      uid,
       loading,
       sewadarMembers,
       review,
       linkSewadar,
       regenerate,
       deleteMember,
+      setMemberActive,
       requestAccess,
       refresh,
     ],

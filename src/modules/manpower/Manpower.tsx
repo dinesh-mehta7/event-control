@@ -978,7 +978,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
       'Name',
       'Member type',
       'Serial no.',
-      'Badge no.',
+      'Batch ID',
       'Relation',
       'Relation name',
       'Mobile',
@@ -2895,7 +2895,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                   <thead className="sticky top-0 z-10 bg-raised text-left text-[10.5px] font-semibold uppercase tracking-wide text-mute shadow-sm">
                     <tr>
                       {[
-                        'Badge no.',
+                        'Batch ID',
                         'Name',
                         'Branch',
                         'Mobile',
@@ -3188,7 +3188,7 @@ export const ManpowerApp: React.FC<{ initialSection?: 'roster' | 'calling' | 'pe
                         </th>
                       )}
                       {[
-                        'Badge no.',
+                        'Batch ID',
                         'Name',
                         'Member type',
                         'Mobile',

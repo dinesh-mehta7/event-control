@@ -120,6 +120,11 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
     },
     [w.logAction],
   );
+  const batchKey = (value: string) => value.trim().toLowerCase();
+  const batchAlreadyUsed = (value: string, memberId?: string) => {
+    const key = batchKey(value);
+    return !!key && members.some(member => member.id !== memberId && batchKey(member.batchNo || '') === key);
+  };
 
   // ---- Loading ------------------------------------------------------------
   const loadAll = useCallback(async () => {
@@ -349,6 +354,14 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
       toast('Enter at least one name.', 'error');
       return false;
     }
+    if (clean.length > 1 && details.batchNo?.trim()) {
+      toast('A Batch ID can belong to only one member. Add one member at a time when using a Batch ID.', 'error');
+      return false;
+    }
+    if (details.batchNo && batchAlreadyUsed(details.batchNo)) {
+      toast('That Batch ID is already assigned to another member.', 'error');
+      return false;
+    }
     if (roomId) {
       const room = roomsRef.current.find(r => r.id === roomId);
       const used = members.filter(m => m.roomId === roomId).length;
@@ -443,6 +456,16 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
       toast('The CSV has no rows with a name.', 'error');
       return false;
     }
+    const existingBatches = new Set(members.map(member => batchKey(member.batchNo || '')).filter(Boolean));
+    const incomingBatches = new Set<string>();
+    for (const item of clean) {
+      const key = batchKey(item.batch_no || '');
+      if (key && (existingBatches.has(key) || incomingBatches.has(key))) {
+        toast(`Batch ID ${item.batch_no} is already assigned to a member or repeated in this import.`, 'error');
+        return false;
+      }
+      if (key) incomingBatches.add(key);
+    }
     const incoming = new Map<string, number>();
     clean.forEach(x => {
       if (x.room_id) incoming.set(x.room_id, (incoming.get(x.room_id) || 0) + 1);
@@ -485,6 +508,10 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
     }
     if (patch.roomId !== undefined && !['owner', 'dept_head'].includes(user.level)) {
       toast('Only an owner or department head can assign members to rooms.', 'error');
+      return false;
+    }
+    if (patch.batchNo !== undefined && batchAlreadyUsed(patch.batchNo, id)) {
+      toast('That Batch ID is already assigned to another member.', 'error');
       return false;
     }
     const body: any = {};
@@ -530,7 +557,12 @@ export const AccommodationProvider: React.FC<{ children: React.ReactNode }> = ({
     });
     const { data, error } = await supabase.from('accommodation_members').update(body).eq('id', id).select().single();
     if (error) {
-      toast(`Could not update member: ${friendlyError(error)}`, 'error');
+      toast(
+        error.code === '23505'
+          ? 'That Batch ID is already assigned to another member.'
+          : `Could not update member: ${friendlyError(error)}`,
+        'error',
+      );
       return false;
     }
     const m = mapMember(data);

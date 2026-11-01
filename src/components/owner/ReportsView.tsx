@@ -394,6 +394,23 @@ export const ReportsView: React.FC = () => {
 
   const exportAllReports = () => {
     const workbook = XLSX.utils.book_new();
+    const requestsAscending = [...req.requests].sort((a, b) =>
+      a.number.localeCompare(b.number, undefined, { numeric: true, sensitivity: 'base' }),
+    );
+    const raisedAt = (value: string) => {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime())
+        ? value
+        : new Intl.DateTimeFormat('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+          }).format(date);
+    };
     const addSheet = (name: string, rows: any[]) =>
       XLSX.utils.book_append_sheet(
         workbook,
@@ -402,13 +419,13 @@ export const ReportsView: React.FC = () => {
       );
     addSheet(
       'Requests',
-      req.requests.map(r => ({
+      requestsAscending.map(r => ({
         Number: r.number,
         Title: r.title,
         RequestedBy: r.requesterName,
         Status: STATUS_LABEL[r.status],
         Items: r.items.length,
-        Raised: r.createdAt,
+        Raised: raisedAt(r.createdAt),
       })),
     );
     addSheet(
@@ -427,7 +444,11 @@ export const ReportsView: React.FC = () => {
     addSheet('Purchase Payments', extraReports.purchasePayments || []);
     addSheet(
       'Request Items',
-      req.requests.flatMap(r => r.items.map(item => ({ Request: r.number, Title: r.title, ...item }))),
+      requestsAscending.flatMap(r =>
+        [...r.items]
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
+          .map(item => ({ Request: r.number, Title: r.title, ...item })),
+      ),
     );
     addSheet(
       'Inventory',

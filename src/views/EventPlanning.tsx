@@ -1002,32 +1002,6 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
     other: 'Other',
   };
   const when = (v?: string | null) => (v ? new Date(v).toLocaleString('en-IN') : '');
-  const requirementRow = (row: Requirement) => {
-    const needs = row.room_requirements || [];
-    return {
-      'Requirement ID': row.id,
-      'Event name': selected?.name || '',
-      'Event location': selected?.location || '',
-      'Event starts': when(selected?.starts_at),
-      'Event ends': when(selected?.ends_at),
-      Category: CATEGORY_LABEL[row.category] || row.category,
-      'Requirement / room': row.title,
-      'Responsible unit': row.department_name || (row.category === 'accommodation' ? '' : 'Unassigned'),
-      'Responsible unit ID': row.department_id || '',
-      Quantity: row.quantity,
-      Unit: row.unit,
-      'Specifications / notes': row.notes,
-      'From department': row.collect_from_department || '',
-      'From location': row.collect_from_location || (!row.collect_from_department ? row.collect_from || '' : ''),
-      'From (combined)': row.collect_from || '',
-      Status: row.status.replace(/_/g, ' '),
-      'Room category': row.accommodation_category ? row.accommodation_category.replace('_', ' ') : '',
-      'Room necessities': needs.length,
-      'Necessities ready': needs.filter(n => n.quantity > 0 && n.readyQuantity >= n.quantity).length,
-      'Inventory item ID': row.inventory_item_id || '',
-      'Created at': when(row.created_at),
-    };
-  };
   const necessityRows = (rows: Requirement[]) =>
     rows.flatMap(row =>
       (row.room_requirements || []).map((n, i) => ({
@@ -1051,7 +1025,13 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
   const mainRows = (rows: Requirement[], radio: any[] = []) =>
     [
       ...rows.flatMap(row => {
-        const base = { 'Event name': selected?.name || '', Category: CATEGORY_LABEL[row.category] || row.category };
+        const base = {
+          'Request ID': row.id,
+          'Event name': selected?.name || '',
+          Category: CATEGORY_LABEL[row.category] || row.category,
+          Status: row.status.replace(/_/g, ' '),
+          Notes: row.notes || '',
+        };
         if (row.category === 'accommodation') {
           const needs = row.room_requirements || [];
           if (!needs.length)
@@ -1094,7 +1074,10 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
         const base = {
           'Event name': selected?.name || '',
           Category: 'Walkie-Talkie',
+          'Request ID': r.id,
           'Requirement / room': `Radio request · ${r.department_name || 'Department'}`,
+          Status: String(r.status || '').replace(/_/g, ' '),
+          Notes: '',
           'From department': from.dept,
           'From location': from.place,
         };
@@ -1109,6 +1092,7 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
           .map(([item, n]) => ({ ...base, 'Required item': item, Quantity: n, Unit: 'pcs' }));
       }),
     ].map(r => ({
+      'Request ID': r['Request ID'],
       'Event name': r['Event name'],
       Category: r.Category,
       'Requirement / room': r['Requirement / room'],
@@ -1117,6 +1101,8 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
       Unit: r.Unit,
       'From department': r['From department'],
       'From location': r['From location'],
+      Status: r.Status,
+      Notes: r.Notes,
     }));
   const fitColumns = (sheet: XLSX.WorkSheet, rows: Record<string, unknown>[]) => {
     const keys = Object.keys(rows[0] || {});
@@ -1148,17 +1134,6 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
           .order('created_at')
       : { data: [] as any[] };
     addSheet(book, 'Requirements', mainRows(requirements, radio.data || []), 'No requirements for this event');
-    addSheet(book, 'All details', requirements.map(requirementRow), 'No requirements for this event');
-    for (const category of ['it', 'sewadar', 'inventory', 'accommodation', 'other']) {
-      const rows = requirements.filter(row => row.category === category);
-      if (rows.length || category !== 'inventory')
-        addSheet(
-          book,
-          CATEGORY_LABEL[category],
-          rows.map(requirementRow),
-          `No ${CATEGORY_LABEL[category]} requirements`,
-        );
-    }
     addSheet(
       book,
       'Room necessities',
@@ -1169,7 +1144,7 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
       book,
       'Walkie-Talkie',
       (radio.data || []).map((r: any) => ({
-        'Request ID': r.id,
+        'Walkie request ID': r.id,
         'Event name': selected?.name || '',
         Department: r.department_name,
         'From (department · location)': r.collect_from || '',
@@ -1183,7 +1158,6 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
         'Returned at': when(r.returned_at),
         'Return feedback': r.return_feedback || '',
         'Requested at': when(r.created_at),
-        'Updated at': when(r.updated_at),
       })),
       'No walkie-talkie requests for this event',
     );
@@ -1193,12 +1167,6 @@ export const EventPlanning: React.FC<{ section?: string }> = ({ section }) => {
   const exportRequirement = (row: Requirement) => {
     const book = XLSX.utils.book_new();
     addSheet(book, 'Requirement', mainRows([row]), '');
-    addSheet(
-      book,
-      'All details',
-      Object.entries(requirementRow(row)).map(([Field, Value]) => ({ Field, Value })),
-      '',
-    );
     if (row.category === 'accommodation')
       addSheet(book, 'Room necessities', necessityRows([row]), 'No necessities for this room');
     const name =

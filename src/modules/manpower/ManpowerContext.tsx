@@ -287,6 +287,11 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     toast('You can view this list but not change it.', 'error');
     return false;
   };
+  const batchKey = (value: string) => value.trim().toLowerCase();
+  const hasBatchConflict = (value: string, memberId?: string) => {
+    const key = batchKey(value);
+    return !!key && ref.current.some(member => member.id !== memberId && batchKey(member.batchNo || '') === key);
+  };
   const clean = (i: SewadarInput) => ({
     name: i.name.trim(),
     mobile: i.phone.replace(/[^\d+]/g, ''),
@@ -322,13 +327,22 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       toast('Name is required.', 'error');
       return false;
     }
+    if (hasBatchConflict(i.batchNo)) {
+      toast('That Batch ID is already assigned to another member.', 'error');
+      return false;
+    }
     const { data, error } = await supabase
       .from('accommodation_members')
       .insert({ id: uid('mem'), organization_id: orgId, ...clean(i) })
       .select()
       .single();
     if (error) {
-      toast(`Could not add: ${friendlyError(error)}`, 'error');
+      toast(
+        error.code === '23505'
+          ? 'That Batch ID is already assigned to another member.'
+          : `Could not add: ${friendlyError(error)}`,
+        'error',
+      );
       return false;
     }
     setSewadars(p => upsert(p, mapSewadar(data)));
@@ -343,10 +357,15 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { added: 0, skipped: rows.length };
     }
     const have = new Set(ref.current.map(s => s.phone).filter(Boolean));
+    const haveBatches = new Set(ref.current.map(s => batchKey(s.batchNo || '')).filter(Boolean));
     const seen = new Set<string>();
+    const seenBatches = new Set<string>();
     const fresh = rows.filter(r => {
       const c = clean(r);
       if (!c.name) return false;
+      const batch = batchKey(c.batch_no);
+      if (batch && (haveBatches.has(batch) || seenBatches.has(batch))) return false;
+      if (batch) seenBatches.add(batch);
       if (c.mobile) {
         if (have.has(c.mobile) || seen.has(c.mobile)) return false;
         seen.add(c.mobile);
@@ -379,6 +398,10 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       toast('Name is required.', 'error');
       return false;
     }
+    if (hasBatchConflict(i.batchNo, id)) {
+      toast('That Batch ID is already assigned to another member.', 'error');
+      return false;
+    }
     const { data, error } = await supabase
       .from('accommodation_members')
       .update(clean(i))
@@ -386,7 +409,12 @@ export const ManpowerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .select()
       .single();
     if (error) {
-      toast(`Could not save: ${friendlyError(error)}`, 'error');
+      toast(
+        error.code === '23505'
+          ? 'That Batch ID is already assigned to another member.'
+          : `Could not save: ${friendlyError(error)}`,
+        'error',
+      );
       return false;
     }
     setSewadars(p => upsert(p, mapSewadar(data)));

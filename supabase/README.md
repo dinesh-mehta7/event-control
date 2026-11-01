@@ -27,7 +27,7 @@ For a fresh database, run **one file**:
 2. Open `supabase/setup.sql`, copy the whole file into the editor, and click **Run**.
 
 `setup.sql` contains the base schema, auth hardening, and the current migrations in
-the required order through migration v110. This is the easiest path for a new project.
+the required order through migration v121. This is the easiest path for a new project.
 
 ### Existing Supabase project
 
@@ -456,3 +456,13 @@ Allows authorized Accommodation sub-department leads to manage teams, task assig
 
 ## migration_v84_task_team_links.sql
 Adds a validated foreign-key link between tasks and registered teams, backfills existing assignments, and keeps the displayed team name in sync. Apply after migration_v83 on existing databases; included in setup.sql for new databases.
+
+
+## migration_v119_it_owned_builtin_sub_departments.sql
+Scopes all nine built-in sub-departments and their sign-up codes to the Information Technology department. Existing people assigned to a built-in under another department are moved to IT; custom sub-departments remain department-owned. Apply after migration_v118_department_walkies.sql; included in `setup.sql` for new databases.
+
+## migration_v120_unique_sewadar_batch_id.sql
+Makes nonblank Sewadar Batch IDs unique within each organization, ignoring surrounding spaces and letter case. Before applying, correct any duplicate Batch IDs; the migration reports the affected members and stops without changing member data. Apply after migration_v119_it_owned_builtin_sub_departments.sql; included in `setup.sql` for new databases.
+
+## migration_v121_manage_member_active_state.sql
+Adds a Super Admin action to disable or re-enable a user's sign-in without deleting their profile or records. Disabling also bans the Auth account; the organization must retain at least one active Super Admin. Apply after migration_v120; included in `setup.sql` for new databases.

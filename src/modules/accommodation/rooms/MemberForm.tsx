@@ -183,7 +183,7 @@ export const MemberForm: React.FC<{
               {(
                 [
                   ['serialNo', 'Sr. No.'],
-                  ['batchNo', 'Badge no.'],
+                  ['batchNo', 'Batch ID'],
                   ['relation', 'Relation'],
                   ['relationName', 'Relation name'],
                   ['mobile', 'Mobile'],

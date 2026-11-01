@@ -1,5 +1,5 @@
 import React from 'react';
-import { roleLabel } from '../lib/roles';
+import { formatDepartmentName, roleLabel, subDeptLabel } from '../lib/roles';
 import { User, LayoutDashboard, SunMoon, LogOut } from 'lucide-react';
 import { settingsFor, themeChoiceOf, type ThemeChoice } from '../hooks/useMotion';
 import { useApp as useWalkie } from '../modules/walkie/context/AppContext';
@@ -15,6 +15,14 @@ export const ProfileMenu: React.FC<{ extra?: React.ReactNode }> = ({ extra }) =>
   const { open, setOpen, ref: box, hover, trigger } = useHoverMenu();
   const present = useAnimatedPresence(open);
   const u = w.currentUser;
+  const departmentName = (w.departments || []).find((d: any) => d.id === u?.departmentId)?.name || '';
+  const role = roleLabel(u?.level).split(' · ')[0];
+  const scope =
+    u?.level === 'dept_head'
+      ? formatDepartmentName(departmentName)
+      : u?.level === 'sub_dept_head' || u?.level === 'staff'
+        ? [subDeptLabel(u?.subDepartment), formatDepartmentName(departmentName)].filter(Boolean).join(' · ')
+        : '';
   const choice = themeChoiceOf(w.settings);
   const pick = (c: ThemeChoice) => w.setSettings?.((p: any) => ({ ...p, ...settingsFor(c) }));
   const item =
@@ -46,7 +54,7 @@ export const ProfileMenu: React.FC<{ extra?: React.ReactNode }> = ({ extra }) =>
             {...({ inert: !open } as any)}
             className={`absolute right-0 top-full mt-2 z-50 w-72 max-w-[calc(100vw-1.5rem)] rounded-xl border border-line bg-surface shadow-xl overflow-hidden transition-[opacity,transform] duration-200 ease-out ${open ? 'animate-pop-in translate-y-0 scale-100 opacity-100' : '-translate-y-1 scale-[0.98] opacity-0 pointer-events-none'}`}
           >
-            {/* Who is signed in: initials, name, email, then the role as one quiet line. */}
+                {/* Who is signed in: initials, name, email, role, then department scope. */}
             <div className="flex items-start gap-3 px-4 py-3.5">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-blue-500/15 text-sm font-semibold text-blue-400">
                 {initials}
@@ -60,13 +68,16 @@ export const ProfileMenu: React.FC<{ extra?: React.ReactNode }> = ({ extra }) =>
                     {u.email}
                   </div>
                 )}
-                <span className="mt-1.5 inline-block max-w-full rounded-md bg-blue-500/15 px-2 py-0.5 text-[11px] font-medium leading-snug text-blue-400">
-                  {roleLabel(
-                    u?.level,
-                    u?.subDepartment,
-                    (w.departments || []).find((d: any) => d.id === u?.departmentId)?.name,
+                <div className="mt-2 space-y-1">
+                  <span className="inline-flex max-w-full whitespace-nowrap rounded-full bg-blue-500/15 px-2.5 py-1 text-[10.5px] font-semibold leading-none text-blue-300">
+                    {role}
+                  </span>
+                  {scope && (
+                    <div className="truncate pl-0.5 text-[11px] font-medium text-mute" title={scope}>
+                      {scope}
+                    </div>
                   )}
-                </span>
+                </div>
               </div>
             </div>
             <div className="space-y-0.5 border-t border-line p-1.5">
