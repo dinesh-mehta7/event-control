@@ -64,8 +64,10 @@ const DEMAND_COLUMNS = [
   'Needed by',
   'Urgent',
   'Raised on',
+  'Handed on',
+  'Price',
 ];
-const departmentRows = (reqs: Req[]) => {
+const departmentRows = (reqs: Req[], orders: Record<string, OrderInfo>) => {
   const groups = new Map<string, Req[]>();
   reqs.forEach(r => {
     const label = dept(r);
@@ -73,6 +75,7 @@ const departmentRows = (reqs: Req[]) => {
   });
   const rows: (string | number)[][] = [];
   const merges: XLSX.Range[] = [];
+  const columnHeadingRows: number[] = [];
   const departments = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b));
   departments.forEach((name, groupIndex) => {
     const items = groups.get(name) || [];
@@ -80,13 +83,28 @@ const departmentRows = (reqs: Req[]) => {
     const headingRow = rows.length;
     rows.push([`${name} — ${items.length} request${items.length === 1 ? '' : 's'}`]);
     merges.push({ s: { r: headingRow, c: 0 }, e: { r: headingRow, c: DEMAND_COLUMNS.length - 1 } });
+    columnHeadingRows.push(rows.length);
     rows.push(DEMAND_COLUMNS);
     items.forEach(r => {
       const lineRows = demandRows([r]);
       if (lineRows.length)
-        lineRows.forEach(line =>
-          rows.push(DEMAND_COLUMNS.map(column => (line as Record<string, string | number>)[column] ?? '')),
-        );
+        lineRows.forEach((line, lineIndex) => {
+          const item = r.items[lineIndex];
+          const partRates = r.parts
+            .filter(p => p.itemId === item?.id && p.purchaseItemId)
+            .map(p => orders[p.purchaseItemId!]?.rate)
+            .filter((rate): rate is number => rate != null);
+          const values: Record<string, string | number> = {
+            ...(line as Record<string, string | number>),
+            Price: partRates.length ? partRates[0] : item?.budgetRate ?? '',
+            'Handed on': Array.from(
+              new Set(r.parts.filter(p => p.itemId === item?.id && p.status === 'done').map(p => d(p.doneAt))),
+            )
+              .filter(Boolean)
+              .join(', '),
+          };
+          rows.push(DEMAND_COLUMNS.map(column => values[column] ?? ''));
+        });
       else
         rows.push([
           r.number,
@@ -99,11 +117,15 @@ const departmentRows = (reqs: Req[]) => {
           d(r.neededBy),
           r.priority === 'urgent' ? 'Yes' : '',
           d(r.createdAt),
+          Array.from(new Set(r.parts.filter(p => p.status === 'done').map(p => d(p.doneAt))))
+            .filter(Boolean)
+            .join(', '),
+          '',
         ]);
     });
   });
   const ws = XLSX.utils.aoa_to_sheet(rows.length ? rows : [['No requests in this list.']]);
-  ws['!cols'] = [11, 20, 24, 22, 30, 8, 10, 10, 18, 14, 14, 14, 14, 24, 18, 30, 30, 20, 12, 10, 14].map(w => ({
+  ws['!cols'] = [11, 20, 24, 22, 30, 8, 10, 10, 18, 14, 14, 14, 14, 24, 18, 30, 30, 20, 12, 10, 14, 14, 12].map(w => ({
     wch: w,
   }));
   ws['!merges'] = merges;
@@ -116,6 +138,12 @@ const departmentRows = (reqs: Req[]) => {
         alignment: { horizontal: 'center', vertical: 'center' },
       };
     }
+  });
+  columnHeadingRows.forEach(row => {
+    DEMAND_COLUMNS.forEach((_, column) => {
+      const cell = ws[XLSX.utils.encode_cell({ r: row, c: column })];
+      if (cell) cell.s = { ...(cell.s || {}), font: { ...(cell.s?.font || {}), bold: true } };
+    });
   });
   return ws;
 };
@@ -195,6 +223,11 @@ const purchaseRows = (reqs: Req[], orders: Record<string, OrderInfo>, avail: Rec
 const sheet = (rows: object[], widths: number[], empty: string) => {
   const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Note: empty }]);
   ws['!cols'] = widths.map(w => ({ wch: w }));
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+  for (let column = range.s.c; column <= range.e.c; column += 1) {
+    const cell = ws[XLSX.utils.encode_cell({ r: range.s.r, c: column })];
+    if (cell) cell.s = { ...(cell.s || {}), font: { ...(cell.s?.font || {}), bold: true } };
+  }
   return ws;
 };
 
@@ -206,7 +239,7 @@ export const exportRequestsXlsx = (
   view: 'department' | 'demands' | 'purchase' | 'all' = 'department',
 ) => {
   const wb = XLSX.utils.book_new();
-  if (view === 'department' || view === 'all') XLSX.utils.book_append_sheet(wb, departmentRows(reqs), 'By department');
+  if (view === 'department' || view === 'all') XLSX.utils.book_append_sheet(wb, departmentRows(reqs, orders), 'By department');
   if (view === 'demands' || view === 'all')
     XLSX.utils.book_append_sheet(
       wb,

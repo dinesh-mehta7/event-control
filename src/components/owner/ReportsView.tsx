@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 import { useInventory } from '../../modules/inventory';
 import { MOVE } from '../../modules/inventory/types';
 import { usePurchase } from '../../modules/purchase';
@@ -13,7 +13,7 @@ import { useEventScope } from '../../context/EventScopeContext';
 import { useMeetings } from '../../context/MeetingsContext';
 import { STATUS as PO_STATUS, PAYABLE, poDue, poTotal } from '../../modules/purchase/types';
 import { STATUS_LABEL } from '../../modules/requests/types';
-import { inr } from '../../views/orgData';
+import { DEPTS, inr } from '../../views/orgData';
 import { Card, Empty, Stat, Tabs, btnGhost, btnPrimary, printLight, th } from '../ui';
 import { Swap } from '../Swap';
 import {
@@ -411,18 +411,95 @@ export const ReportsView: React.FC = () => {
             hour12: true,
           }).format(date);
     };
-    const addSheet = (name: string, rows: any[]) =>
-      XLSX.utils.book_append_sheet(
-        workbook,
-        XLSX.utils.json_to_sheet(rows.length ? rows : [{ Note: 'No records available' }]),
-        name.slice(0, 31),
+    const readableDate = (value: any) => {
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}(?:T.*)?$/.test(value)) return value;
+      if (!value.includes('T')) {
+        const [year, month, day] = value.split('-').map(Number);
+        return new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(
+          new Date(year, month - 1, day),
+        );
+      }
+      return raisedAt(value);
+    };
+    const readableStatus = (value: any) =>
+      typeof value === 'string' && /^[a-z]+(?:_[a-z]+)*$/.test(value)
+        ? value.split('_').map(word => word[0].toUpperCase() + word.slice(1)).join(' ')
+        : value;
+    const departmentLabel = (value: string | null | undefined) =>
+      value ? DEPTS[value as keyof typeof DEPTS] || readableStatus(value) : '—';
+    const rawRows = (rows: any[]) =>
+      rows.map(row =>
+        Object.fromEntries(
+          Object.entries(row)
+            .filter(([key]) => !/^(id|organization_id|created_by|updated_by|actor_id|reporter_id|requester_id|approved_by|rejected_by|member_id|event_id|department_id|sewadar_id|item_id|po_id|request_id|purchase_item_id|inventory_item_id|room_id|team_id|allocated_walkie_ids)$/i.test(key))
+            .map(([key, value]) => {
+              const label = key
+                .replace(/_/g, ' ')
+                .replace(/([a-z])([A-Z])/g, '$1 $2')
+                .replace(/\b[a-z]/g, letter => letter.toUpperCase());
+              const display = /^(department|sub_department)$/i.test(key)
+                ? departmentLabel(String(value))
+                : /^(status|kind|outcome|source|category|type|movement)$/i.test(key)
+                ? readableStatus(value)
+                : readableDate(value);
+              return [label, display];
+            }),
+        ),
       );
+    const requestById = new Map(req.requests.map(request => [request.id, request]));
+    const itemById = new Map(req.requests.flatMap(request => request.items.map(item => [item.id, item] as const)));
+    const eventById = new Map((extraReports.events || []).map(event => [event.id, event]));
+    const eventName = (id: string) => eventById.get(id)?.name || 'General / no event';
+    const memberById = new Map(acc.members.map(member => [member.id, member]));
+    const purchaseLineById = new Map(
+      pur.orders.flatMap(order => order.items.map(item => [item.id, { item, order }] as const)),
+    );
+    const addSheet = (name: string, rows: any[]) => {
+      const cleanRows = rawRows(rows);
+      const sheet = XLSX.utils.json_to_sheet(cleanRows.length ? cleanRows : [{ Note: 'No records available' }]);
+      const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
+      for (let column = range.s.c; column <= range.e.c; column += 1) {
+        const cell = sheet[XLSX.utils.encode_cell({ r: range.s.r, c: column })];
+        if (cell)
+          cell.s = {
+            ...(cell.s || {}),
+            font: { ...(cell.s?.font || {}), bold: true },
+            alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+          };
+      }
+      for (let row = range.s.r + 1; row <= range.e.r; row += 1) {
+        for (let column = range.s.c; column <= range.e.c; column += 1) {
+          const cell = sheet[XLSX.utils.encode_cell({ r: row, c: column })];
+          const header = String(sheet[XLSX.utils.encode_cell({ r: range.s.r, c: column })]?.v || '');
+          if (cell && typeof cell.v === 'number' && /price|amount|total|paid|due/i.test(header)) cell.z = '"₹"#,##0.00';
+        }
+      }
+      const headers = Array.from({ length: range.e.c - range.s.c + 1 }, (_, index) => {
+        const cell = sheet[XLSX.utils.encode_cell({ r: range.s.r, c: range.s.c + index })];
+        return String(cell?.v || '');
+      });
+      sheet['!cols'] = headers.map((header, index) => {
+        const values = cleanRows.map(row => String((row as any)[header] ?? ''));
+        const longest = Math.max(header.length, ...values.map(value => value.length));
+        const width = /note|details|description|agenda|minutes|text|body|recommendation|lesson|reason/i.test(header)
+          ? Math.min(Math.max(longest, 24), 48)
+          : /date|time|raised|arrival|issued|valid|due|paid|received|handed|start|end/i.test(header)
+            ? Math.min(Math.max(longest, 18), 24)
+            : Math.min(Math.max(longest, 12), index === 0 ? 24 : 30);
+        return { wch: width };
+      });
+      sheet['!autofilter'] = { ref: XLSX.utils.encode_range(range) };
+      sheet['!freeze'] = { xSplit: 0, ySplit: 1 };
+      sheet['!rows'] = [{ hpt: 30 }];
+      XLSX.utils.book_append_sheet(workbook, sheet, name.slice(0, 31));
+    };
     addSheet(
       'Requests',
       requestsAscending.map(r => ({
-        Number: r.number,
+        'Request number': r.number,
+        Department: r.departmentName || r.fromDepartmentName || '—',
         Title: r.title,
-        RequestedBy: r.requesterName,
+        'Requested by': r.requesterName,
         Status: STATUS_LABEL[r.status],
         Items: r.items.length,
         Raised: raisedAt(r.createdAt),
@@ -431,7 +508,8 @@ export const ReportsView: React.FC = () => {
     addSheet(
       'Purchase Orders',
       pur.orders.map(o => ({
-        PO: o.number,
+        'Purchase order': o.number,
+        Department: pur.departmentName(o.departmentId),
         Title: o.title,
         Vendor: pur.vendorName(o.vendorId),
         Status: PO_STATUS[o.status].label,
@@ -440,14 +518,57 @@ export const ReportsView: React.FC = () => {
         Due: poDue(o),
       })),
     );
-    addSheet('Purchase Receipts', extraReports.purchaseReceipts || []);
-    addSheet('Purchase Payments', extraReports.purchasePayments || []);
+    addSheet(
+      'Purchase Receipts',
+      (extraReports.purchaseReceipts || []).map(receipt => {
+        const linked = purchaseLineById.get(receipt.item_id);
+        return {
+          'Purchase order': linked?.order.number || '—',
+          Department: linked ? pur.departmentName(linked.order.departmentId) : '—',
+          Item: linked?.item.name || '—',
+          Quantity: receipt.qty,
+          'Received from': receipt.given_by,
+          'Received by': receipt.received_by,
+          Challan: receipt.challan,
+          Note: receipt.note,
+          'Received on': readableDate(receipt.done_at),
+        };
+      }),
+    );
+    addSheet(
+      'Purchase Payments',
+      (extraReports.purchasePayments || []).map(payment => {
+        const order = pur.orders.find(candidate => candidate.id === payment.po_id);
+        return {
+          'Purchase order': order?.number || '—',
+          Department: order ? pur.departmentName(order.departmentId) : '—',
+          Amount: payment.amount,
+          Method: readableStatus(payment.mode),
+          Reference: payment.ref,
+          'Paid by': payment.paid_by,
+          Note: payment.note,
+          'Paid on': readableDate(payment.done_at),
+        };
+      }),
+    );
     addSheet(
       'Request Items',
       requestsAscending.flatMap(r =>
         [...r.items]
           .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
-          .map(item => ({ Request: r.number, Title: r.title, ...item })),
+          .map(item => ({
+            'Request number': r.number,
+            Department: r.departmentName || r.fromDepartmentName || '—',
+            Title: r.title,
+            Item: item.name,
+            Type: item.kind === 'radio' ? 'Walkie-Talkie' : 'Supply',
+            Quantity: item.requested,
+            Unit: item.unit,
+            Approved: item.approved ?? '—',
+            'Unit price': item.budgetRate ?? '—',
+            'Line price': item.budgetAmount ?? '—',
+            Reason: item.reason,
+          })),
       ),
     );
     addSheet(
@@ -475,8 +596,40 @@ export const ReportsView: React.FC = () => {
         Note: m.note || '',
       })),
     );
-    addSheet('Request Activity', extraReports.requestEvents || []);
-    addSheet('Request Fulfilments', extraReports.requestFulfilments || []);
+    addSheet(
+      'Request Activity',
+      (extraReports.requestEvents || []).map(activity => {
+        const request = requestById.get(activity.request_id);
+        return {
+          'Request number': request?.number || '—',
+          Department: request?.departmentName || '—',
+          'Raised by': activity.actor_name || '—',
+          Activity: readableStatus(activity.kind),
+          Details: activity.text,
+          'Date & time': readableDate(activity.at),
+        };
+      }),
+    );
+    addSheet(
+      'Request Fulfilments',
+      (extraReports.requestFulfilments || []).map(line => {
+        const request = requestById.get(line.request_id);
+        const item = itemById.get(line.item_id);
+        return {
+          'Request number': request?.number || '—',
+          Department: request?.departmentName || '—',
+          Item: item?.name || '—',
+          Quantity: line.qty,
+          Source: readableStatus(line.source),
+          Status: readableStatus(line.status),
+          Location: line.location_name,
+          'Received by': line.received_by,
+          Note: line.note,
+          'Handed over by': line.done_by,
+          'Handed over on': readableDate(line.done_at),
+        };
+      }),
+    );
     addSheet(
       'Wi-Fi Access',
       wifiRows.map(r => ({
@@ -486,8 +639,8 @@ export const ReportsView: React.FC = () => {
         Recipient: r.recipient_name,
         Department: r.department,
         Status: wifiStatus(r),
-        Issued: r.created_at,
-        ValidUntil: r.valid_until,
+        Issued: readableDate(r.created_at),
+        'Valid until': readableDate(r.valid_until),
       })),
     );
     addSheet(
@@ -495,10 +648,10 @@ export const ReportsView: React.FC = () => {
       mp.sewadars.map(s => ({
         Name: s.name,
         Phone: s.phone,
-        Department: s.department,
+        Department: departmentLabel(s.department),
         Type: s.memberType,
-        Arrival: s.arrival,
-        ExpectedArrival: s.expectedArrival,
+        Arrival: readableStatus(s.arrival),
+        'Expected arrival': readableDate(s.expectedArrival),
         Team: s.teamName,
         CallCount: s.callCount,
       })),
@@ -510,7 +663,7 @@ export const ReportsView: React.FC = () => {
         Category: r.category,
         Block: r.block,
         Capacity: r.capacity,
-        AssignedMembers: acc.members.filter(m => m.roomId === r.id).length,
+        'Assigned members': acc.members.filter(m => m.roomId === r.id).length,
         Notes: r.notes,
       })),
     );
@@ -518,16 +671,16 @@ export const ReportsView: React.FC = () => {
       'Accommodation Members',
       acc.members.map(m => ({
         Name: m.name,
-        Department: m.department,
+        Department: departmentLabel(m.department),
         Room: acc.rooms.find(r => r.id === m.roomId)?.name || '',
         Phone: m.mobile,
-        Arrival: m.arrivalStatus,
+        Arrival: readableStatus(m.arrivalStatus),
       })),
     );
     addSheet(
       'Meal Plans',
       acc.meals.map(m => ({
-        Date: m.date,
+        Date: readableDate(m.date),
         Meal: m.label,
         Start: m.start,
         End: m.end,
@@ -535,24 +688,138 @@ export const ReportsView: React.FC = () => {
         Items: m.items,
       })),
     );
-    addSheet('Events', extraReports.events || []);
-    addSheet('Event Requirements', extraReports.requirements || []);
-    addSheet('Event Tasks', extraReports.eventTasks || []);
-    addSheet('Event Attendance', extraReports.attendance || []);
-    addSheet('Event Reviews', extraReports.eventReviews || []);
-    addSheet('Volunteer Tasks', extraReports.memberTasks || []);
-    addSheet('Volunteer Calls', extraReports.calls || []);
-    addSheet('Issues & Feedback', extraReports.issues || []);
-    addSheet('Announcements & Lessons', extraReports.updates || []);
-    addSheet('Radio Returns', extraReports.radioReturns || []);
+    addSheet(
+      'Events',
+      (extraReports.events || []).map(event => ({
+        Event: event.name,
+        Location: event.location,
+        'Starts on': readableDate(event.starts_at),
+        'Ends on': readableDate(event.ends_at),
+        Owner: event.owner_name,
+        Status: readableStatus(event.status),
+      })),
+    );
+    addSheet(
+      'Event Requirements',
+      (extraReports.requirements || []).map(row => ({
+        Event: eventName(row.event_id),
+        Department: row.department_name || '—',
+        Category: readableStatus(row.category),
+        Requirement: row.title,
+        Quantity: row.quantity,
+        Unit: row.unit,
+        Notes: row.notes,
+        Status: readableStatus(row.status),
+        'Added on': readableDate(row.created_at),
+      })),
+    );
+    addSheet(
+      'Event Tasks',
+      (extraReports.eventTasks || []).map(row => ({
+        Task: row.title,
+        Details: row.details,
+        Team: row.team,
+        Department: row.member_id ? departmentLabel(memberById.get(row.member_id)?.department) : '—',
+        'Assigned to': row.assigned_to,
+        'Due date': readableDate(row.due_date),
+        Status: readableStatus(row.status),
+      })),
+    );
+    addSheet(
+      'Event Attendance',
+      (extraReports.attendance || []).map(row => ({
+        Event: eventName(row.event_id),
+        Name: row.member_name,
+        Status: readableStatus(row.status),
+        'Checked in': readableDate(row.checked_in_at),
+        'Checked out': readableDate(row.checked_out_at),
+        Notes: row.notes,
+      })),
+    );
+    addSheet(
+      'Event Reviews',
+      (extraReports.eventReviews || []).map(row => ({
+        Event: eventName(row.event_id),
+        'Lessons learned': row.lessons_learned,
+        'Issues faced': row.issues_faced,
+        Recommendations: row.recommendations,
+        'Closure report': row.closure_report,
+        'Updated on': readableDate(row.updated_at),
+      })),
+    );
+    addSheet(
+      'Volunteer Tasks',
+      (extraReports.memberTasks || []).map(row => ({
+        Task: row.title,
+        Details: row.details,
+        Volunteer: row.member_id ? memberById.get(row.member_id)?.name || '—' : '—',
+        Department: row.member_id ? departmentLabel(memberById.get(row.member_id)?.department) : '—',
+        'Assigned to': row.assigned_to,
+        'Due date': readableDate(row.due_date),
+        Status: readableStatus(row.status),
+      })),
+    );
+    addSheet(
+      'Volunteer Calls',
+      (extraReports.calls || []).map(row => ({
+        Volunteer: memberById.get(row.member_id)?.name || '—',
+        Department: departmentLabel(memberById.get(row.member_id)?.department),
+        Outcome: readableStatus(row.outcome),
+        Note: row.note,
+        'Called by': row.called_by,
+        'Called on': readableDate(row.called_at),
+      })),
+    );
+    addSheet(
+      'Issues & Feedback',
+      (extraReports.issues || []).map(row => ({
+        'Reported by': row.reporter_name,
+        Type: readableStatus(row.kind),
+        Material: row.material,
+        Location: row.location,
+        Title: row.title,
+        Details: row.details,
+        Status: readableStatus(row.status),
+        'Reported on': readableDate(row.created_at),
+      })),
+    );
+    addSheet(
+      'Announcements & Lessons',
+      (extraReports.updates || []).map(row => ({
+        Type: readableStatus(row.kind),
+        Department: departmentLabel(row.department),
+        Title: row.title,
+        Message: row.body,
+        Author: row.author_name,
+        'Posted on': readableDate(row.created_at),
+        'Updated on': readableDate(row.updated_at),
+      })),
+    );
+    addSheet(
+      'Radio Returns',
+      (extraReports.radioReturns || []).map(row => ({
+        Event: eventName(row.event_id),
+        Department: row.department_name,
+        Requester: row.requester_name,
+        'Walkies requested': row.walkie_count,
+        'Chargers requested': row.charger_count,
+        'Earphones requested': row.earphone_count,
+        Status: readableStatus(row.status),
+        'Walkies returned': row.returned_walkies,
+        'Chargers returned': row.returned_chargers,
+        'Earphones returned': row.returned_earphones,
+        Feedback: row.return_feedback,
+        'Updated on': readableDate(row.updated_at),
+      })),
+    );
     // The meeting context supplies only rows visible to this signed-in user, preserving meeting and minutes access rules.
     addSheet(
       'Meetings visible to you',
       [...meetings.meetings, ...meetings.emergencies].map(m => ({
         Title: m.title,
         Kind: m.kind,
-        StartsAt: m.startsAt,
-        Status: m.status,
+        'Starts on': readableDate(m.startsAt),
+        Status: readableStatus(m.status),
         Event: eventScope.events.find(e => e.id === m.eventId)?.name || '',
         Agenda: m.agenda,
         Minutes: m.minutes,

@@ -284,7 +284,10 @@ export const RequestsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [level, departmentId, itDepartmentId],
   );
   const canReviewIt = useCallback((r: Req) => r.status === 'pending_it' && isMyDepartment(r), [isMyDepartment]);
-  const canAssignDelivery = useCallback((r: Req) => r.status === 'approved' && isMyDepartment(r), [isMyDepartment]);
+  const canAssignDelivery = useCallback(
+    (r: Req) => r.status === 'approved' && (isOwner || isMyDepartment(r)),
+    [isOwner, isMyDepartment],
+  );
   const canOwnerReview = useCallback((r: Req) => isOwner && r.status === 'pending_owner', [isOwner]);
   const canCancel = useCallback(
     (r: Req) => r.requesterId === uid && ['pending_sub', 'pending_it', 'pending_owner'].includes(r.status),
