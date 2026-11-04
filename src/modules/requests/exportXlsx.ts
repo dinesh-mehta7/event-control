@@ -15,7 +15,7 @@ const demandRows = (reqs: Req[]) =>
     r.items.map(i => ({
       Ticket: r.number,
       Status: statusOf(r),
-      Department: dept(r),
+      'Requesting department': r.fromDepartmentName || '—',
       'Requested by': r.requesterName,
       Item: i.name,
       Unit: i.unit,
@@ -45,7 +45,7 @@ const demandRows = (reqs: Req[]) =>
 const DEMAND_COLUMNS = [
   'Ticket',
   'Status',
-  'Department',
+  'Requesting department',
   'Requested by',
   'Item',
   'Unit',
@@ -67,10 +67,16 @@ const DEMAND_COLUMNS = [
   'Handed on',
   'Price',
 ];
-const departmentRows = (reqs: Req[], orders: Record<string, OrderInfo>) => {
+const departmentRows = (
+  reqs: Req[],
+  orders: Record<string, OrderInfo>,
+  isSuperAdmin: boolean,
+  includeFulfilment = true,
+) => {
+  const columns = includeFulfilment ? DEMAND_COLUMNS : DEMAND_COLUMNS.slice(0, -2);
   const groups = new Map<string, Req[]>();
   reqs.forEach(r => {
-    const label = dept(r);
+    const label = isSuperAdmin ? dept(r) : r.fromDepartmentName || '—';
     groups.set(label, [...(groups.get(label) || []), r]);
   });
   const rows: (string | number)[][] = [];
@@ -81,10 +87,14 @@ const departmentRows = (reqs: Req[], orders: Record<string, OrderInfo>) => {
     const items = groups.get(name) || [];
     if (groupIndex) rows.push([]);
     const headingRow = rows.length;
-    rows.push([`${name} — ${items.length} request${items.length === 1 ? '' : 's'}`]);
-    merges.push({ s: { r: headingRow, c: 0 }, e: { r: headingRow, c: DEMAND_COLUMNS.length - 1 } });
+    rows.push([
+      isSuperAdmin
+        ? `Request To: ${name} — ${items.length} request${items.length === 1 ? '' : 's'}`
+        : `Requesting department: ${name} — ${items.length} request${items.length === 1 ? '' : 's'}`,
+    ]);
+    merges.push({ s: { r: headingRow, c: 0 }, e: { r: headingRow, c: columns.length - 1 } });
     columnHeadingRows.push(rows.length);
-    rows.push(DEMAND_COLUMNS);
+    rows.push(columns);
     items.forEach(r => {
       const lineRows = demandRows([r]);
       if (lineRows.length)
@@ -96,40 +106,43 @@ const departmentRows = (reqs: Req[], orders: Record<string, OrderInfo>) => {
             .filter((rate): rate is number => rate != null);
           const values: Record<string, string | number> = {
             ...(line as Record<string, string | number>),
-            Price: partRates.length ? partRates[0] : item?.budgetRate ?? '',
+            Price: partRates.length ? partRates[0] : (item?.budgetRate ?? ''),
             'Handed on': Array.from(
               new Set(r.parts.filter(p => p.itemId === item?.id && p.status === 'done').map(p => d(p.doneAt))),
             )
               .filter(Boolean)
               .join(', '),
           };
-          rows.push(DEMAND_COLUMNS.map(column => values[column] ?? ''));
+          rows.push(columns.map(column => values[column] ?? ''));
         });
-      else
-        rows.push([
-          r.number,
-          statusOf(r),
-          name,
-          r.requesterName,
-          '(no line items)',
-          ...Array(12).fill(''),
-          r.deliverTo,
-          d(r.neededBy),
-          r.priority === 'urgent' ? 'Yes' : '',
-          d(r.createdAt),
-          Array.from(new Set(r.parts.filter(p => p.status === 'done').map(p => d(p.doneAt))))
+      else {
+        const noItem: Record<string, string | number> = {
+          Ticket: r.number,
+          Status: statusOf(r),
+          'Requesting department': r.fromDepartmentName || '—',
+          'Requested by': r.requesterName,
+          Item: '(no line items)',
+          'Deliver to': r.deliverTo,
+          'Needed by': d(r.neededBy),
+          Urgent: r.priority === 'urgent' ? 'Yes' : '',
+          'Raised on': d(r.createdAt),
+          'Handed on': Array.from(new Set(r.parts.filter(p => p.status === 'done').map(p => d(p.doneAt))))
             .filter(Boolean)
             .join(', '),
-          '',
-        ]);
+        };
+        rows.push(columns.map(column => noItem[column] ?? ''));
+      }
     });
   });
   const ws = XLSX.utils.aoa_to_sheet(rows.length ? rows : [['No requests in this list.']]);
   // Match the supplied "By department" workbook: compact ID/status columns,
   // wider descriptive fields, and blue section/header bands.
-  ws['!cols'] = [8.57, 9, 26.57, 16.29, 7.43, 5.43, 13, 11.71, 20.57, 18.29, 14.29, 14.57, 14, 24.43, 27.57, 22.86, 27, 11.86, 13, 8.43, 11.57, 12.86, 6.29].map(w => ({
-    wch: w,
-  }));
+  ws['!cols'] = [
+    8.57, 9, 26.57, 16.29, 7.43, 5.43, 13, 11.71, 20.57, 18.29, 14.29, 14.57, 14, 24.43, 27.57, 22.86, 27, 11.86, 13,
+    8.43, 11.57, 12.86, 6.29,
+  ]
+    .slice(0, columns.length)
+    .map(w => ({ wch: w }));
   ws['!merges'] = merges;
   ws['!rows'] = rows.map((_, index) => {
     if (merges.some(({ s }) => s.r === index)) return { hpt: 21 };
@@ -147,7 +160,7 @@ const departmentRows = (reqs: Req[], orders: Record<string, OrderInfo>) => {
     }
   });
   columnHeadingRows.forEach(row => {
-    DEMAND_COLUMNS.forEach((_, column) => {
+    columns.forEach((_, column) => {
       const cell = ws[XLSX.utils.encode_cell({ r: row, c: column })];
       if (cell)
         cell.s = {
@@ -249,23 +262,21 @@ export const exportRequestsXlsx = (
   avail: Record<string, Availability>,
   fileName: string,
   view: 'department' | 'demands' | 'purchase' | 'all' = 'department',
+  isSuperAdmin = false,
 ) => {
   const wb = XLSX.utils.book_new();
-  if (view === 'department' || view === 'all') XLSX.utils.book_append_sheet(wb, departmentRows(reqs, orders), 'By department');
+  if (view === 'department' || view === 'all')
+    XLSX.utils.book_append_sheet(wb, departmentRows(reqs, orders, isSuperAdmin), 'By department');
   if (view === 'demands' || view === 'all')
-    XLSX.utils.book_append_sheet(
-      wb,
-      sheet(
-        demandRows(reqs),
-        [11, 20, 24, 22, 30, 8, 10, 10, 18, 14, 14, 14, 14, 24, 18, 30, 30, 20, 12, 10, 14],
-        'No requests in this list.',
-      ),
-      'Demands',
-    );
+    XLSX.utils.book_append_sheet(wb, departmentRows(reqs, orders, isSuperAdmin, false), 'Demands');
   if (view === 'purchase' || view === 'all')
     XLSX.utils.book_append_sheet(
       wb,
-      sheet(purchaseRows(reqs, orders, avail), [30, 8, 8, 12, 28, 22, 16, 12, 18, 14], 'Nothing to purchase right now.'),
+      sheet(
+        purchaseRows(reqs, orders, avail),
+        [30, 8, 8, 12, 28, 22, 16, 12, 18, 14],
+        'Nothing to purchase right now.',
+      ),
       'To purchase',
     );
   XLSX.writeFile(wb, `${fileName}-${new Date().toISOString().slice(0, 10)}.xlsx`);

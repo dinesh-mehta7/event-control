@@ -12,13 +12,7 @@ import { NewRequest } from './NewRequest';
 import { RequestDetail } from './RequestDetail';
 import { EventWalkieTickets, useEventWalkies } from './EventWalkieTickets';
 import type { WalkieMode } from './EventWalkieTickets';
-import {
-  DeptRoute,
-  StatusBadge,
-  UrgentBadge,
-  approvedBySuperAdmin,
-  departmentHeadReviewAfterSendBack,
-} from './parts';
+import { DeptRoute, StatusBadge, UrgentBadge, approvedBySuperAdmin, departmentHeadReviewAfterSendBack } from './parts';
 import { exportRequestsXlsx } from './exportXlsx';
 import { fmtDate, isOverdue, requestStage } from './types';
 import type { NewLine, Req } from './types';
@@ -38,12 +32,11 @@ const Row: React.FC<{ r: Req }> = ({ r }) => {
   const chain = [
     {
       label: 'Dept Head',
-      state:
-        afterSendBack.returned
-          ? 'done'
-          : r.status === 'pending_it'
-            ? 'current'
-            : ['pending_owner', 'approved', 'fulfilled'].includes(r.status)
+      state: afterSendBack.returned
+        ? 'done'
+        : r.status === 'pending_it'
+          ? 'current'
+          : ['pending_owner', 'approved', 'fulfilled'].includes(r.status)
             ? 'done'
             : 'idle',
     },
@@ -51,7 +44,14 @@ const Row: React.FC<{ r: Req }> = ({ r }) => {
       ? [
           {
             label: afterSendBack.returned ? 'Sent back' : 'Super Admin',
-            state: r.status === 'pending_owner' ? 'current' : afterSendBack.returned ? 'returned' : superApproved ? 'done' : 'idle',
+            state:
+              r.status === 'pending_owner'
+                ? 'current'
+                : afterSendBack.returned
+                  ? 'returned'
+                  : superApproved
+                    ? 'done'
+                    : 'idle',
           },
         ]
       : []),
@@ -428,8 +428,11 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
       : r.requesterId === me.id;
   const mine = requests.filter(r => fromMyDepartment(r) && matches(r, filter));
   const canExport = me.isExec || me.team === 'inventory' || me.team === 'purchase';
-  const exportList = async (rows: Req[], name: string, view: 'department' | 'demands' | 'purchase' | 'all' = 'department') =>
-    exportRequestsXlsx(rows, orders, await loadAvailability(), name, view);
+  const exportList = async (
+    rows: Req[],
+    name: string,
+    view: 'department' | 'demands' | 'purchase' | 'all' = 'department',
+  ) => exportRequestsXlsx(rows, orders, await loadAvailability(), name, view, me.isOwner);
   const downloadAll = async () => {
     setDownloadingAll(true);
     try {
@@ -687,7 +690,11 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
                   onClick={async () => {
                     setDownloadingCurrent(true);
                     try {
-                      await exportList(requests.filter(r => r.status === 'approved'), 'approved-demands', 'demands');
+                      await exportList(
+                        requests.filter(r => r.status === 'approved'),
+                        'approved-demands',
+                        'demands',
+                      );
                     } finally {
                       setDownloadingCurrent(false);
                     }
@@ -702,7 +709,11 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
                   onClick={async () => {
                     setDownloadingCurrent(true);
                     try {
-                      await exportList(requests.filter(r => r.status === 'approved'), 'approved-to-purchase', 'purchase');
+                      await exportList(
+                        requests.filter(r => r.status === 'approved'),
+                        'approved-to-purchase',
+                        'purchase',
+                      );
                     } finally {
                       setDownloadingCurrent(false);
                     }

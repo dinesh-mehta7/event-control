@@ -449,7 +449,10 @@ export const ReportsView: React.FC = () => {
     };
     const readableStatus = (value: any) =>
       typeof value === 'string' && /^[a-z]+(?:_[a-z]+)*$/.test(value)
-        ? value.split('_').map(word => word[0].toUpperCase() + word.slice(1)).join(' ')
+        ? value
+            .split('_')
+            .map(word => word[0].toUpperCase() + word.slice(1))
+            .join(' ')
         : value;
     const departmentLabel = (value: string | null | undefined) =>
       value ? DEPTS[value as keyof typeof DEPTS] || readableStatus(value) : '—';
@@ -457,7 +460,12 @@ export const ReportsView: React.FC = () => {
       rows.map(row =>
         Object.fromEntries(
           Object.entries(row)
-            .filter(([key]) => !/^(id|organization_id|created_by|updated_by|actor_id|reporter_id|requester_id|approved_by|rejected_by|member_id|event_id|department_id|sewadar_id|item_id|po_id|request_id|purchase_item_id|inventory_item_id|room_id|team_id|allocated_walkie_ids)$/i.test(key))
+            .filter(
+              ([key]) =>
+                !/^(id|organization_id|created_by|updated_by|actor_id|reporter_id|requester_id|approved_by|rejected_by|member_id|event_id|department_id|sewadar_id|item_id|po_id|request_id|purchase_item_id|inventory_item_id|room_id|team_id|allocated_walkie_ids)$/i.test(
+                  key,
+                ),
+            )
             .map(([key, value]) => {
               const label = key
                 .replace(/_/g, ' ')
@@ -466,8 +474,8 @@ export const ReportsView: React.FC = () => {
               const display = /^(department|sub_department)$/i.test(key)
                 ? departmentLabel(String(value))
                 : /^(status|kind|outcome|source|category|type|movement)$/i.test(key)
-                ? readableStatus(value)
-                : readableDate(value);
+                  ? readableStatus(value)
+                  : readableDate(value);
               return [label, display];
             }),
         ),
@@ -480,41 +488,66 @@ export const ReportsView: React.FC = () => {
     const purchaseLineById = new Map(
       pur.orders.flatMap(order => order.items.map(item => [item.id, { item, order }] as const)),
     );
-    const addSheet = (name: string, rows: any[]) => {
+    const addSheet = (name: string, rows: any[], sectionKey?: string) => {
       const cleanRows = rawRows(rows);
       const reportRows = cleanRows.length ? cleanRows : [{ Note: 'No records available' }];
-      const headers = Object.keys(reportRows[0]);
-      const sheetRows = [
+      const groupKey = sectionKey && currentUser?.role === 'owner' && cleanRows.length ? sectionKey : undefined;
+      const headers = Object.keys(reportRows[0]).filter(header => header !== groupKey);
+      const sheetRows: any[][] = [
         [
           `${name.toUpperCase()} — ${cleanRows.length} ${cleanRows.length === 1 ? 'record' : 'records'}`,
           ...Array(Math.max(headers.length - 1, 0)).fill(''),
         ],
-        headers,
-        ...reportRows.map(row => headers.map(header => (row as any)[header] ?? '')),
       ];
+      const sectionRows: number[] = [];
+      const headerRows: number[] = [];
+      if (groupKey) {
+        const groups = new Map<string, any[]>();
+        reportRows.forEach(row => {
+          const label = String((row as any)[groupKey] || '—');
+          groups.set(label, [...(groups.get(label) || []), row]);
+        });
+        Array.from(groups.keys())
+          .sort((a, b) => a.localeCompare(b))
+          .forEach(label => {
+            sectionRows.push(sheetRows.length);
+            sheetRows.push([`Request To: ${label}`, ...Array(Math.max(headers.length - 1, 0)).fill('')]);
+            headerRows.push(sheetRows.length);
+            sheetRows.push(headers);
+            (groups.get(label) || []).forEach(row => sheetRows.push(headers.map(header => (row as any)[header] ?? '')));
+          });
+      } else {
+        headerRows.push(sheetRows.length);
+        sheetRows.push(headers);
+        reportRows.forEach(row => sheetRows.push(headers.map(header => (row as any)[header] ?? '')));
+      }
       const sheet = XLSX.utils.aoa_to_sheet(sheetRows);
       const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
       for (let column = range.s.c; column <= range.e.c; column += 1) {
-        const titleCell = sheet[XLSX.utils.encode_cell({ r: 0, c: column })];
-        if (titleCell)
-          titleCell.s = {
-            fill: { patternType: 'solid', fgColor: { rgb: 'FF558ED5' } },
-            font: { bold: true, color: { rgb: 'FF191919' }, sz: 12 },
-            alignment: { horizontal: 'center', vertical: 'center' },
-          };
-        const cell = sheet[XLSX.utils.encode_cell({ r: 1, c: column })];
-        if (cell)
-          cell.s = {
-            ...(cell.s || {}),
-            fill: { patternType: 'solid', fgColor: { rgb: 'FF8EB4E3' } },
-            font: { ...(cell.s?.font || {}), bold: true },
-            alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-          };
+        [0, ...sectionRows].forEach(row => {
+          const titleCell = sheet[XLSX.utils.encode_cell({ r: row, c: column })];
+          if (titleCell)
+            titleCell.s = {
+              fill: { patternType: 'solid', fgColor: { rgb: 'FF558ED5' } },
+              font: { bold: true, color: { rgb: 'FF191919' }, sz: 12 },
+              alignment: { horizontal: 'center', vertical: 'center' },
+            };
+        });
+        headerRows.forEach(row => {
+          const cell = sheet[XLSX.utils.encode_cell({ r: row, c: column })];
+          if (cell)
+            cell.s = {
+              ...(cell.s || {}),
+              fill: { patternType: 'solid', fgColor: { rgb: 'FF8EB4E3' } },
+              font: { ...(cell.s?.font || {}), bold: true },
+              alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+            };
+        });
       }
       for (let row = 2; row <= range.e.r; row += 1) {
         for (let column = range.s.c; column <= range.e.c; column += 1) {
           const cell = sheet[XLSX.utils.encode_cell({ r: row, c: column })];
-          const header = String(sheet[XLSX.utils.encode_cell({ r: 1, c: column })]?.v || '');
+          const header = headers[column] || '';
           if (cell && typeof cell.v === 'number' && /price|amount|total|paid|due/i.test(header)) cell.z = '"₹"#,##0.00';
         }
       }
@@ -528,12 +561,18 @@ export const ReportsView: React.FC = () => {
             : Math.min(Math.max(longest, 12), index === 0 ? 24 : 30);
         return { wch: width };
       });
-      sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }];
-      sheet['!autofilter'] = {
-        ref: XLSX.utils.encode_range({ s: { r: 1, c: 0 }, e: { r: range.e.r, c: range.e.c } }),
-      };
-      sheet['!freeze'] = { xSplit: 0, ySplit: 2 };
-      sheet['!rows'] = [{ hpt: 21 }, { hpt: 19 }];
+      sheet['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
+        ...sectionRows.map(row => ({ s: { r: row, c: 0 }, e: { r: row, c: headers.length - 1 } })),
+      ];
+      if (!groupKey)
+        sheet['!autofilter'] = {
+          ref: XLSX.utils.encode_range({ s: { r: headerRows[0], c: 0 }, e: { r: range.e.r, c: range.e.c } }),
+        };
+      sheet['!freeze'] = { xSplit: 0, ySplit: groupKey ? 3 : 2 };
+      sheet['!rows'] = sheetRows.map((_, row) =>
+        row === 0 || sectionRows.includes(row) ? { hpt: 21 } : headerRows.includes(row) ? { hpt: 19 } : undefined,
+      );
       XLSX.utils.book_append_sheet(workbook, sheet, name.slice(0, 31));
     };
     addSheet(
@@ -541,13 +580,14 @@ export const ReportsView: React.FC = () => {
       requestsAscending.map(r => ({
         'From department': r.fromDepartmentName || '—',
         'Request number': r.number,
-        ...(currentUser?.role === 'owner' ? { 'To department': r.departmentName || '—' } : {}),
+        ...(currentUser?.role === 'owner' ? { 'Request To': r.departmentName || '—' } : {}),
         Title: r.title,
         'Requested by': r.requesterName,
         Status: STATUS_LABEL[r.status],
         Items: r.items.length,
         Raised: raisedAt(r.createdAt),
       })),
+      'Request To',
     );
     addSheet(
       'Purchase Orders',

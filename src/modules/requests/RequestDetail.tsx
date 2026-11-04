@@ -124,7 +124,7 @@ export const RequestDetail: React.FC<{
   const canExport = me.isExec || me.team === 'inventory' || me.team === 'purchase';
   const doExport = async () => {
     const a = canExport ? await loadAvailability() : {};
-    exportRequestsXlsx([r], orders, a, r.number);
+    exportRequestsXlsx([r], orders, a, r.number, 'department', me.isOwner);
   };
 
   return (
