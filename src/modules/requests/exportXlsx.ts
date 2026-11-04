@@ -125,15 +125,22 @@ const departmentRows = (reqs: Req[], orders: Record<string, OrderInfo>) => {
     });
   });
   const ws = XLSX.utils.aoa_to_sheet(rows.length ? rows : [['No requests in this list.']]);
-  ws['!cols'] = [11, 20, 24, 22, 30, 8, 10, 10, 18, 14, 14, 14, 14, 24, 18, 30, 30, 20, 12, 10, 14, 14, 12].map(w => ({
+  // Match the supplied "By department" workbook: compact ID/status columns,
+  // wider descriptive fields, and blue section/header bands.
+  ws['!cols'] = [8.57, 9, 26.57, 16.29, 7.43, 5.43, 13, 11.71, 20.57, 18.29, 14.29, 14.57, 14, 24.43, 27.57, 22.86, 27, 11.86, 13, 8.43, 11.57, 12.86, 6.29].map(w => ({
     wch: w,
   }));
   ws['!merges'] = merges;
+  ws['!rows'] = rows.map((_, index) => {
+    if (merges.some(({ s }) => s.r === index)) return { hpt: 21 };
+    if (columnHeadingRows.includes(index)) return { hpt: 18.75 };
+    return undefined;
+  });
   merges.forEach(({ s }) => {
     const heading = ws[XLSX.utils.encode_cell(s)];
     if (heading) {
       heading.s = {
-        fill: { patternType: 'solid', fgColor: { rgb: 'FFFFB547' } },
+        fill: { patternType: 'solid', fgColor: { rgb: 'FF558ED5' } },
         font: { bold: true, color: { rgb: 'FF191919' }, sz: 12 },
         alignment: { horizontal: 'center', vertical: 'center' },
       };
@@ -142,7 +149,12 @@ const departmentRows = (reqs: Req[], orders: Record<string, OrderInfo>) => {
   columnHeadingRows.forEach(row => {
     DEMAND_COLUMNS.forEach((_, column) => {
       const cell = ws[XLSX.utils.encode_cell({ r: row, c: column })];
-      if (cell) cell.s = { ...(cell.s || {}), font: { ...(cell.s?.font || {}), bold: true } };
+      if (cell)
+        cell.s = {
+          ...(cell.s || {}),
+          fill: { patternType: 'solid', fgColor: { rgb: 'FF8EB4E3' } },
+          font: { ...(cell.s?.font || {}), bold: true },
+        };
     });
   });
   return ws;

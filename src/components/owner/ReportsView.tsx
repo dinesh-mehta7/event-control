@@ -10,6 +10,7 @@ import { useAccommodation } from '../../modules/accommodation';
 import { useWalkie } from '../../modules/walkie';
 import { supabase } from '../../modules/walkie/lib/supabaseClient';
 import { useEventScope } from '../../context/EventScopeContext';
+import { useApp } from '../../context/AppContext';
 import { useMeetings } from '../../context/MeetingsContext';
 import { STATUS as PO_STATUS, PAYABLE, poDue, poTotal } from '../../modules/purchase/types';
 import { STATUS_LABEL } from '../../modules/requests/types';
@@ -31,6 +32,7 @@ import { Select } from '../Select';
 
 // Reports from the live data only (inventory, purchase, requests, manpower, accommodation). Each tab exports what it shows.
 export const ReportsView: React.FC = () => {
+  const { currentUser } = useApp();
   const inv = useInventory();
   const pur = usePurchase();
   const req = useRequests();
@@ -159,13 +161,37 @@ export const ReportsView: React.FC = () => {
   }, [extraReports.inventoryMovements, inv.items, inv.locationLabel]);
   const beds = acc.rooms.reduce((t, r) => t + r.capacity, 0);
   const placed = acc.members.filter(m => m.roomId).length;
+  const reportHeading: Record<string, [string, string]> = {
+    requests: ['Requests', 'Request volume, approval progress, and handovers.'],
+    purchase: ['Purchase', 'Orders, receipts, payments, and outstanding balances.'],
+    inventory: ['Inventory', 'Current stock levels and recorded stock movements.'],
+    wifi: ['Wi-Fi usage', 'Issued network access by event, recipient, and status.'],
+    people: ['People', 'Volunteer readiness, arrivals, and accommodation placement.'],
+    accommodation: ['Accommodation', 'Room capacity, member assignments, and meal plans.'],
+    events: ['Events', 'Event register, requirements, tasks, attendance, and reviews.'],
+    meetings: ['Meetings & minutes', 'Meetings and minutes visible to your signed-in account.'],
+    tasks: ['Tasks', 'Open and completed work assigned across events and volunteers.'],
+    issues: ['Issues & feedback', 'Issues, department updates, and event lessons learned.'],
+    radio: ['Radio returns', 'Walkie-talkie, charger, and earphone return reports.'],
+  };
 
   const exportCsv = () => {
     if (tab === 'requests')
       download('requests.csv', [
-        ['Number', 'Title', 'Requested by', 'Status', 'Items', 'Raised'],
+        [
+          'From department',
+          'Request number',
+          ...(currentUser?.role === 'owner' ? ['To department'] : []),
+          'Title',
+          'Requested by',
+          'Status',
+          'Items',
+          'Raised',
+        ],
         ...req.requests.map(r => [
+          r.fromDepartmentName || '—',
           r.number,
+          ...(currentUser?.role === 'owner' ? [r.departmentName || '—'] : []),
           r.title,
           r.requesterName,
           STATUS_LABEL[r.status],
@@ -456,28 +482,42 @@ export const ReportsView: React.FC = () => {
     );
     const addSheet = (name: string, rows: any[]) => {
       const cleanRows = rawRows(rows);
-      const sheet = XLSX.utils.json_to_sheet(cleanRows.length ? cleanRows : [{ Note: 'No records available' }]);
+      const reportRows = cleanRows.length ? cleanRows : [{ Note: 'No records available' }];
+      const headers = Object.keys(reportRows[0]);
+      const sheetRows = [
+        [
+          `${name.toUpperCase()} — ${cleanRows.length} ${cleanRows.length === 1 ? 'record' : 'records'}`,
+          ...Array(Math.max(headers.length - 1, 0)).fill(''),
+        ],
+        headers,
+        ...reportRows.map(row => headers.map(header => (row as any)[header] ?? '')),
+      ];
+      const sheet = XLSX.utils.aoa_to_sheet(sheetRows);
       const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
       for (let column = range.s.c; column <= range.e.c; column += 1) {
-        const cell = sheet[XLSX.utils.encode_cell({ r: range.s.r, c: column })];
+        const titleCell = sheet[XLSX.utils.encode_cell({ r: 0, c: column })];
+        if (titleCell)
+          titleCell.s = {
+            fill: { patternType: 'solid', fgColor: { rgb: 'FF558ED5' } },
+            font: { bold: true, color: { rgb: 'FF191919' }, sz: 12 },
+            alignment: { horizontal: 'center', vertical: 'center' },
+          };
+        const cell = sheet[XLSX.utils.encode_cell({ r: 1, c: column })];
         if (cell)
           cell.s = {
             ...(cell.s || {}),
+            fill: { patternType: 'solid', fgColor: { rgb: 'FF8EB4E3' } },
             font: { ...(cell.s?.font || {}), bold: true },
             alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
           };
       }
-      for (let row = range.s.r + 1; row <= range.e.r; row += 1) {
+      for (let row = 2; row <= range.e.r; row += 1) {
         for (let column = range.s.c; column <= range.e.c; column += 1) {
           const cell = sheet[XLSX.utils.encode_cell({ r: row, c: column })];
-          const header = String(sheet[XLSX.utils.encode_cell({ r: range.s.r, c: column })]?.v || '');
+          const header = String(sheet[XLSX.utils.encode_cell({ r: 1, c: column })]?.v || '');
           if (cell && typeof cell.v === 'number' && /price|amount|total|paid|due/i.test(header)) cell.z = '"₹"#,##0.00';
         }
       }
-      const headers = Array.from({ length: range.e.c - range.s.c + 1 }, (_, index) => {
-        const cell = sheet[XLSX.utils.encode_cell({ r: range.s.r, c: range.s.c + index })];
-        return String(cell?.v || '');
-      });
       sheet['!cols'] = headers.map((header, index) => {
         const values = cleanRows.map(row => String((row as any)[header] ?? ''));
         const longest = Math.max(header.length, ...values.map(value => value.length));
@@ -488,16 +528,20 @@ export const ReportsView: React.FC = () => {
             : Math.min(Math.max(longest, 12), index === 0 ? 24 : 30);
         return { wch: width };
       });
-      sheet['!autofilter'] = { ref: XLSX.utils.encode_range(range) };
-      sheet['!freeze'] = { xSplit: 0, ySplit: 1 };
-      sheet['!rows'] = [{ hpt: 30 }];
+      sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }];
+      sheet['!autofilter'] = {
+        ref: XLSX.utils.encode_range({ s: { r: 1, c: 0 }, e: { r: range.e.r, c: range.e.c } }),
+      };
+      sheet['!freeze'] = { xSplit: 0, ySplit: 2 };
+      sheet['!rows'] = [{ hpt: 21 }, { hpt: 19 }];
       XLSX.utils.book_append_sheet(workbook, sheet, name.slice(0, 31));
     };
     addSheet(
       'Requests',
       requestsAscending.map(r => ({
+        'From department': r.fromDepartmentName || '—',
         'Request number': r.number,
-        Department: r.departmentName || r.fromDepartmentName || '—',
+        ...(currentUser?.role === 'owner' ? { 'To department': r.departmentName || '—' } : {}),
         Title: r.title,
         'Requested by': r.requesterName,
         Status: STATUS_LABEL[r.status],
@@ -868,6 +912,10 @@ export const ReportsView: React.FC = () => {
           { id: 'radio', label: 'Radio returns' },
         ]}
       />
+      <div className="rounded-xl border border-line bg-surface px-4 py-3">
+        <h2 className="text-base font-semibold text-ink">{reportHeading[tab]?.[0] || 'Reports'}</h2>
+        <p className="mt-1 text-xs text-mute">{reportHeading[tab]?.[1]}</p>
+      </div>
       {extraErrors.length > 0 && (
         <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
           Some report sources could not be loaded: {extraErrors.join(' · ')}
