@@ -87,11 +87,7 @@ const departmentRows = (
     const items = groups.get(name) || [];
     if (groupIndex) rows.push([]);
     const headingRow = rows.length;
-    rows.push([
-      isSuperAdmin
-        ? `Request To: ${name} — ${items.length} request${items.length === 1 ? '' : 's'}`
-        : `Requesting department: ${name} — ${items.length} request${items.length === 1 ? '' : 's'}`,
-    ]);
+    rows.push([name]);
     merges.push({ s: { r: headingRow, c: 0 }, e: { r: headingRow, c: columns.length - 1 } });
     columnHeadingRows.push(rows.length);
     rows.push(columns);

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 import {
   ArrowRightLeft,
   ChevronLeft,
@@ -131,7 +131,40 @@ export const ItemsView: React.FC<{ a: Actions; stage: Stage; setStage: (s: Stage
       { wch: 13 },
       { wch: 40 },
     ];
-    if (sheet['!ref']) sheet['!autofilter'] = { ref: sheet['!ref'] };
+    if (sheet['!ref']) {
+      const range = XLSX.utils.decode_range(sheet['!ref']);
+      sheet['!autofilter'] = { ref: sheet['!ref'] };
+      sheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
+      sheet['!rows'] = Array.from({ length: range.e.r + 1 }, (_, row) => (row === 0 ? { hpt: 28 } : { hpt: 22 }));
+
+      for (let column = range.s.c; column <= range.e.c; column += 1) {
+        const cell = sheet[XLSX.utils.encode_cell({ r: 0, c: column })];
+        if (cell)
+          cell.s = {
+            fill: { patternType: 'solid', fgColor: { rgb: 'FF558ED5' } },
+            font: { bold: true, color: { rgb: 'FFFFFFFF' }, sz: 11 },
+            alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+            border: {
+              bottom: { style: 'medium', color: { rgb: 'FF3569A8' } },
+            },
+          };
+      }
+
+      for (let row = 1; row <= range.e.r; row += 1) {
+        for (let column = range.s.c; column <= range.e.c; column += 1) {
+          const cell = sheet[XLSX.utils.encode_cell({ r: row, c: column })];
+          if (!cell) continue;
+          cell.s = {
+            alignment: {
+              vertical: 'center',
+              horizontal: column === 0 || column === 4 || column === 11 || column === 12 ? 'left' : 'right',
+              wrapText: column === 12,
+            },
+            ...(row % 2 === 0 ? { fill: { patternType: 'solid', fgColor: { rgb: 'FFF2F6FC' } } } : {}),
+          };
+        }
+      }
+    }
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(book, sheet, 'Inventory');
     XLSX.writeFile(book, `inventory_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -164,54 +197,33 @@ export const ItemsView: React.FC<{ a: Actions; stage: Stage; setStage: (s: Stage
   return (
     <div className="space-y-3">
       {/* Toolbar */}
-      <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-2.5 xl:flex-row xl:items-center">
-        <div className="grid min-w-0 flex-1 grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(12rem,20rem)_12rem_auto]">
-          <label className="relative block min-w-0">
-            <span className="sr-only">Search items</span>
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />
-            <input
-              value={q}
-              onChange={e => setQ(e.target.value)}
-              placeholder="Search item, code or shelf…"
-              className={cx(ctl, 'w-full pl-8')}
-            />
-          </label>
-          <Select
-            value={cat}
-            onChange={e => setCat(e.target.value)}
-            aria-label="Category"
-            className={cx(ctl, 'w-full')}
-          >
-            <option value="all">All categories</option>
-            {categories.map(c => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
-          <div
-            role="group"
-            aria-label="Stock filter"
-            className="inline-flex h-8 w-max items-stretch rounded-md border border-line bg-raised/40 p-0.5"
-          >
-            {filters.map(f => (
-              <button
-                key={f.key}
-                type="button"
-                aria-pressed={stage === f.key}
-                onClick={() => setStage(f.key)}
-                className={cx(
-                  'flex items-center gap-1 rounded px-2.5 text-[11.5px] font-medium',
-                  stage === f.key ? 'bg-brand-soft text-brand shadow-sm' : 'text-mute hover:text-ink',
-                )}
-              >
-                {f.label}
-                <span className="tabular-nums text-faint">{f.n}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+      <div className="grid grid-cols-1 items-center gap-2 rounded-lg border border-line bg-surface p-2.5 md:grid-cols-[minmax(8rem,1fr)_minmax(7rem,9rem)_auto_minmax(8rem,1fr)]">
+        <Select
+          value={cat}
+          onChange={e => setCat(e.target.value)}
+          aria-label="Category"
+          className={cx(ctl, 'w-full')}
+        >
+          <option value="all">All categories</option>
+          {categories.map(c => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+        <Select
+          value={stage}
+          onChange={e => setStage(e.target.value as Stage)}
+          aria-label="Stock filter"
+          className={cx(ctl, 'w-full')}
+        >
+          {filters.map(f => (
+            <option key={f.key} value={f.key}>
+              {f.label} ({f.n})
+            </option>
+          ))}
+        </Select>
+        <div className="flex w-full flex-wrap items-center gap-1.5 md:w-auto md:flex-nowrap">
           <button className={tool} onClick={exportExcel} disabled={!rows.length}>
             <Download className="h-3.5 w-3.5" />
             Export Excel
@@ -238,6 +250,16 @@ export const ItemsView: React.FC<{ a: Actions; stage: Stage; setStage: (s: Stage
             </button>
           )}
         </div>
+        <label className="relative block min-w-0">
+          <span className="sr-only">Search items</span>
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />
+          <input
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder="Search item, code or shelf…"
+            className={cx(ctl, 'w-full pl-8')}
+          />
+        </label>
       </div>
 
       <Sheet
