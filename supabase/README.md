@@ -466,3 +466,6 @@ Makes nonblank Sewadar Batch IDs unique within each organization, ignoring surro
 
 ## migration_v121_manage_member_active_state.sql
 Adds a Super Admin action to disable or re-enable a user's sign-in without deleting their profile or records. Disabling also bans the Auth account; the organization must retain at least one active Super Admin. Apply after migration_v120; included in `setup.sql` for new databases.
+
+## migration_v123_payment_requests_include_misc_amount.sql
+Includes the purchase order's miscellaneous / installation amount when validating payment requests, so server-side remaining balances match the PO total shown in Procurement. Apply after migration_v122; included in `setup.sql` for new databases.

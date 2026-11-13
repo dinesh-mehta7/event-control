@@ -401,6 +401,11 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
         : tab;
   const cur =
     wanted === 'new' ? 'new' : wanted === 'fulfil' || tabs.some(t => t.id === wanted) ? (wanted as string) : 'overview';
+  useEffect(() => {
+    if (cur !== 'mine' || sessionStorage.getItem('requests:category') !== 'walkies') return;
+    sessionStorage.removeItem('requests:category');
+    setCategory('walkies');
+  }, [cur]);
   const hasStages = cur === 'incoming' || cur === 'all';
   useEffect(() => {
     setExportMenuOpen(false);
@@ -487,7 +492,6 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
   );
   const categorySwitch = walkieMode && (
     <PillTabs
-      variant="segmented"
       label="Request category"
       value={category}
       onChange={id => setCategory(id as 'items' | 'walkies')}
@@ -670,6 +674,7 @@ export const RequestsApp: React.FC<{ tab?: string }> = ({ tab }) => {
                 setCopy(null);
                 // Event walkie requests are followed under My requests (most people cannot open the Walkie module).
                 if (id === 'event-radio') {
+                  setCategory('walkies');
                   location.replace('#/requests/mine');
                   return;
                 }

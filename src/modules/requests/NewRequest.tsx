@@ -512,7 +512,11 @@ export const NewRequest: React.FC<{
                   ? ' You can change the quantities until it is approved.'
                   : ' Ask the Walkie team if you need more.'}
               </span>
-              <a href="#/requests/mine" className="font-semibold text-blue-300 hover:underline">
+              <a
+                href="#/requests/mine"
+                onClick={() => sessionStorage.setItem('requests:category', 'walkies')}
+                className="font-semibold text-blue-300 hover:underline"
+              >
                 Open My requests
               </a>
             </div>
